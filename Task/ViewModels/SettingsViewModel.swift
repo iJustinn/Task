@@ -100,6 +100,73 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppTimeFormat: String, CaseIterable, Identifiable {
+    case system
+    case twelveHour
+    case twentyFourHour
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system:         return String(localized: "System")
+        case .twelveHour:     return String(localized: "12-hour")
+        case .twentyFourHour: return String(localized: "24-hour")
+        }
+    }
+
+    var descriptor: String {
+        switch self {
+        case .system:         return String(localized: "Follow Device")
+        case .twelveHour:     return String(localized: "Always use 12-hour time")
+        case .twentyFourHour: return String(localized: "Always use 24-hour time")
+        }
+    }
+
+    var settingsLabel: String {
+        switch self {
+        case .system:                       return String(localized: "System")
+        case .twelveHour, .twentyFourHour:  return label
+        }
+    }
+
+    var systemImage: String? {
+        switch self {
+        case .system: return "clock.badge.checkmark.fill"
+        default:      return nil
+        }
+    }
+
+    var iconText: String? {
+        switch self {
+        case .twelveHour:     return "12"
+        case .twentyFourHour: return "24"
+        case .system:         return nil
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .system:         return .teal
+        case .twelveHour:     return .orange
+        case .twentyFourHour: return .blue
+        }
+    }
+
+    var uses24HourClock: Bool {
+        switch self {
+        case .system:         return AppTimeFormat.systemUses24HourClock()
+        case .twelveHour:     return false
+        case .twentyFourHour: return true
+        }
+    }
+
+    static func systemUses24HourClock(locale: Locale = .autoupdatingCurrent) -> Bool {
+        let template = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? ""
+        return !template.lowercased().contains("a")
+    }
+}
+
 enum AppAccent: String, CaseIterable, Identifiable {
     case blue
     case purple
@@ -157,15 +224,15 @@ enum AppAccent: String, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
-        case .blue:   return ColorKey.blue.hue
-        case .purple: return ColorKey.purple.hue
-        case .pink:   return ColorKey.pink.hue
-        case .green:  return ColorKey.green.hue
-        case .orange: return Color.orange
-        case .teal:   return Color.teal
-        case .indigo: return Color.indigo
-        case .red:    return ColorKey.red.hue
-        case .gray:   return ColorKey.gray.hue
+        case .blue:   return .blue
+        case .purple: return .purple
+        case .pink:   return .pink
+        case .green:  return .green
+        case .orange: return .orange
+        case .teal:   return .teal
+        case .indigo: return .indigo
+        case .red:    return .red
+        case .gray:   return .gray
         }
     }
 }
@@ -397,6 +464,18 @@ enum AppColumnWidth: String, CaseIterable, Identifiable {
     }
 }
 
+enum ReminderDefaults {
+    static let minutesKey = "task.reminderMinutesOfDay"
+    static let defaultMinutesOfDay = 9 * 60
+
+    static func storedMinutesOfDay() -> Int {
+        let d = UserDefaults.standard
+        guard d.object(forKey: minutesKey) != nil else { return defaultMinutesOfDay }
+        let stored = d.integer(forKey: minutesKey)
+        return (0..<24*60).contains(stored) ? stored : defaultMinutesOfDay
+    }
+}
+
 @MainActor
 final class SettingsViewModel: ObservableObject {
     @Published var theme: AppTheme {
@@ -409,6 +488,14 @@ final class SettingsViewModel: ObservableObject {
 
     @Published var accent: AppAccent {
         didSet { UserDefaults.standard.set(accent.rawValue, forKey: SettingsViewModel.accentKey) }
+    }
+
+    @Published var timeFormat: AppTimeFormat {
+        didSet { UserDefaults.standard.set(timeFormat.rawValue, forKey: SettingsViewModel.timeFormatKey) }
+    }
+
+    @Published var reminderMinutesOfDay: Int {
+        didSet { UserDefaults.standard.set(reminderMinutesOfDay, forKey: ReminderDefaults.minutesKey) }
     }
 
     @Published var appIcon: AppIconOption {
@@ -434,19 +521,33 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(cardSortDirection.rawValue, forKey: SettingsViewModel.cardSortDirectionKey) }
     }
 
+    @Published var defaultGroupID: String? {
+        didSet {
+            if let id = defaultGroupID {
+                UserDefaults.standard.set(id, forKey: SettingsViewModel.defaultGroupIDKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: SettingsViewModel.defaultGroupIDKey)
+            }
+        }
+    }
+
     static let themeKey = "task.appTheme"
     static let accentKey = "task.appAccent"
+    static let timeFormatKey = "task.timeFormat"
     static let appIconKey = "task.appIcon"
     static let textSizeKey = "task.textSize"
     static let columnWidthKey = "task.columnWidth"
     static let cardSortFieldKey = "task.cardSortField"
     static let cardSortDirectionKey = "task.cardSortDirection"
+    static let defaultGroupIDKey = "task.defaultGroupID"
 
     init() {
         let d = UserDefaults.standard
         self.theme = AppTheme(rawValue: d.string(forKey: SettingsViewModel.themeKey) ?? "") ?? .system
         self.language = AppLanguage(rawValue: d.string(forKey: AppLanguage.storageKey) ?? "") ?? .system
         self.accent = AppAccent(rawValue: d.string(forKey: SettingsViewModel.accentKey) ?? "") ?? .blue
+        self.timeFormat = AppTimeFormat(rawValue: d.string(forKey: SettingsViewModel.timeFormatKey) ?? "") ?? .system
+        self.reminderMinutesOfDay = ReminderDefaults.storedMinutesOfDay()
         self.appIcon = AppIconOption(rawValue: d.string(forKey: SettingsViewModel.appIconKey) ?? "") ?? .classic
         self.textSize = AppTextSize(rawValue: d.string(forKey: SettingsViewModel.textSizeKey) ?? "") ?? .medium
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium
@@ -457,6 +558,18 @@ final class SettingsViewModel: ObservableObject {
             self.cardSortField = CardSortField(rawValue: rawSort) ?? .manual
         }
         self.cardSortDirection = CardSortDirection(rawValue: d.string(forKey: SettingsViewModel.cardSortDirectionKey) ?? "") ?? .ascending
+        self.defaultGroupID = d.string(forKey: SettingsViewModel.defaultGroupIDKey)
+    }
+
+    /// Resolves the user's preferred default status group, falling back to the
+    /// first group when nothing was chosen or the chosen group no longer exists.
+    func defaultGroup(in board: Board) -> BoardGroup? {
+        let groups = board.orderedGroups
+        if let id = defaultGroupID,
+           let match = groups.first(where: { $0.id.uuidString == id }) {
+            return match
+        }
+        return groups.first
     }
 
     private func applyAppIcon() {

@@ -96,6 +96,7 @@ struct GroupMenuSheet: View {
         if !trimmed.isEmpty { group.name = trimmed }
         group.colorKey = colorKey
         try? context.save()
+        UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }
 
     private func deleteAndDismiss() {
@@ -111,6 +112,7 @@ struct GroupMenuSheet: View {
         context.delete(group)
         for (idx, g) in remaining.enumerated() { g.sortIndex = idx }
         try? context.save()
+        UpcomingSnapshotBuilder.writeSnapshot(from: context)
         dismiss()
     }
 }

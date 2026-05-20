@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var activeAboutSheet: AboutSheet?
     @State private var showingManualControl = false
     @State private var showingCardOrder = false
+    @State private var showingDefaultStatus = false
     @State private var showingImportPicker = false
     @State private var showingExportPicker = false
     @State private var exportDocument = TaskExportDocument()
@@ -20,9 +21,10 @@ struct SettingsView: View {
     @State private var isImporting = false
     @State private var isExporting = false
     @State private var resultAlert: ResultAlert?
+    @State private var importOrphanMessage: String? = nil
 
     private enum AppearanceSheet: String, Identifiable {
-        case theme, language, textSize, columnWidth, accent, icon
+        case theme, language, textSize, columnWidth, accent, icon, timeFormat, reminderTime
         var id: String { rawValue }
     }
 
@@ -66,7 +68,7 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { dismiss() }.fontWeight(.bold)
                 }
             }
             .sheet(item: $activeSheet) { sheet in
@@ -77,6 +79,12 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingCardOrder) {
                 CardOrderPickerSheet()
+                    .environmentObject(settings)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showingDefaultStatus) {
+                DefaultStatusPickerSheet(board: board)
                     .environmentObject(settings)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
@@ -111,9 +119,10 @@ struct SettingsView: View {
             .alert(item: $resultAlert) { kind in
                 switch kind {
                 case .importSuccess:
+                    let body = importOrphanMessage ?? String(localized: "Your data has been imported successfully.")
                     return Alert(
                         title: Text("Import Successful"),
-                        message: Text("Your data has been imported successfully."),
+                        message: Text(body),
                         dismissButton: .default(Text("OK"))
                     )
                 case .importFailure:
@@ -162,6 +171,15 @@ struct SettingsView: View {
             }
             SettingsRowDivider()
             SettingsButtonRow(
+                title: "Time Format",
+                systemName: timeFormatRowSystemName,
+                tintColor: settings.timeFormat.tintColor,
+                action: { activeSheet = .timeFormat }
+            ) {
+                trailing(value: settings.timeFormat.settingsLabel)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
                 title: "Text Size",
                 systemName: settings.textSize.systemImage,
                 tintColor: settings.textSize.tintColor,
@@ -204,6 +222,15 @@ struct SettingsView: View {
     private var defaultSection: some View {
         SettingsCardSection("Default") {
             SettingsButtonRow(
+                title: "Status",
+                systemName: "circle.fill",
+                tintColor: defaultStatusTint,
+                action: { showingDefaultStatus = true }
+            ) {
+                trailing(value: defaultStatusSummary)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
                 title: "Card Order",
                 systemName: settings.cardSortField.systemImage,
                 tintColor: settings.cardSortField.tintColor,
@@ -211,7 +238,24 @@ struct SettingsView: View {
             ) {
                 trailing(value: cardOrderSummary)
             }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Reminder Time",
+                systemName: "bell.badge.fill",
+                tintColor: .red,
+                action: { activeSheet = .reminderTime }
+            ) {
+                trailing(value: reminderTimeSummary)
+            }
         }
+    }
+
+    private var defaultStatusSummary: String {
+        settings.defaultGroup(in: board)?.name ?? "—"
+    }
+
+    private var defaultStatusTint: Color {
+        settings.defaultGroup(in: board)?.colorKey.foreground ?? .gray
     }
 
     private var cardOrderSummary: String {
@@ -221,13 +265,30 @@ struct SettingsView: View {
         return "\(settings.cardSortField.label) · \(settings.cardSortDirection.label)"
     }
 
+    private var timeFormatRowSystemName: String {
+        switch settings.timeFormat {
+        case .system:         return "clock.badge.checkmark.fill"
+        case .twelveHour:     return "clock.fill"
+        case .twentyFourHour: return "timer"
+        }
+    }
+
+    private var reminderTimeSummary: String {
+        let total = settings.reminderMinutesOfDay
+        return TimeFormatting.format(
+            hour: total / 60,
+            minute: total % 60,
+            uses24Hour: settings.timeFormat.uses24HourClock
+        )
+    }
+
     private var customizationSection: some View {
         SettingsCardSection("Customization") {
             NavigationLink {
                 ManageGroupsView(board: board)
             } label: {
                 SettingsRowLabel(
-                    title: "Manage Groups",
+                    title: "Groups",
                     value: "\(board.orderedGroups.count)",
                     systemName: "rectangle.3.group.fill",
                     tintColor: .pink,
@@ -240,7 +301,7 @@ struct SettingsView: View {
                 ManageTagsView(board: board)
             } label: {
                 SettingsRowLabel(
-                    title: "Manage Tags",
+                    title: "Tags",
                     value: "\(board.orderedTags.count)",
                     systemName: "tag.fill",
                     tintColor: .orange,
@@ -412,6 +473,16 @@ struct SettingsView: View {
                 .environmentObject(settings)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        case .timeFormat:
+            TimeFormatPickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        case .reminderTime:
+            ReminderTimePickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.height(560)])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -444,19 +515,32 @@ struct SettingsView: View {
         isImporting = true
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 250_000_000)
-            let ok = DataImportExport.importData(data, context: context)
+            let outcome = await DataImportExport.importData(data, context: context)
             isImporting = false
-            resultAlert = ok ? .importSuccess : .importFailure
+            if outcome.success {
+                importOrphanMessage = orphanMessage(for: outcome)
+                resultAlert = .importSuccess
+            } else {
+                importOrphanMessage = nil
+                resultAlert = .importFailure
+            }
         }
     }
 
-    private func performReset() {
-        DataImportExport.resetAll(context: context)
+    private func orphanMessage(for outcome: ImportResult) -> String? {
+        let pieces = [
+            outcome.orphanTasks > 0 ? String(localized: "\(outcome.orphanTasks) task(s) moved to the first group because their original group wasn't in the file.") : nil,
+            outcome.orphanTagRefs > 0 ? String(localized: "\(outcome.orphanTagRefs) tag reference(s) couldn't be resolved and were dropped.") : nil
+        ].compactMap { $0 }
+        guard !pieces.isEmpty else { return nil }
+        return String(localized: "Your data has been imported.") + "\n\n" + pieces.joined(separator: "\n")
     }
 
-    private var appVersion: String {
-        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
-        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        return "\(v) (\(b))"
+    private func performReset() {
+        Task { @MainActor in
+            await DataImportExport.resetAll(context: context)
+        }
     }
+
+    private var appVersion: String { AppInfo.versionAndBuild }
 }

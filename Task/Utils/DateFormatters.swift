@@ -30,3 +30,19 @@ enum TaskDateFormat {
         Calendar.current.isDate(a, inSameDayAs: b)
     }
 }
+
+enum TimeFormatting {
+    static func format(hour: Int, minute: Int, uses24Hour: Bool) -> String {
+        if uses24Hour {
+            return String(format: "%02d:%02d", hour, minute)
+        }
+        let isPM = hour >= 12
+        let displayHour: Int
+        switch hour {
+        case 0:       displayHour = 12
+        case 13...23: displayHour = hour - 12
+        default:      displayHour = hour
+        }
+        return String(format: "%d:%02d %@", displayHour, minute, isPM ? "PM" : "AM")
+    }
+}

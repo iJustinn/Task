@@ -1,5 +1,65 @@
 # Version History
 
+## 0.2.0 (build 2) — 2026-05-19
+
+Customization, reminders, and drag-and-drop overhaul.
+
+### Drag-to-reorder rewrite (custom implementation)
+
+- Replaced the previous Reorder button on Groups with **long-press drag-and-drop**. Same affordance now ships on Tags and home-board task cards (within a column and across columns to change status).
+- **Live reorder**: undragged siblings slide out of the way as the lifted item passes over them (`withAnimation(.easeInOut(duration: 0.18))`).
+- Custom drag (`.draggable(payload:preview:)` + per-row `DropDelegate`) instead of `List.onMove`, so the lifted preview is a clean rounded card with no system white / gray platter behind it.
+- Drop proposal is `.move` everywhere — the green `+` copy badge never appears.
+- Source row stays visible during the drag (matches iOS Reminders) — sidesteps the "card disappears after drop" cleanup bug.
+- Fixed the "first card bounces" issue at the top of a column by skipping the column-outer delegate when the drag is same-column, plus a dynamic-target-index lookup and a no-op check inside `placeTask`.
+
+### Settings → Appearance → Time Format (new)
+
+- New tab between Language and Text Size: **System / 12-hour / 24-hour** tile picker. Mirrors the Coin app's TimeFormatPickerSheet.
+- `AppTimeFormat.uses24HourClock` resolves the System case via the device locale (`DateFormatter.dateFormat(fromTemplate: "j", ...)`).
+
+### Settings → Default → Status (new)
+
+- New row at the top of the Default section: pick which group new tasks land in when created from the bottom-bar `+` button.
+- `DefaultStatusPickerSheet` mirrors the in-task `StatusPickerSheet` (3-column tile grid of groups with their colored dot, name, and task count).
+- Persisted on `SettingsViewModel.defaultGroupID` (UserDefaults key `task.defaultGroupID`) as the group's UUID string. `SettingsViewModel.defaultGroup(in:)` resolves it back to a `BoardGroup`, with an automatic fallback to `board.orderedGroups.first` when the stored ID is missing or the group has since been deleted.
+- `RootView` uses the resolved default group when presenting the new-task sheet; the existing in-task Status picker is unchanged.
+- The Settings row icon is a `circle.fill` tinted with the selected group's color and the row value shows the group name.
+
+### Card footer divider (changed)
+
+- The notes (`doc.text`) and reminder (`alarm`) icons moved from the top-left of the card and the matching date row to a single footer row at the bottom of the card.
+- The footer renders as `─── icon ───`: a thin separator (`Color(uiColor: .separator)`, 0.5 pt) on each side with the icons (`caption2`, `.secondary`) centered between them. Both icons share one row when both are set; the row is omitted entirely when neither applies.
+- `DateRow` / `DueDateRow` dropped their `hasReminder` parameter — the alarm no longer rides along with the date — which also retires the `primaryReminderDate`-vs-`dueDate` comparison the card previously needed to decide which row owned the alarm. Notification scheduling in `NotificationService` still fires on `primaryReminderDate` and is unchanged.
+
+### Settings → Default → Reminder Time (new)
+
+- New tab below Card Order: hour/minute that per-task reminders fire on the chosen date. **Default 9:00.**
+- Custom HH:MM numeric keypad sheet (`ReminderTimePickerSheet`), button dimensions matched to Coin exactly: 62 pt min-height, 12 pt spacing, 26 pt corner radius, 28 pt rounded-bold digits, 0.68 min scale factor.
+- Opens with an "Enter Time" placeholder (does not pre-load the current value). Live preview replaces the placeholder as digits are typed (e.g., `900` → `9:00`, `2130` → `21:30`). `Done` stays disabled until a valid time is entered.
+- `Now`, `C`, `⌫`, `00` shortcuts; in 12-hour mode an `AM/PM` toggle replaces a placeholder slot in the bottom row.
+- Sheet uses `.height(560)` detent.
+- `NotificationService.schedule(for:)` now reads `ReminderDefaults.storedMinutesOfDay()` instead of the previously hardcoded `9:00`. The default and key live on a top-level nonisolated `ReminderDefaults` enum so the nonisolated notification service can read them without crossing the `SettingsViewModel` `@MainActor` boundary.
+
+### App Accent color normalization
+
+- `AppAccent.color` now returns pure SwiftUI system colors (`.blue`, `.purple`, `.pink`, `.green`, `.red`, `.gray`) — previously these six returned muted custom `ColorKey.hue` RGB values. Orange / teal / indigo were already system colors. Matches Coin's `AppHighlightColor` exactly.
+
+### Tag sortIndex + drag-reorder + backward-compat import
+
+- Added `var sortIndex: Int = 0` to `TaskTag` and updated `Board.orderedTags` to sort by `sortIndex` then `createdAt` as the tiebreaker (so existing tags with the default `0` stay in their original creation order).
+- `TagExport` JSON now writes `sortIndex`; the import path is backward-compatible via a custom `init(from:)` that uses `decodeIfPresent` (missing field → `0`). Older 0.1.0 exports import cleanly.
+- New tags created through `ManageTagsView.addTag` and `TagPickerSheet.addTag` get the next incremental `sortIndex` and land at the end.
+
+### Settings tab renames
+
+- `Customization` rows: **Manage Groups** → **Groups**, **Manage Tags** → **Tags**.
+
+### Components
+
+- `GridTile` gained an `iconText:` parameter, so a tile can render "12" / "24" text inside the tinted square (used by `TimeFormatPickerSheet`).
+- New `TimeFormatting.format(hour:minute:uses24Hour:)` helper in `DateFormatters.swift` — shared by the Reminder Time row summary and the picker preview.
+
 ## 0.1.0 (build 1) — 2026-05-19
 
 Initial release. Full Kanban task manager with local SwiftData storage.

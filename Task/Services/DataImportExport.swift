@@ -31,7 +31,29 @@ struct TagExport: Codable {
     var id: UUID
     var name: String
     var colorKey: String
+    var sortIndex: Int
     var createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, colorKey, sortIndex, createdAt
+    }
+
+    init(id: UUID, name: String, colorKey: String, sortIndex: Int, createdAt: Date) {
+        self.id = id
+        self.name = name
+        self.colorKey = colorKey
+        self.sortIndex = sortIndex
+        self.createdAt = createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        colorKey = try c.decode(String.self, forKey: .colorKey)
+        sortIndex = try c.decodeIfPresent(Int.self, forKey: .sortIndex) ?? 0
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+    }
 }
 
 struct TaskExport: Codable {
@@ -47,6 +69,14 @@ struct TaskExport: Codable {
     var updatedAt: Date
     var groupID: UUID?
     var tagIDs: [UUID]
+}
+
+struct ImportResult {
+    var success: Bool
+    var orphanTasks: Int = 0
+    var orphanTagRefs: Int = 0
+
+    static let failure = ImportResult(success: false)
 }
 
 enum DataImportExport {
@@ -72,7 +102,7 @@ enum DataImportExport {
             GroupExport(id: g.id, name: g.name, colorKey: g.colorKeyRaw, sortIndex: g.sortIndex, createdAt: g.createdAt)
         }
         let tags: [TagExport] = board.orderedTags.map { t in
-            TagExport(id: t.id, name: t.name, colorKey: t.colorKeyRaw, createdAt: t.createdAt)
+            TagExport(id: t.id, name: t.name, colorKey: t.colorKeyRaw, sortIndex: t.sortIndex, createdAt: t.createdAt)
         }
         let tasks: [TaskExport] = (board.tasks ?? []).map { task in
             TaskExport(
@@ -110,9 +140,9 @@ enum DataImportExport {
 
     @MainActor
     @discardableResult
-    static func importData(_ data: Data, context: ModelContext) -> Bool {
+    static func importData(_ data: Data, context: ModelContext) async -> ImportResult {
         guard let payload = try? makeDecoder().decode(BoardExportPayload.self, from: data) else {
-            return false
+            return .failure
         }
 
         // Resolve target board: prefer same-ID match, else reuse the existing singleton, else create.
@@ -184,16 +214,19 @@ enum DataImportExport {
             if let existing = tagsByID[t.id] {
                 existing.name = t.name
                 existing.colorKeyRaw = t.colorKey
+                existing.sortIndex = t.sortIndex
                 existing.board = board
                 tagsByName[t.name.lowercased()] = existing
             } else if let existing = tagsByName[t.name.lowercased()] {
                 existing.colorKeyRaw = t.colorKey
+                existing.sortIndex = t.sortIndex
                 existing.board = board
                 tagsByID[t.id] = existing
             } else {
                 let tag = TaskTag(
                     name: t.name,
-                    colorKey: ColorKey(rawValue: t.colorKey) ?? .gray
+                    colorKey: ColorKey(rawValue: t.colorKey) ?? .gray,
+                    sortIndex: t.sortIndex
                 )
                 tag.id = t.id
                 tag.createdAt = t.createdAt
@@ -204,10 +237,29 @@ enum DataImportExport {
             }
         }
 
-        // Merge tasks by ID.
+        // Merge tasks by ID. Orphan groupID falls back to the first known group so the
+        // task stays visible; orphan tagIDs are dropped and counted for the result alert.
+        let fallbackGroup = board.orderedGroups.first
         let existingTasks = (try? context.fetch(FetchDescriptor<TaskItem>())) ?? []
         var tasksByID: [UUID: TaskItem] = Dictionary(uniqueKeysWithValues: existingTasks.map { ($0.id, $0) })
-        for t in payload.tasks {
+        var orphanTasks = 0
+        var orphanTagRefs = 0
+        for (idx, t) in payload.tasks.enumerated() {
+            let resolvedTags = t.tagIDs.compactMap { tagsByID[$0] }
+            orphanTagRefs += (t.tagIDs.count - resolvedTags.count)
+
+            let resolvedGroup: BoardGroup?
+            if let gid = t.groupID {
+                if let match = groupsByID[gid] {
+                    resolvedGroup = match
+                } else {
+                    orphanTasks += 1
+                    resolvedGroup = fallbackGroup
+                }
+            } else {
+                resolvedGroup = nil
+            }
+
             let task: TaskItem
             if let existing = tasksByID[t.id] {
                 NotificationService.cancel(for: existing)
@@ -220,8 +272,8 @@ enum DataImportExport {
                 existing.sortIndex = t.sortIndex
                 existing.updatedAt = t.updatedAt
                 existing.board = board
-                if let gid = t.groupID { existing.group = groupsByID[gid] }
-                existing.tags = t.tagIDs.compactMap { tagsByID[$0] }
+                if t.groupID != nil { existing.group = resolvedGroup }
+                existing.tags = resolvedTags
                 task = existing
             } else {
                 let new = TaskItem(title: t.title, notes: t.notes, sortIndex: t.sortIndex)
@@ -233,8 +285,8 @@ enum DataImportExport {
                 new.createdAt = t.createdAt
                 new.updatedAt = t.updatedAt
                 new.board = board
-                if let gid = t.groupID { new.group = groupsByID[gid] }
-                new.tags = t.tagIDs.compactMap { tagsByID[$0] }
+                new.group = resolvedGroup
+                new.tags = resolvedTags
                 context.insert(new)
                 tasksByID[t.id] = new
                 task = new
@@ -242,18 +294,26 @@ enum DataImportExport {
             if task.hasReminder {
                 NotificationService.schedule(for: task)
             }
+            // Yield every 50 tasks so the import progress overlay can repaint on
+            // multi-thousand-task imports without freezing the UI.
+            if idx % 50 == 49 {
+                await Task.yield()
+            }
         }
 
         try? context.save()
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
-        return true
+        return ImportResult(success: true, orphanTasks: orphanTasks, orphanTagRefs: orphanTagRefs)
     }
 
     @MainActor
-    static func resetAll(context: ModelContext) {
+    static func resetAll(context: ModelContext) async {
         let existingTasks = (try? context.fetch(FetchDescriptor<TaskItem>())) ?? []
-        for task in existingTasks {
+        for (idx, task) in existingTasks.enumerated() {
             NotificationService.cancel(for: task)
+            if idx % 50 == 49 {
+                await Task.yield()
+            }
         }
         for board in (try? context.fetch(FetchDescriptor<Board>())) ?? [] {
             context.delete(board)

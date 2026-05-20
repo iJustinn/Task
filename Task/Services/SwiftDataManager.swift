@@ -9,16 +9,23 @@ enum SwiftDataManager {
         TaskItem.self
     ])
 
+    /// Set true on the launch that fell back to an in-memory store, so the next UI render
+    /// can warn the user that their writes won't persist across relaunches.
+    static let inMemoryFallbackKey = "task.lastLaunchInMemory"
+
     static func makeModelContainer() -> ModelContainer {
         let configuration = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false
         )
         do {
-            return try ModelContainer(for: schema, configurations: [configuration])
+            let container = try ModelContainer(for: schema, configurations: [configuration])
+            UserDefaults.standard.set(false, forKey: inMemoryFallbackKey)
+            return container
         } catch {
-            // Fall back to an in-memory store if the persistent store can't be opened.
-            // This keeps the app usable rather than crashing on schema/migration failures.
+            // Persistent store failed to open. Keep the app usable with an in-memory store
+            // and flag the situation so RootView can surface it.
+            UserDefaults.standard.set(true, forKey: inMemoryFallbackKey)
             let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             return try! ModelContainer(for: schema, configurations: [memoryConfig])
         }

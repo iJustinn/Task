@@ -48,10 +48,11 @@ enum WidgetSharedDefaults {
 
     static func read() -> WidgetUpcomingSnapshot {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
-              let data = defaults.data(forKey: upcomingSnapshotKey),
-              let snapshot = try? JSONDecoder().decode(WidgetUpcomingSnapshot.self, from: data) else {
+              let data = defaults.data(forKey: upcomingSnapshotKey) else {
             return WidgetUpcomingSnapshot()
         }
-        return snapshot
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode(WidgetUpcomingSnapshot.self, from: data)) ?? WidgetUpcomingSnapshot()
     }
 }
