@@ -157,6 +157,18 @@ return CGSize(width: reportedWidth, height: arrangement.size.height)
 
 When `proposal.width` is `nil` / non-finite, fall back to `maxWidth = 0` (which forces one subview per row, giving the worst-case height) so the parent reserves enough vertical space regardless.
 
+#### Three follow-up rules to keep measurement and placement in lock-step
+
+The "report `proposal.width`" rule is necessary but not sufficient. Three more things have to agree, or chips silently overlap the next row in the card:
+
+1. **`placeSubviews` must use `proposal.width`, not `bounds.width`.** They are usually equal, but SwiftUI is free to hand you a narrower `bounds` during placement (and the layout dance can call `sizeThatFits` with several proposals, only one of which becomes the bound). Anchor the wrap math to `proposal.width` with `bounds.width` as a fallback, so placement re-runs the exact arrangement `sizeThatFits` reserved height for.
+
+2. **Probe each subview with `ProposedViewSize(width: .infinity, height: .infinity)`, not `.unspecified`.** `.unspecified` lets the subview's `Text` decide for itself, and at certain dynamic-type sizes it returns a slightly *narrower* size than what actually renders. The wrap check then says "fits" while the real chip pushes onto the next line — exactly the Print-bank-statement overlap. The infinite proposal forces the unwrapped, single-line natural size that matches what `.fixedSize()` will render.
+
+3. **Pin tag chips with `.lineLimit(1).fixedSize(horizontal: true, vertical: false)`.** Without it, a `Text` chip can be squeezed by `place(proposal:)` and re-wrap itself, again diverging from the FlowLayout's measurement. With it, every measurement and every placement agree on the chip's width down to the pixel.
+
+The symptom of breaking any one of these: a card with two short tags wraps "Exam" alone onto row 1 and "Finance" onto row 2, but the row-2 chip lands on top of the working-date row because `FlowLayout` only reserved one row's worth of height. Always reproducible at larger Dynamic Type sizes where rendered glyph widths drift further from `.unspecified`'s reported width.
+
 ### Card pagination
 
 `ColumnView` caps each column at the first 10 tasks via `@State private var visibleCount: Int = 10`. When the group's `currentTasks.count > visibleCount`, a tinted "More +N" button appears at the bottom of the column and bumps the count by 10 (animated). The state is preserved across re-renders thanks to `ForEach`'s id-keyed identity, but reset to 10 on pull-to-refresh.

@@ -8,6 +8,7 @@ struct TagChip: View {
     var body: some View {
         Text(name)
             .font(compact ? .caption2.weight(.medium) : .subheadline.weight(.semibold))
+            .lineLimit(1)
             .foregroundStyle(colorKey.foreground)
             .padding(.horizontal, compact ? 6 : 10)
             .padding(.vertical, compact ? 2 : 4)
@@ -15,5 +16,6 @@ struct TagChip: View {
                 RoundedRectangle(cornerRadius: compact ? 5 : 7, style: .continuous)
                     .fill(colorKey.background)
             )
+            .fixedSize(horizontal: true, vertical: false)
     }
 }

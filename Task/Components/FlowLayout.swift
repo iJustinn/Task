@@ -31,7 +31,16 @@ struct FlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let arrangement = arrange(subviews: subviews, maxWidth: bounds.width)
+        // Mirror sizeThatFits's width choice exactly. Using bounds.width here breaks when
+        // the proposal said one thing but SwiftUI hands us a narrower bounds during placement —
+        // the re-wrap then overflows past the height we already reserved.
+        let maxWidth: CGFloat
+        if let w = proposal.width, w.isFinite, w > 0 {
+            maxWidth = w
+        } else {
+            maxWidth = bounds.width
+        }
+        let arrangement = arrange(subviews: subviews, maxWidth: maxWidth)
         for (index, frame) in arrangement.frames.enumerated() {
             subviews[index].place(
                 at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY),
@@ -49,7 +58,9 @@ struct FlowLayout: Layout {
         var maxLineWidth: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            // Explicit infinite proposal forces Text-based subviews to report their unwrapped
+            // single-line width, matching what TagChip with .fixedSize() will actually render.
+            let size = subview.sizeThatFits(ProposedViewSize(width: .infinity, height: .infinity))
             if cursorX + size.width > maxWidth && cursorX > 0 {
                 cursorY += lineHeight + lineSpacing
                 cursorX = 0

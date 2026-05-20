@@ -1,8 +1,20 @@
 # Task
 
+<p align="center">
+  <img src="Task/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="Task app icon" width="120">
+</p>
+
 A privacy-focused iOS task manager built with SwiftUI. Kanban-style board with customizable groups, tags, working/due dates, and per-task reminders. Local-first via SwiftData with an iCloud sync upgrade path. Includes a home-screen widget for upcoming tasks.
 
 Current app version: **0.1.0 (build 1)**
+
+## Screenshots
+
+<p align="center">
+  <img src="Screenshots/01-v0.1.0.PNG" alt="Task screenshot 1" width="32%"/>
+  <img src="Screenshots/02-v0.1.0.PNG" alt="Task screenshot 2" width="32%"/>
+  <img src="Screenshots/03-v0.1.0.PNG" alt="Task screenshot 3" width="32%"/>
+</p>
 
 ## Requirements
 
