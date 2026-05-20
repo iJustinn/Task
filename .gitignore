@@ -1,0 +1,30 @@
+# Xcode
+*.xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.xccheckout
+DerivedData/
+build/
+*.dSYM.zip
+*.dSYM
+.swiftpm/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Swift Package Manager
+Packages/
+Package.resolved
+.build/
+
+# Tooling
+.claude/
+.deepseek/
+.codex/
+.agents/
+
+# Misc
+*.log
+*.tmp
