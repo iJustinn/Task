@@ -57,7 +57,7 @@ struct TaskCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(uiColor: .systemBackground))
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
                 .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
         )
         .overlay(

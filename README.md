@@ -4,15 +4,15 @@
   <img src="Task/Assets.xcassets/AppIcon.appiconset/AppIcon.png" alt="Task app icon" width="120">
 </p>
 
-A privacy-focused iOS task manager built with SwiftUI. Kanban-style board with customizable groups, tags, working/due dates, and per-task reminders. Local-first via SwiftData with an iCloud sync upgrade path. Includes a home-screen widget for upcoming tasks.
+A privacy-focused, Notion-style iOS task manager built with SwiftUI. Kanban board for at-a-glance grouping; each task opens into a flat property-list editor — Status, Tags, Working Date, Due Date, Reminder, Notes — inspired by Notion's database entry pages. Local-first via SwiftData with an iCloud sync upgrade path. Includes a home-screen widget for upcoming tasks.
 
-Current app version: **0.2.0 (build 2)**
+Current app version: **0.3.0 (build 2)**
 
 ## Screenshots
 
 <p align="center">
   <img src="Screenshots/01-v0.2.0.PNG" alt="Task screenshot 1" width="32%"/>
-  <img src="Screenshots/02-v0.1.0.PNG" alt="Task screenshot 2" width="32%"/>
+  <img src="Screenshots/02-v0.3.0.PNG" alt="Task screenshot 2" width="32%"/>
   <img src="Screenshots/03-v0.1.0.PNG" alt="Task screenshot 3" width="32%"/>
 </p>
 
@@ -34,7 +34,8 @@ Current app version: **0.2.0 (build 2)**
   - Per-column **Top 10 + "More +N"** pagination so a 100-card group doesn't render everything at once
 - **Drag and drop** — long-press to lift a card, group header pill, or settings row, then drag to reorder. Used in three places: cards reorder within their column or move across columns to change status, group pills reorder columns, and Groups / Tags rows in Settings reorder via long-press (no separate Reorder button). Live reorder — undragged siblings slide out of the way as the lifted item passes over them. Uses `.move` operation (no green `+` badge); the lifted preview is clipped to the card / pill / row shape; the source stays in place during drag (matches iOS Reminders).
 - **Pull-to-refresh** on each column resets pagination back to 10 and re-renders, in case the UI ever feels stuck.
-- **Custom calendar picker** — month grid; single-tap to set, tap selected day to clear. Toggle End Date in the Working Date sheet to pick a range — the start and end fill solid; the days between form a tinted strip (slightly shorter than the endpoints).
+- **Custom calendar picker** — month grid with chunky 44 pt rounded date cells; single-tap to set, tap selected day to clear. Header includes a **Today** button (jumps to this month and selects today) plus prev/next month chevrons. Toggle End Date in the Working Date sheet to pick a range — the start and end fill solid; the days between form a tinted strip (slightly shorter than the endpoints).
+- **Notion-style task editor** — Add/Edit Task opens as a 60% sheet (pullable to full) with a flat property-list layout: large bold title, compact rows (Status, Tags, Working, Due Date, Reminder) with a small gray icon + label column + right-side value, then a Notes block, then a pin-to-bottom red `Delete Task` button (edit mode only) that flows down with long notes. Working-date ranges break onto two lines (`May 19, 2026 →` / `May 22, 2026`) and the alarm icon lands on whichever date the notification will actually fire on (the earlier of working/due).
 - **Local notifications** scheduled via `UNUserNotificationCenter`. Per-task Reminder toggle; the time-of-day comes from the user-configurable **Reminder Time** in Settings (defaults to 9:00).
 - **Search** — the bottom-bar search field transforms when focused (the `+` and Settings buttons slide out, an `X` cancel slides in). Inline results replace the board, filtering by title, notes, tag names, and group names live.
 - **Liquid Glass bottom nav** on iOS 26+ via `GlassEffectContainer` + `.glassEffect()`. iOS 18–25 falls back to the previous `.thinMaterial` design.

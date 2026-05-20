@@ -30,6 +30,10 @@ struct TaskDetailView: View {
     @State private var showDuePicker: Bool = false
     @State private var showDeleteConfirm: Bool = false
 
+    private enum ReminderAnchor { case working, due, none }
+
+    private static let labelColumnWidth: CGFloat = 120
+
     private var editingTask: TaskItem? {
         if case .edit(let task) = mode { return task }
         return nil
@@ -37,22 +41,42 @@ struct TaskDetailView: View {
 
     private var isCreating: Bool { editingTask == nil }
 
+    /// Mirrors `TaskItem.primaryReminderDate`: when both dates are set the
+    /// notification fires for the earlier one, so the alarm icon sits on
+    /// whichever row that is.
+    private var reminderAnchor: ReminderAnchor {
+        guard hasReminder else { return .none }
+        switch (workingStart, dueDate) {
+        case (nil, nil):    return .none
+        case (_, nil):      return .working
+        case (nil, _):      return .due
+        case let (w?, d?):  return w <= d ? .working : .due
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        titleCard
-                        propertiesCard
-                        notesCard
-                        if !isCreating { deleteCard }
+            GeometryReader { proxy in
+                ZStack {
+                    Color(.systemBackground).ignoresSafeArea()
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 22) {
+                            titleField
+                            propertyList
+                            Divider()
+                            notesSection
+                            if !isCreating {
+                                Spacer(minLength: 24)
+                                deleteButton
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
+                        .frame(minHeight: proxy.size.height, alignment: .topLeading)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 60)
+                    .scrollDismissesKeyboard(.interactively)
                 }
-                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle(isCreating ? "New Task" : "Edit Task")
             .navigationBarTitleDisplayMode(.inline)
@@ -60,7 +84,6 @@ struct TaskDetailView: View {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(isCreating ? "Add" : "Save") { save() }
-                        .fontWeight(.bold)
                         .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || selectedGroup == nil)
                 }
             }
@@ -77,12 +100,12 @@ struct TaskDetailView: View {
             }
             .sheet(isPresented: $showWorkingPicker) {
                 workingDateSheet
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showDuePicker) {
                 dueDateSheet
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showDeleteConfirm) {
@@ -99,207 +122,197 @@ struct TaskDetailView: View {
                 .presentationDragIndicator(.visible)
             }
         }
+        .presentationDetents([.fraction(0.6), .large])
+        .presentationDragIndicator(.visible)
     }
 
-    // MARK: - Cards
+    // MARK: - Sections
 
-    private var titleCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("", text: $title, prompt: Text("Add title").foregroundStyle(.secondary), axis: .vertical)
-                .font(.system(.title2, design: .rounded))
-                .fontWeight(.bold)
-                .lineLimit(1...3)
-                .textInputAutocapitalization(.words)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .taskCardBackground()
+    private var titleField: some View {
+        TextField("", text: $title, prompt: Text("Add title").foregroundStyle(.secondary), axis: .vertical)
+            .font(.system(.largeTitle, design: .rounded))
+            .fontWeight(.bold)
+            .lineLimit(1...3)
+            .textInputAutocapitalization(.words)
     }
 
-    private var propertiesCard: some View {
-        VStack(spacing: 0) {
+    private var propertyList: some View {
+        VStack(spacing: 14) {
             statusRow
-            SettingsRowDivider()
             tagsRow
-            SettingsRowDivider()
             workingDateRow
-            SettingsRowDivider()
             dueDateRow
-            SettingsRowDivider()
             reminderRow
         }
-        .taskCardBackground()
     }
 
-    private var notesCard: some View {
+    private var notesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 14) {
-                SettingsIconTile(systemName: "doc.text", color: .gray)
-                Text("Notes")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            TextField("Add notes", text: $notes, axis: .vertical)
-                .lineLimit(4...20)
-                .padding(.leading, 58)
-                .padding(.trailing, 8)
+            Text("Notes")
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .foregroundStyle(.secondary)
+            MarkdownNotesEditor(text: $notes)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .taskCardBackground()
     }
 
-    private var deleteCard: some View {
-        Button {
-            showDeleteConfirm = true
-        } label: {
-            HStack {
-                Spacer()
+    private var deleteButton: some View {
+        Button { showDeleteConfirm = true } label: {
+            HStack(spacing: 8) {
                 Image(systemName: "trash")
                     .font(.system(.subheadline, weight: .bold))
                 Text("Delete Task")
                     .font(.system(.headline, design: .rounded))
                     .fontWeight(.semibold)
-                Spacer()
             }
-            .foregroundColor(.red)
-            .padding(.vertical, 18)
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .taskCardBackground()
     }
 
-    // MARK: - Rows
+    // MARK: - Property rows
 
     private var statusRow: some View {
         Button { showStatusPicker = true } label: {
-            HStack(spacing: 14) {
-                SettingsIconTile(systemName: "circle.dotted", color: selectedGroup?.colorKey.foreground ?? .secondary)
-                Text("Status")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-                Spacer()
+            propertyRow(icon: "circle.dotted", label: "Status") {
                 if let group = selectedGroup {
-                    HStack(spacing: 5) {
-                        Circle().fill(group.colorKey.dot).frame(width: 8, height: 8)
+                    HStack(spacing: 6) {
+                        Circle().fill(group.colorKey.dot).frame(width: 9, height: 9)
                         Text(group.name)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.body.weight(.semibold))
                             .foregroundStyle(group.colorKey.foreground)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
                     .background(Capsule().fill(group.colorKey.background))
                 } else {
-                    Text("Empty").font(.system(.headline, design: .rounded)).foregroundColor(.secondary)
+                    emptyValueLabel
                 }
-                Image(systemName: "chevron.right").font(.system(.caption, weight: .bold)).foregroundColor(.secondary.opacity(0.7))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
     private var tagsRow: some View {
         Button { showTagPicker = true } label: {
-            HStack(spacing: 14) {
-                SettingsIconTile(systemName: "tag.fill", color: .orange)
-                Text("Tags")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-                Spacer()
+            propertyRow(icon: "tag", label: "Tags") {
                 if selectedTags.isEmpty {
-                    Text("Empty").font(.system(.headline, design: .rounded)).foregroundColor(.secondary)
+                    emptyValueLabel
                 } else {
-                    HStack(spacing: 6) {
-                        ForEach(selectedTags.prefix(3), id: \.id) { tag in
+                    FlowLayout(spacing: 4, lineSpacing: 4) {
+                        ForEach(selectedTags, id: \.id) { tag in
                             TagChip(name: tag.name, colorKey: tag.colorKey)
-                        }
-                        if selectedTags.count > 3 {
-                            Text("+\(selectedTags.count - 3)").font(.subheadline).foregroundColor(.secondary)
                         }
                     }
                 }
-                Image(systemName: "chevron.right").font(.system(.caption, weight: .bold)).foregroundColor(.secondary.opacity(0.7))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
     private var workingDateRow: some View {
         Button { showWorkingPicker = true } label: {
-            HStack(spacing: 14) {
-                SettingsIconTile(systemName: "calendar", color: .blue)
-                Text("Working date")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-                Spacer()
+            propertyRow(icon: "calendar", label: "Working") {
                 if let start = workingStart {
-                    Text(TaskDateFormat.formatRange(start, isWorkingRange ? workingEnd : nil))
-                        .font(.system(.headline, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .multilineTextAlignment(.trailing)
+                    let tint = dateTint(for: start)
+                    HStack(alignment: .center, spacing: 8) {
+                        Text(workingDateDisplay(start: start, end: workingEnd))
+                            .font(.system(.body, design: .rounded).weight(.semibold))
+                            .foregroundStyle(tint)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 8)
+                        if reminderAnchor == .working {
+                            Image(systemName: "alarm")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(tint)
+                        }
+                    }
                 } else {
-                    Text("Empty").font(.system(.headline, design: .rounded)).foregroundColor(.secondary)
+                    emptyValueLabel
                 }
-                Image(systemName: "chevron.right").font(.system(.caption, weight: .bold)).foregroundColor(.secondary.opacity(0.7))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
+    private func workingDateDisplay(start: Date, end: Date?) -> String {
+        guard isWorkingRange,
+              let end,
+              Calendar.current.startOfDay(for: end) != Calendar.current.startOfDay(for: start)
+        else { return TaskDateFormat.format(start) }
+        return "\(TaskDateFormat.format(start)) →\n\(TaskDateFormat.format(end))"
+    }
+
     private var dueDateRow: some View {
         Button { showDuePicker = true } label: {
-            HStack(spacing: 14) {
-                SettingsIconTile(systemName: "calendar.badge.exclamationmark", color: .red)
-                Text("Due date")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-                Spacer()
+            propertyRow(icon: "calendar.badge.exclamationmark", label: "Due Date") {
                 if let due = dueDate {
-                    Text(TaskDateFormat.format(due))
-                        .font(.system(.headline, design: .rounded))
-                        .foregroundColor(.secondary)
+                    let tint = dateTint(for: due)
+                    HStack(alignment: .center, spacing: 8) {
+                        Text(TaskDateFormat.format(due))
+                            .font(.system(.body, design: .rounded).weight(.semibold))
+                            .foregroundStyle(tint)
+                        Spacer(minLength: 8)
+                        if reminderAnchor == .due {
+                            Image(systemName: "alarm")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(tint)
+                        }
+                    }
                 } else {
-                    Text("Empty").font(.system(.headline, design: .rounded)).foregroundColor(.secondary)
+                    emptyValueLabel
                 }
-                Image(systemName: "chevron.right").font(.system(.caption, weight: .bold)).foregroundColor(.secondary.opacity(0.7))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
     private var reminderRow: some View {
-        HStack(spacing: 14) {
-            SettingsIconTile(systemName: "alarm", color: hasReminder ? .pink : .gray)
-            Text("Reminder")
-                .font(.system(.headline, design: .rounded))
-                .fontWeight(.semibold)
-            Spacer()
-            Toggle("", isOn: $hasReminder).labelsHidden()
+        propertyRow(icon: "alarm", label: "Reminder", valueAlignment: .trailing) {
+            Toggle("", isOn: $hasReminder)
+                .labelsHidden()
                 .disabled(workingStart == nil && dueDate == nil)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+    }
+
+    // MARK: - Row helpers
+
+    @ViewBuilder
+    private func propertyRow<Content: View>(
+        icon: String,
+        label: String,
+        valueAlignment: Alignment = .leading,
+        @ViewBuilder value: () -> Content
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+            Text(label)
+                .font(.system(.body, design: .rounded).weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: Self.labelColumnWidth, alignment: .leading)
+            value()
+                .frame(maxWidth: .infinity, alignment: valueAlignment)
+        }
+        .frame(minHeight: 42)
+        .contentShape(Rectangle())
+    }
+
+    private var emptyValueLabel: some View {
+        Text("Empty")
+            .font(.system(.body, design: .rounded))
+            .foregroundStyle(Color.secondary.opacity(0.6))
+    }
+
+    private func dateTint(for date: Date) -> Color {
+        let today = Calendar.current.startOfDay(for: Date())
+        let upcoming = Calendar.current.startOfDay(for: date) > today
+        return upcoming ? ColorKey.blue.foreground : ColorKey.red.foreground
     }
 
     // MARK: - Date sheets
@@ -307,15 +320,16 @@ struct TaskDetailView: View {
     private var workingDateSheet: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        rangeToggleCard
-                        workingCalendarCard
+                    VStack(alignment: .leading, spacing: 22) {
+                        rangeToggleRow
+                        Divider()
+                        workingCalendar
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 60)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Working Date")
@@ -325,37 +339,32 @@ struct TaskDetailView: View {
                     Button("Cancel") { showWorkingPicker = false }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showWorkingPicker = false }.fontWeight(.bold)
+                    Button("Done") { showWorkingPicker = false }
                 }
             }
         }
     }
 
     @ViewBuilder
-    private var workingCalendarCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if isWorkingRange {
-                CalendarPicker(rangeStart: $workingStart, rangeEnd: $workingEnd)
-            } else {
-                CalendarPicker(selectedDate: $workingStart)
-            }
+    private var workingCalendar: some View {
+        if isWorkingRange {
+            CalendarPicker(rangeStart: $workingStart, rangeEnd: $workingEnd)
+        } else {
+            CalendarPicker(selectedDate: $workingStart)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 16)
-        .taskCardBackground()
     }
 
     private var dueDateSheet: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        calendarCard(title: "", selection: $dueDate)
+                    VStack(alignment: .leading, spacing: 22) {
+                        CalendarPicker(selectedDate: $dueDate)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 60)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Due Date")
@@ -365,40 +374,20 @@ struct TaskDetailView: View {
                     Button("Cancel") { showDuePicker = false }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showDuePicker = false }.fontWeight(.bold)
+                    Button("Done") { showDuePicker = false }
                 }
             }
         }
     }
 
-    private func calendarCard(title: String, selection: Binding<Date?>, minimumDate: Date? = nil, maximumDate: Date? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(.subheadline, design: .rounded).weight(.bold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 4)
-            CalendarPicker(selectedDate: selection, minimumDate: minimumDate, maximumDate: maximumDate)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 16)
-        .taskCardBackground()
-    }
-
-    private var rangeToggleCard: some View {
-        Toggle(isOn: $isWorkingRange) {
-            HStack(spacing: 14) {
-                SettingsIconTile(systemName: "calendar.day.timeline.right", color: .purple)
-                Text("End Date")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
+    private var rangeToggleRow: some View {
+        propertyRow(icon: "calendar.day.timeline.right", label: "End Date", valueAlignment: .trailing) {
+            Toggle("", isOn: $isWorkingRange)
+                .labelsHidden()
         }
         .onChange(of: isWorkingRange) { _, on in
             if !on { workingEnd = nil }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .taskCardBackground()
     }
 
     // MARK: - Load / Save / Delete

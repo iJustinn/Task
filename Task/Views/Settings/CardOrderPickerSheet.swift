@@ -31,7 +31,7 @@ struct CardOrderPickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }

@@ -41,7 +41,7 @@ struct ThemePickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -89,7 +89,7 @@ struct AccentPickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -138,7 +138,7 @@ struct TimeFormatPickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -210,7 +210,6 @@ struct ReminderTimePickerSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { applyAndDismiss() }
-                        .fontWeight(.bold)
                         .disabled(parsedComponents == nil)
                 }
             }
@@ -383,7 +382,7 @@ struct TextSizePickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -431,7 +430,7 @@ struct ColumnWidthPickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -479,7 +478,7 @@ struct LanguagePickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }

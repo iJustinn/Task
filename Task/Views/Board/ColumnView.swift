@@ -125,7 +125,7 @@ struct ColumnView: View {
                 Text("More")
                     .font(.subheadline.weight(.semibold))
                 Text("+\(min(pageSize, hidden))")
-                    .font(.caption.weight(.semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(group.colorKey.foreground.opacity(0.7))
             }
             .foregroundStyle(group.colorKey.foreground)

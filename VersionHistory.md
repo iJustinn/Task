@@ -1,5 +1,48 @@
 # Version History
 
+## 0.3.0 (build 2) — 2026-05-20
+
+Notion-style task editor redesign and global toolbar/calendar polish.
+
+### Task detail screen — Notion-style flat redesign
+
+- **Replaced the four-card layout** (title / properties / notes / delete) with a single flat surface on `Color(.systemBackground)`. No more `taskCardBackground()` wrappers in the editor.
+- **Title** is now a large bold `TextField` (`.largeTitle`, rounded) sitting directly on the surface — no card.
+- **Properties** rewritten as compact rows: 16 pt secondary-gray SF Symbol + 120 pt label column + value. 42 pt min height (down from 64–70 pt). Five rows: Status, Tags, Working, Due Date, Reminder.
+- **Pastel pill values** for Status (group capsule with dot + name) and Tags (reuses `TagChip`); "Empty" gray placeholder when unset.
+- **Date tinting** in the editor mirrors `TaskCardView`: working/due dates render blue when `startOfDay(date) > today`, red when today or past.
+- **Reminder anchor**: when `hasReminder` is on, the alarm icon (`alarm` SF Symbol) appears on whichever row matches `TaskItem.primaryReminderDate` — i.e., the earlier of `workingStart` and `dueDate`. A new `reminderAnchor` computed prop in `TaskDetailView` mirrors that logic so the badge can never drift from where the notification actually fires.
+- **Working date range** wraps onto two explicit lines (`May 19, 2026 →\n May 22, 2026`) inside the editor. A private `workingDateDisplay(start:end:)` injects the `\n` so the shared `TaskDateFormat.formatRange` and the board card behavior are unaffected.
+- **Alarm icon** sits at the trailing edge of its row (pushed by `Spacer(minLength: 8)`) and vertically centers against the multi-line date text via `HStack(alignment: .center)`.
+- **Toggle rows** (Reminder, End Date) right-align their `Toggle` via a new `valueAlignment:` parameter on `propertyRow`. Text values still left-align at the 120 pt column.
+- **Delete moved out of the toolbar** and onto a flat full-width red button at the very bottom of the scroll content. Pinned to bottom when notes are short; flows naturally below the notes when they grow. Uses `GeometryReader` + `.frame(minHeight: proxy.size.height)` on the inner `VStack` and `Spacer(minLength: 24)` so the button never floats above content.
+
+### Date picker sheets match the new editor
+
+- Working Date / Due Date sheets switched from `Color(.systemGroupedBackground)` + cards to flat `Color(.systemBackground)`. Calendar sits naked in the scroll content.
+- **End Date toggle** now uses the same `propertyRow` helper as the Reminder row (small gray icon, 120 pt label column, trailing `Toggle`). The old purple-tile + headline pattern was retired.
+- Layout padding aligned with the main editor: 20 pt horizontal, 8 pt top, 24 pt bottom.
+
+### Calendar picker resizing + Today button
+
+- Day-cell metrics bumped to match the Coin project: `dayCellHeight` 44 → 50, endpoint backgrounds 38×38 → 44×44, day-number font 16 → 18, corner radius 11 → 12, range-strip height 34 → 40. The "today" outline opacity / lineWidth nudged up (0.55 → 0.7, 1.4 → 1.5) so the ring reads clearly.
+- **New `Today` button** in the header, sitting to the left of the prev-month chevron. Tapping jumps `visibleMonthStart` to today's month and sets the selection — in single mode this selects today, in range mode it sets `start = today` and clears the `end`. Disabled when today falls outside `minimumDate` / `maximumDate`.
+
+### Sheet detents
+
+- Add Task, Edit Task, Working Date, and Due Date sheets all open at **60%** (`[.fraction(0.6), .large]`) with a visible drag indicator. The previous `[.medium, .large]` default meant tasks without notes wasted vertical space on first present; users can still pull up to large when they want the full canvas.
+
+### Toolbar button weight cleanup (project-wide)
+
+- All trailing toolbar buttons (`Done` / `Save` / `Add`) stripped of `.fontWeight(.bold)` so they match the leading `Cancel` button in size and rendering. **23 buttons across 13 files**: AppearanceView (×7), AboutSheets (×5), TagPickerSheet (×2), TaskDetailView (×3), SettingsView, DefaultStatusPickerSheet, ManageTagsView, CardOrderPickerSheet, IconPickerSheet, ManualControlSheet, BoardIconPickerSheet, GroupMenuSheet, StatusPickerSheet (×1 each).
+- iOS convention is bold-primary in toolbars, but in this app the bolder weight made paired Cancel/Done look mismatched in height. Going uniform — the disabled-state tint and the action color still distinguish the primary action.
+- Body-style CTAs (`Add Tag`, `Add Group`, the bottom `Delete Task`) keep their bold weight — they aren't toolbar siblings.
+
+### Tag chip + property row text sizing
+
+- `TagChip` (non-compact branch only) bumped from `.subheadline.weight(.semibold)` / 10/4 padding / r7 to `.body.weight(.semibold)` / 11/5 padding / r8. Affects the Task detail tag row and the Manage Tags settings list; board card tags use `compact: true` and are unchanged.
+- Property row labels and values bumped from `.subheadline` (~15 pt) to `.body` (~17 pt). Icons 14 → 16 pt; row HStack spacing 10 → 12; label column 110 → 120 pt to fit "Due Date" at body size; row min height 36 → 42; inline alarm icon 13 → 15 pt; status pill dot 8 → 9 pt with bumped padding.
+
 ## 0.2.0 (build 2) — 2026-05-19
 
 Customization, reminders, and drag-and-drop overhaul.

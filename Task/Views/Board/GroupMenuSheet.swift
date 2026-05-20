@@ -31,7 +31,7 @@ struct GroupMenuSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") { save(); dismiss() }.fontWeight(.bold)
+                    Button("Save") { save(); dismiss() }
                 }
             }
             .onAppear {

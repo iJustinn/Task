@@ -127,9 +127,63 @@ Coin/Body's card-section visual language is in `Task/Components/`:
 
 Using these consistently across Settings, Manage Groups, Manage Tags, Task Detail, and the various sheets is what makes the app feel coherent.
 
-### Card style for detail forms
+### Notion-style detail form (0.3.0)
 
-`TaskDetailView` is built from four `taskCardBackground()` cards (title input / properties / notes / delete) on a `Color(.systemGroupedBackground)` background. **Don't use `Form` for the task detail** — `Form`'s built-in styling fights the card visual the rest of the app uses.
+`TaskDetailView` was rebuilt in 0.3.0 around a flat single-surface property list on `Color(.systemBackground)` — no more `taskCardBackground()` wrappers in the editor. Layout:
+
+- Large bold `TextField` as the title, sitting directly on the surface (not in a card).
+- A `propertyRow(icon:label:valueAlignment:value:)` helper renders five rows (Status / Tags / Working / Due Date / Reminder) as a 16 pt secondary-gray SF Symbol + 120 pt label column + value cell. 42 pt min height.
+- `valueAlignment: .trailing` (vs the `.leading` default) lets Toggle rows snap their control to the row's right edge while text values still left-align at the label column — the same helper covers both shapes.
+- Sub-sheets (Working Date, Due Date) reuse the same flat surface, the same `propertyRow` for the End Date toggle, and the unchanged `CalendarPicker` without any card around it.
+
+**Don't use `Form` for the task detail** — its built-in styling fights the rest of the app, and the property-row helper is small enough that hand-rolled HStacks are simpler than fighting Form. The earlier card-based design (`titleCard` / `propertiesCard` / `notesCard` / `deleteCard`) is gone; if you grep `taskCardBackground()` you should find it only in the Settings shell and the deeper Settings sheets.
+
+### Pin-to-bottom in a ScrollView (grow-with-content)
+
+The `Delete Task` button in `TaskDetailView` (edit mode) needed to sit at the bottom of the sheet when notes are short and float down with the notes when they grow. The trick is a `GeometryReader` around the `ScrollView` and a `.frame(minHeight: proxy.size.height)` on the inner `VStack`, plus a `Spacer(minLength: 24)` between the notes section and the delete button:
+
+```swift
+GeometryReader { proxy in
+    ScrollView {
+        VStack(alignment: .leading, spacing: 22) {
+            titleField
+            propertyList
+            Divider()
+            notesSection
+            if !isCreating {
+                Spacer(minLength: 24)
+                deleteButton
+            }
+        }
+        .padding(...)
+        .frame(minHeight: proxy.size.height, alignment: .topLeading)
+    }
+}
+```
+
+When the content's natural height is less than the viewport, `minHeight` stretches the VStack and the `Spacer` greedily eats the slack — delete ends up flush at the bottom. When the content overflows, `minHeight` is satisfied trivially, `Spacer` collapses to its 24 pt minimum, and the button scrolls with everything else. Avoid `safeAreaInset(edge: .bottom)` here — that *pins* the button to the bottom even while the content scrolls behind it, which is the opposite of what you want.
+
+### Mirroring model logic into the UI (reminderAnchor)
+
+`TaskItem.primaryReminderDate` returns `min(workingStart, dueDate)` when both are set — that's the date the `UNUserNotificationCenter` notification fires on. The editor's `alarm` badge has to land on the *same* row, or the UI lies about when the user will get pinged. Rather than recomputing the comparison ad hoc inside the row views, `TaskDetailView` has a `reminderAnchor: ReminderAnchor` computed prop that mirrors the model:
+
+```swift
+private var reminderAnchor: ReminderAnchor {
+    guard hasReminder else { return .none }
+    switch (workingStart, dueDate) {
+    case (nil, nil):    return .none
+    case (_, nil):      return .working
+    case (nil, _):      return .due
+    case let (w?, d?):  return w <= d ? .working : .due
+    }
+}
+```
+
+The working/due rows then each check `reminderAnchor == .working` / `.due` to decide whether to render the trailing alarm icon. If `primaryReminderDate`'s logic ever changes (e.g., always prefer due date), this is the one place to update — no risk of the badge and the actual notification drifting apart. **Reach for this pattern whenever UI affordances need to stay in lockstep with a model decision.**
+
+### Toolbar button weight consistency
+
+iOS convention bolds the trailing primary toolbar action (`.fontWeight(.bold)` on `Done` / `Save` / `Add`) and leaves the leading `Cancel` at default weight. In this app the visual mismatch was noticeable enough that 0.3.0 stripped the bold from all 23 trailing toolbar buttons (across 13 files) so paired Cancel/Done look identical. The disabled state and the action's blue tint still distinguish the primary action; that's enough emphasis here. Full-width *body* CTAs (`Add Tag`, `Add Group`, `Delete Task`) keep their bold weight — they aren't toolbar siblings and benefit from extra visual mass.
 
 ### Picker tiles
 

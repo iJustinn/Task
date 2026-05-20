@@ -68,7 +68,7 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
             .sheet(item: $activeSheet) { sheet in
@@ -146,6 +146,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .preferredColorScheme(settings.theme.colorScheme)
     }
 
     // MARK: - Sections

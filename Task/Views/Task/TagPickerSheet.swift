@@ -69,7 +69,7 @@ struct TagPickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -109,7 +109,6 @@ struct TagPickerSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Add") { addTag() }
-                        .fontWeight(.bold)
                         .disabled(newTagName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }

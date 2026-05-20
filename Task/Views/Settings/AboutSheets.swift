@@ -107,6 +107,16 @@ struct HowToUseSheet: View {
             ]
         ),
         AboutGuideSection(
+            title: "Notes & Checklists",
+            systemImage: "checklist",
+            tintColor: .green,
+            steps: [
+                "Tap the Notes area on a task to type. Markdown is supported — **bold**, *italic*, # heading, and - bullet lines all render once you tap away.",
+                "Add a checkbox by starting a line with - [ ] (or - []) for unchecked, or - [x] for checked. Tap a box in the rendered preview to toggle it — the note rewrites in place.",
+                "Tap any rendered line to jump back into edit mode and adjust the raw markdown. Drag the sheet down to dismiss the keyboard and return to the preview."
+            ]
+        ),
+        AboutGuideSection(
             title: "Organize the Board",
             systemImage: "rectangle.3.group.fill",
             tintColor: .pink,
@@ -200,7 +210,7 @@ struct HowToUseSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -243,7 +253,7 @@ struct FeedbackSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -349,7 +359,7 @@ struct PrivacySheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -390,7 +400,7 @@ struct DisclaimerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
@@ -439,7 +449,7 @@ struct CopyrightSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }
