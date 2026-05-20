@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ManageTagsView: View {
     let board: Board
@@ -8,7 +9,8 @@ struct ManageTagsView: View {
     @State private var newName: String = ""
     @State private var newColor: ColorKey = .blue
     @State private var renamingTag: TaskTag?
-    @State private var pendingDelete: TaskTag?
+    @State private var draggingTagID: UUID?
+    @State private var dragSessionEnded: Bool = false
 
     var body: some View {
         ZStack {
@@ -30,20 +32,13 @@ struct ManageTagsView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(item: $pendingDelete) { tag in
-            ConfirmationSheet(
-                icon: "trash.fill",
-                iconTint: .red,
-                title: "Delete Tag?",
-                message: "“\(tag.name)” will be removed from every task it's applied to.",
-                confirmLabel: "Delete Tag"
-            ) {
-                context.delete(tag)
-                try? context.save()
-            }
-            .presentationDetents([.height(420)])
-            .presentationDragIndicator(.visible)
-        }
+        .onDrop(
+            of: StringMoveDropDelegate.acceptedTypes,
+            delegate: TagReorderFallbackDelegate(
+                draggingTagID: $draggingTagID,
+                dragSessionEnded: $dragSessionEnded
+            )
+        )
     }
 
     private var newTagSection: some View {
@@ -75,20 +70,24 @@ struct ManageTagsView: View {
     }
 
     private var tagsSection: some View {
-        SettingsCardSection("Tags") {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Tags")
+                .font(.system(.title3, design: .default).weight(.bold))
+                .padding(.leading, 4)
             if board.orderedTags.isEmpty {
                 Text("No tags yet")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
                     .padding(20)
                     .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(board.orderedTags.enumerated()), id: \.element.id) { index, tag in
+                VStack(spacing: 8) {
+                    ForEach(board.orderedTags, id: \.id) { tag in
                         tagRow(tag)
-                        if index < board.orderedTags.count - 1 {
-                            SettingsRowDivider()
-                        }
                     }
                 }
             }
@@ -96,6 +95,25 @@ struct ManageTagsView: View {
     }
 
     private func tagRow(_ tag: TaskTag) -> some View {
+        tagCardContent(tag)
+            .onTapGesture { renamingTag = tag }
+            .draggable(beginDragTag(of: tag)) {
+                tagCardContent(tag)
+                    .frame(maxWidth: 360)
+            }
+            .onDrop(
+                of: StringMoveDropDelegate.acceptedTypes,
+                delegate: TagReorderDropDelegate(
+                    target: tag,
+                    board: board,
+                    context: context,
+                    draggingTagID: $draggingTagID,
+                    dragSessionEnded: $dragSessionEnded
+                )
+            )
+    }
+
+    private func tagCardContent(_ tag: TaskTag) -> some View {
         HStack(spacing: 14) {
             SettingsIconTile(systemName: "tag.fill", color: tag.colorKey.foreground)
             VStack(alignment: .leading, spacing: 2) {
@@ -105,6 +123,9 @@ struct ManageTagsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Image(systemName: "line.3.horizontal")
+                .font(.system(.subheadline, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.45))
             Image(systemName: "chevron.right")
                 .font(.system(.caption, weight: .bold))
                 .foregroundColor(.secondary.opacity(0.7))
@@ -112,15 +133,20 @@ struct ManageTagsView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture { renamingTag = tag }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                pendingDelete = tag
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func beginDragTag(of tag: TaskTag) -> String {
+        let tagID = tag.id
+        DispatchQueue.main.async {
+            guard !dragSessionEnded else { return }
+            draggingTagID = tagID
         }
+        return tag.id.uuidString
     }
 
     private func addTag() {
@@ -130,16 +156,77 @@ struct ManageTagsView: View {
             newName = ""
             return
         }
-        let tag = TaskTag(name: trimmed, colorKey: newColor)
+        let sortIndex = (board.orderedTags.last?.sortIndex ?? -1) + 1
+        let tag = TaskTag(name: trimmed, colorKey: newColor, sortIndex: sortIndex)
         tag.board = board
         context.insert(tag)
         try? context.save()
         newName = ""
     }
+}
 
-    private func delete(_ tag: TaskTag) {
-        context.delete(tag)
-        try? context.save()
+private struct TagReorderFallbackDelegate: DropDelegate {
+    @Binding var draggingTagID: UUID?
+    @Binding var dragSessionEnded: Bool
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingTagID = nil
+        dragSessionEnded = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            dragSessionEnded = false
+        }
+        return false
+    }
+}
+
+private struct TagReorderDropDelegate: DropDelegate {
+    let target: TaskTag
+    let board: Board
+    let context: ModelContext
+    @Binding var draggingTagID: UUID?
+    @Binding var dragSessionEnded: Bool
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let id = draggingTagID, id != target.id else { return }
+        applyMove(draggedID: id)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if let id = draggingTagID {
+            applyMove(draggedID: id)
+            try? context.save()
+        }
+        draggingTagID = nil
+        dragSessionEnded = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            dragSessionEnded = false
+        }
+        return true
+    }
+
+    private func applyMove(draggedID: UUID) {
+        guard draggedID != target.id else { return }
+        var ordered = board.orderedTags
+        guard let from = ordered.firstIndex(where: { $0.id == draggedID }),
+              let to = ordered.firstIndex(where: { $0.id == target.id }),
+              from != to else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            let item = ordered.remove(at: from)
+            ordered.insert(item, at: to)
+            for (i, t) in ordered.enumerated() {
+                if t.sortIndex != i {
+                    t.sortIndex = i
+                }
+            }
+        }
     }
 }
 

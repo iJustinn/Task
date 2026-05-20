@@ -13,6 +13,19 @@ enum NotificationService {
         cancel(for: task)
         guard task.hasReminder, let fireDate = task.primaryReminderDate else { return }
 
+        var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+        // Tasks only carry a date; the time-of-day comes from the user's Reminder Time setting.
+        if components.hour == 0 && components.minute == 0 {
+            let minutes = ReminderDefaults.storedMinutesOfDay()
+            components.hour = minutes / 60
+            components.minute = minutes % 60
+        }
+        // UNCalendarNotificationTrigger with a past date never fires. Skip rather than
+        // schedule a silent no-op so callers don't believe a reminder is set.
+        if let resolved = Calendar.current.date(from: components), resolved <= Date() {
+            return
+        }
+
         let content = UNMutableNotificationContent()
         content.title = task.title.isEmpty ? String(localized: "Task reminder") : task.title
         if !task.notes.isEmpty {
@@ -20,12 +33,6 @@ enum NotificationService {
         }
         content.sound = .default
 
-        var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
-        // Default to 9:00 AM if no specific time was set on the date.
-        if components.hour == 0 && components.minute == 0 {
-            components.hour = 9
-            components.minute = 0
-        }
         let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
         let request = UNNotificationRequest(identifier: task.id.uuidString, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)

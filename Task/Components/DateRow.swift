@@ -3,7 +3,6 @@ import SwiftUI
 struct DateRow: View {
     let start: Date
     let end: Date?
-    let hasReminder: Bool
     let tint: Color
 
     var body: some View {
@@ -12,11 +11,6 @@ struct DateRow: View {
                 .font(.footnote)
                 .foregroundStyle(tint)
                 .lineLimit(2)
-            if hasReminder {
-                Image(systemName: "alarm")
-                    .font(.caption)
-                    .foregroundStyle(tint)
-            }
             Spacer(minLength: 0)
         }
     }
@@ -27,10 +21,11 @@ struct DueDateRow: View {
     let isUpcoming: Bool
 
     var body: some View {
+        let tint = isUpcoming ? ColorKey.blue.foreground : ColorKey.red.foreground
         HStack(spacing: 6) {
             Text(TaskDateFormat.format(date))
                 .font(.footnote)
-                .foregroundStyle(isUpcoming ? ColorKey.blue.foreground : ColorKey.red.foreground)
+                .foregroundStyle(tint)
             Spacer(minLength: 0)
         }
     }

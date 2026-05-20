@@ -25,7 +25,9 @@ enum SharedDefaultsService {
 
     static func writeUpcoming(_ snapshot: UpcomingSnapshot) {
         guard let defaults = sharedDefaults else { return }
-        if let data = try? JSONEncoder().encode(snapshot) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(snapshot) {
             defaults.set(data, forKey: upcomingSnapshotKey)
         }
     }
@@ -33,6 +35,8 @@ enum SharedDefaultsService {
     static func readUpcoming() -> UpcomingSnapshot? {
         guard let defaults = sharedDefaults,
               let data = defaults.data(forKey: upcomingSnapshotKey) else { return nil }
-        return try? JSONDecoder().decode(UpcomingSnapshot.self, from: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(UpcomingSnapshot.self, from: data)
     }
 }

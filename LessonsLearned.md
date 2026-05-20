@@ -273,17 +273,45 @@ JSON uses `JSONEncoder().dateEncodingStrategy = .iso8601` and `.outputFormatting
 
 ## Notifications
 
-### Default reminder time
+### Reminder time-of-day comes from the user setting
 
-When a task's reminder date has no time component (which it never does for date-only fields), default to 9 AM:
+Tasks store a date only, never a time. When `NotificationService.schedule(for:)` builds the `UNCalendarNotificationTrigger`, it falls through to the user-configurable Reminder Time (Settings → Default → Reminder Time, default 9:00):
 
 ```swift
 if components.hour == 0 && components.minute == 0 {
-    components.hour = 9
+    let minutes = ReminderDefaults.storedMinutesOfDay()
+    components.hour = minutes / 60
+    components.minute = minutes % 60
 }
 ```
 
-`UNCalendarNotificationTrigger(dateMatching: components, repeats: false)`. The reminder identifier is `task.id.uuidString` so we can cancel cleanly.
+The reminder identifier is `task.id.uuidString` so we can cancel cleanly.
+
+### Don't share static config across a `@MainActor` boundary — extract it
+
+The cleanest place to put the reminder-time storage key and default was on `SettingsViewModel`. But `SettingsViewModel` is `@MainActor`, and `NotificationService.schedule(for:)` is nonisolated. Referencing `SettingsViewModel.reminderMinutesKey` from the service raised the Swift 6 actor-isolation warning:
+
+```
+warning: main actor-isolated static property 'reminderMinutesKey' can not be referenced from a nonisolated context
+```
+
+Wrapping the call site in `MainActor.assumeIsolated` would be wrong (notification scheduling runs from background callbacks), and marking the property `nonisolated` doesn't apply to stored statics. The right move is to extract the bits both call sites need into a top-level nonisolated enum:
+
+```swift
+enum ReminderDefaults {
+    static let minutesKey = "task.reminderMinutesOfDay"
+    static let defaultMinutesOfDay = 9 * 60
+
+    static func storedMinutesOfDay() -> Int {
+        let d = UserDefaults.standard
+        guard d.object(forKey: minutesKey) != nil else { return defaultMinutesOfDay }
+        let stored = d.integer(forKey: minutesKey)
+        return (0..<24*60).contains(stored) ? stored : defaultMinutesOfDay
+    }
+}
+```
+
+Now both `SettingsViewModel` (init + didSet) and `NotificationService` (background) read the same key, no actor crossings, no Swift 6 warnings. Same idea applies whenever a `@MainActor` view model holds constants a service needs.
 
 ## Drag and drop UX
 
@@ -295,6 +323,138 @@ Both tasks and groups are dragged through the same `.onDrop(of: [.text], …)` l
 
 Each column already has a tinted card background and a `dropDestination` (now `onDrop`) on the whole column. The per-task drop targets handle reorder-within-column; the column-wide drop target handles cross-column moves. They share the same delegate, the same drop-handling function — just different fallback indices.
 
+### Custom drag for reorder beats `List.onMove`
+
+`List.onMove` works, but the iOS-generated drag preview shows a system white / gray platter behind the lifted row that can't be turned off. After several rounds of `listRowBackground` experiments, the cleaner result was custom: `.draggable(_:preview:)` with a `RoundedRectangle` `contentShape(.dragPreview)`, plus per-row `DropDelegate`s for the live reorder. Now the lifted preview matches the resting card exactly (Groups, Tags, and home-board task cards).
+
+### The autoclosure side-effect trick to set `draggingID` reliably
+
+`.draggable(_:preview:)` evaluates its first argument when the drag begins. SwiftUI doesn't give us an "on drag start" callback we can attach to the source, and `.onAppear` on the preview view fires too late (after the row is already being dragged). The fix is a helper function used as the payload:
+
+```swift
+private func beginDragTag(of tag: TaskTag) -> String {
+    let tagID = tag.id
+    DispatchQueue.main.async {
+        guard !dragSessionEnded else { return }
+        draggingTagID = tagID
+    }
+    return tag.id.uuidString
+}
+```
+
+Calling it as `.draggable(beginDragTag(of: tag)) { tagCardContent(tag) }` makes the side-effect (publishing `draggingID` to state) run at the same moment the system pulls the payload string. Without this, `dropEntered` on a sibling row fires before `draggingID` is set, and the live reorder skips the first hover.
+
+### `dragSessionEnded` flag to prevent post-drop teardown
+
+When a drop completes and the source row layout settles, SwiftUI sometimes re-invokes the `.draggable` payload closure during teardown — which would set `draggingID` *back* to the dropped item's ID, freezing the next interaction. The guard:
+
+```swift
+@State private var dragSessionEnded: Bool = false
+// in drop delegate's performDrop:
+dragSessionEnded = true
+DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { dragSessionEnded = false }
+```
+
+…blocks the autoclosure from re-arming the state for half a second after drop. 0.5 s is comfortably longer than any layout settle but short enough that the next genuine drag still works.
+
+### Dynamic target index, not captured stale index
+
+Per-row `DropDelegate.dropEntered` needs to know "where am I in the current order?" — but the row's captured index from `.enumerated()` is stale the moment a live reorder mutates `sortIndex`. Compute the target index from the live model inside the delegate:
+
+```swift
+guard let to = ordered.firstIndex(where: { $0.id == target.id }) else { return }
+```
+
+Without this, the row bounces back and forth between two positions as the user hovers over it.
+
+### Skip no-op moves to avoid SwiftData observation churn
+
+In the row delegate's `applyMove`, bail early if `from == to`, and inside the sortIndex assignment loop only write when the value would actually change:
+
+```swift
+for (i, t) in newOrdered.enumerated() {
+    if t.sortIndex != i { t.sortIndex = i }
+}
+```
+
+This stops `@Query`-driven SwiftUI from re-evaluating the whole board on every hover tick.
+
+### Bounce-at-column-top: skip column-outer for same-column live moves
+
+For home-board task cards, the column has its own outer `onDrop` so cross-column drags land. When the user drags within the same column past the top, both the outer "move to end of column" and the first row's "move to index 0" alternate firing on every micropixel — the card bounces. Inside `ColumnView.TaskRowDropDelegate.dropEntered`, skip the outer if the drag is same-column:
+
+```swift
+if targetTask == nil && task.group?.id == targetGroup.id {
+    return  // outer column delegate; same-column live moves are handled by the row delegates
+}
+```
+
+The outer still fires for cross-column drops (`task.group?.id != targetGroup.id`) so column-to-column reorder keeps working.
+
+### Source stays visible during drag — don't hide it
+
+Earlier passes tried `.opacity(draggingID == id ? 0.0 : 1.0)` to hide the source while it was lifted. Cleanup after drop sometimes left the row hidden ("card disappears after drag-and-drop"). The fix turned out to be: don't hide the source at all. iOS Reminders does the same — the lifted preview floats above an unchanged source row, and once dropped, the source position simply animates to the new index. Removes a whole class of bugs around `draggingID` resync timing.
+
+### Drop proposal `.move` everywhere, including the fallback
+
+The green `+` copy badge reappears any time **any** drop delegate in the hierarchy returns nothing from `dropUpdated`. To suppress it completely, both the per-row delegate **and** the top-level `onDrop` on the surrounding view need a delegate that returns `DropProposal(operation: .move)` from `dropUpdated(info:)`. We used a small `*ReorderFallbackDelegate` per surface (Groups, Tags, Cards) that returns `.move` + nils out `draggingID` in `performDrop` for snap-back when the user releases outside any row.
+
+## Coin-style numeric keypad (Reminder Time picker)
+
+### Match the source values exactly, don't eyeball from screenshots
+
+The `ReminderTimePickerSheet` keypad button dimensions are copied verbatim from Coin's `EditExpenseView.timeKeypadButton` so the two apps feel identical. The numbers:
+
+| Value | Where |
+|---|---|
+| `VStack(spacing: 12)` / `HStack(spacing: 12)` | row + column grid spacing |
+| `.frame(maxWidth: .infinity, minHeight: 62)` | button cell |
+| `RoundedRectangle(cornerRadius: 26, style: .continuous)` | button shape |
+| Digit/text font `.system(size: isCompact ? 18 : 28, weight: .bold, design: .rounded)` | "1"…"9", "Now", "AM/PM" |
+| Icon font `.system(size: isPrimary ? 28 : 23, weight: .bold)` | `⌫`, `✓` |
+| `.minimumScaleFactor(0.68)` | preserves layout when localized labels stretch |
+| Background fill | `.accentColor` (primary) or `Color(.secondarySystemGroupedBackground)` |
+| Sheet `presentationDetents([.height(560)])` | total sheet height |
+
+If a future redesign re-tunes any of these, re-check the source — interpreting from screenshots will drift.
+
+### Empty-state placeholder beats pre-loading the current value
+
+The keypad opens with `digits = ""` and an "Enter Time" placeholder (54 pt heavy rounded) in place of the live preview. Pre-loading the current reminder time was the initial behavior and made re-edits awkward — users had to mentally subtract their old value before typing the new one. Empty start matches Coin's UX and the keypad's `Type 9:30 as 930` hint reads as a real instruction rather than an annotation on the existing value. `Done` is disabled until `parsedComponents != nil` so an empty-state confirm can't silently set 00:00.
+
+### `iconText` parameter on GridTile
+
+The Time Format tile picker needed "12" / "24" rendered inside the tinted square. Rather than special-case the picker, we added an `iconText:` optional to `GridTile` that takes precedence over `systemImage` when set. The font matches the icon: `.system(size: 28, weight: .bold, design: .rounded)` on the same 60×60 tinted background. Keeps every Appearance picker visually consistent.
+
+## Backward-compatible Codable for new fields
+
+Adding `sortIndex` to `TaskTag` meant `TagExport` had a new field. Older 0.1.0 exports don't include it, so the default `Codable` synthesis would fail to decode them. Fix: define `CodingKeys` and a custom `init(from:)` that uses `decodeIfPresent` for the new field with a sensible default:
+
+```swift
+struct TagExport: Codable {
+    var id: UUID
+    var name: String
+    var colorKey: String
+    var sortIndex: Int
+    var createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, colorKey, sortIndex, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        colorKey = try c.decode(String.self, forKey: .colorKey)
+        sortIndex = try c.decodeIfPresent(Int.self, forKey: .sortIndex) ?? 0
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+    }
+}
+```
+
+The model-level companion is `Board.orderedTags` sorting by `sortIndex` then `createdAt` — so even the bulk of existing tags (all with default `0`) keep their original creation order until the user reorders them. The same backward-compat pattern applies any time we extend an exported struct: synthesize manually, `decodeIfPresent` the new fields, and choose a default that preserves prior behavior.
+
 ## Localization
 
 `Localizable.xcstrings` covers English and Simplified Chinese. New strings added via `String(localized: "…")` or plain `Text("…")` get auto-extracted on build thanks to `LOCALIZATION_PREFERS_STRING_CATALOGS = YES`. Don't manually edit the JSON unless adding translations.
@@ -304,6 +464,6 @@ Each column already has a tinted card background and a `dropDestination` (now `o
 - **iCloud sync** — enable `cloudKitDatabase: .private` on `ModelConfiguration` and add the CloudKit entitlement. Schema is already compatible.
 - **Multi-board** — the data model is board-scoped from day one, so swapping `RootView`'s single-board lookup for a board picker is a UI change only.
 - **Custom group icons / tag icons** — currently colored dots / tag glyphs. Could add a per-group emoji like the board's.
-- **Reminder time** — currently defaults to 9 AM. Could expose a time picker per task.
+- **Per-task time override** — Reminder Time is now app-wide (Settings → Default → Reminder Time). Could add an optional per-task override that falls back to the setting when unset.
 - **Widget interactivity** — tapping the widget could deep-link to the relevant task via App Intents.
 - **Watch app** — board snapshot via the same App Group JSON would make a Watch complication trivial.

@@ -42,8 +42,15 @@ final class TaskItem {
         return Calendar.current.startOfDay(for: start) != Calendar.current.startOfDay(for: end)
     }
 
+    /// When both a working start and a due date exist we don't know which the user
+    /// considers "the" deadline — fire (and badge) the earlier one so the reminder
+    /// arrives in time for whichever comes first. Falls back to the obvious choice
+    /// when only one side is set.
     var primaryReminderDate: Date? {
-        dueDate ?? workingEnd ?? workingStart
+        if let w = workingStart, let d = dueDate {
+            return min(w, d)
+        }
+        return dueDate ?? workingEnd ?? workingStart
     }
 
     func touch() {

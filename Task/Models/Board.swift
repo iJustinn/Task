@@ -29,6 +29,11 @@ final class Board {
     }
 
     var orderedTags: [TaskTag] {
-        (tags ?? []).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        (tags ?? []).sorted {
+            if $0.sortIndex != $1.sortIndex {
+                return $0.sortIndex < $1.sortIndex
+            }
+            return $0.createdAt < $1.createdAt
+        }
     }
 }

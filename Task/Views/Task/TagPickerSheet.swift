@@ -132,7 +132,8 @@ struct TagPickerSheet: View {
             showAddTag = false
             return
         }
-        let tag = TaskTag(name: trimmed, colorKey: newTagColor)
+        let sortIndex = (board.orderedTags.last?.sortIndex ?? -1) + 1
+        let tag = TaskTag(name: trimmed, colorKey: newTagColor, sortIndex: sortIndex)
         tag.board = board
         context.insert(tag)
         try? context.save()

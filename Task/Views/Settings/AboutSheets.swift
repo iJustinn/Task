@@ -102,8 +102,8 @@ struct HowToUseSheet: View {
             tintColor: .blue,
             steps: [
                 "Tap + in the bottom bar to start a new task and type a title.",
-                "Choose a Status (which group it goes into), add Tags, and set a Working date or Due date.",
-                "Toggle Reminder to schedule a local notification on the chosen date."
+                "New tasks open in your default Status (Settings > Default > Status) — pick a different group, add Tags, and set a Working date or Due date.",
+                "Toggle Reminder to schedule a local notification. A small footer on the card shows a notes icon when the task has notes and an alarm icon when a reminder is set."
             ]
         ),
         AboutGuideSection(
@@ -111,9 +111,9 @@ struct HowToUseSheet: View {
             systemImage: "rectangle.3.group.fill",
             tintColor: .pink,
             steps: [
-                "Drag any task card up/down within a column to reorder it.",
-                "Drag a card sideways onto another column to change its status.",
-                "Drag a group's colored pill header onto another column's header to swap their positions."
+                "Long-press a task card to lift it, then drag up/down within a column to reorder, or sideways onto another column to change its status.",
+                "Long-press a group's colored pill header and drag it onto another column's header to swap their positions.",
+                "Pull a column down to refresh — it resets the Top 10 view and re-renders that column."
             ]
         ),
         AboutGuideSection(
@@ -121,8 +121,8 @@ struct HowToUseSheet: View {
             systemImage: "tag.fill",
             tintColor: .orange,
             steps: [
-                "Settings > Customization > Manage Groups to add, rename, recolor, or delete groups.",
-                "Settings > Customization > Manage Tags to create tags with a custom color, or delete one to remove it from every task.",
+                "Settings > Customization > Groups to add, rename, recolor, long-press drag-reorder, or delete groups.",
+                "Settings > Customization > Tags to create tags with a custom color, long-press drag-reorder, or delete one to remove it from every task.",
                 "Tap a group's ··· menu on the board for quick rename / recolor / delete."
             ]
         ),
@@ -133,7 +133,7 @@ struct HowToUseSheet: View {
             steps: [
                 "Tap a day on the calendar to set the date; tap it again to clear.",
                 "Enable End Date in the Working date sheet to select a range — the strip between the two days highlights blue.",
-                "Working and due dates show blue on cards when the date is still in the future, and red once it has arrived or passed."
+                "Dates show blue on cards when the date is still in the future, and red once it has arrived or passed. Reminders fire at the time you set in Settings > Default > Reminder Time."
             ]
         ),
         AboutGuideSection(
@@ -147,11 +147,21 @@ struct HowToUseSheet: View {
             ]
         ),
         AboutGuideSection(
-            title: "Customization",
+            title: "Defaults",
+            systemImage: "flag.fill",
+            tintColor: .teal,
+            steps: [
+                "Settings > Default > Status sets which group new tasks land in. Falls back to the first group if your choice is later deleted.",
+                "Settings > Default > Card Order controls how cards sort inside every group — Manual (drag), Title (alphabetical), or Date (smart) — with Ascending / Descending for Title and Date.",
+                "Settings > Default > Reminder Time sets the hour and minute (defaults to 9:00) that per-task reminders fire on the chosen date."
+            ]
+        ),
+        AboutGuideSection(
+            title: "Appearance",
             systemImage: "slider.horizontal.3",
             tintColor: .purple,
             steps: [
-                "Settings > Appearance to switch Theme, App Accent, App Icon, Text Size, Group Width, and Language.",
+                "Settings > Appearance to switch Theme, Language, Time Format (System / 12-hour / 24-hour), Text Size, Group Width, App Accent, and App Icon.",
                 "Group Width controls how wide each column on the board is — Small (180), Medium (200), or Large (220).",
                 "Text Size scales fonts across the whole app while respecting Dynamic Type."
             ]
@@ -232,8 +242,8 @@ struct FeedbackSheet: View {
             .navigationTitle("Feedback")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.fontWeight(.bold)
                 }
             }
         }
@@ -257,14 +267,12 @@ struct FeedbackSheet: View {
 
     private var feedbackBody: String {
         let device = UIDevice.current
-        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
-        let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         return """
 
 
         ---
         App: Task
-        Version: \(appVersion) (\(buildNumber))
+        Version: \(AppInfo.versionAndBuild)
         Device: \(device.model)
         System: \(device.systemName) \(device.systemVersion)
         Locale: \(Locale.current.identifier)

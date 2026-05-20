@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import WidgetKit
 
 enum UpcomingSnapshotBuilder {
     @MainActor
@@ -33,5 +34,6 @@ enum UpcomingSnapshotBuilder {
 
         let snapshot = SharedDefaultsService.UpcomingSnapshot(entries: upcoming, updatedAt: Date())
         SharedDefaultsService.writeUpcoming(snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

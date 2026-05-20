@@ -1,13 +1,16 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ColumnView: View {
     let group: BoardGroup
     var width: CGFloat = 220
+    @Binding var draggingTaskID: UUID?
+    @Binding var dragSessionEnded: Bool
+    var refreshToken: Int = 0
     var onTapTask: (TaskItem) -> Void
     var onMenuTap: () -> Void
-    var onDropTask: (TaskItem) -> Void
-    var onReorder: (TaskItem, Int) -> Void
+    var onPlaceTask: (TaskItem, Int, Bool) -> Void
     var onGroupReorder: (BoardGroup) -> Void
 
     @EnvironmentObject private var settings: SettingsViewModel
@@ -18,6 +21,15 @@ struct ColumnView: View {
 
     private var currentTasks: [TaskItem] {
         group.sortedTasks(field: settings.cardSortField, direction: settings.cardSortDirection)
+    }
+
+    private func beginDragTask(_ task: TaskItem) -> String {
+        let taskID = task.id
+        DispatchQueue.main.async {
+            guard !dragSessionEnded else { return }
+            draggingTaskID = taskID
+        }
+        return task.id.uuidString
     }
 
     var body: some View {
@@ -42,47 +54,65 @@ struct ColumnView: View {
                 .padding(.vertical, 6)
             }
 
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    let ordered = currentTasks
-                    let visible = Array(ordered.prefix(visibleCount))
-                    let sortKey = "\(settings.cardSortField.rawValue)-\(settings.cardSortDirection.rawValue)"
-                    let _ = sortKey // forces dependency for re-render
-                    ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
-                        TaskCardView(task: task)
-                            .contentShape(Rectangle())
-                            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .onTapGesture { onTapTask(task) }
-                            .draggable(task.id.uuidString) {
-                                TaskCardView(task: task)
-                                    .frame(width: 240)
-                            }
-                            .onDrop(of: StringMoveDropDelegate.acceptedTypes, delegate: StringMoveDropDelegate { raw in
-                                handleDrop(raw: raw, fallbackIndex: index)
-                            })
-                    }
-                    if ordered.count > visibleCount {
-                        moreButton(hidden: ordered.count - visibleCount)
-                    }
+            LazyVStack(spacing: 8) {
+                let ordered = currentTasks
+                let visible = Array(ordered.prefix(visibleCount))
+                let sortKey = "\(settings.cardSortField.rawValue)-\(settings.cardSortDirection.rawValue)"
+                let _ = sortKey // forces dependency for re-render
+                ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
+                    TaskCardView(task: task)
+                        .contentShape(Rectangle())
+                        .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .onTapGesture { onTapTask(task) }
+                        .draggable(beginDragTask(task)) {
+                            TaskCardView(task: task)
+                                .frame(width: 240)
+                        }
+                        .onDrop(
+                            of: StringMoveDropDelegate.acceptedTypes,
+                            delegate: TaskRowDropDelegate(
+                                targetTask: task,
+                                targetGroup: group,
+                                sortField: settings.cardSortField,
+                                onPlaceTask: onPlaceTask,
+                                onGroupReorder: onGroupReorder,
+                                findTask: findTask,
+                                findGroup: findGroup,
+                                draggingTaskID: $draggingTaskID,
+                                dragSessionEnded: $dragSessionEnded
+                            )
+                        )
                 }
-                .padding(.horizontal, 6)
-                .padding(.bottom, 8)
-                .id("\(settings.cardSortField.rawValue)-\(settings.cardSortDirection.rawValue)")
+                if ordered.count > visibleCount {
+                    moreButton(hidden: ordered.count - visibleCount)
+                }
             }
-            .scrollIndicators(.hidden)
-            .refreshable {
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                visibleCount = 10
-            }
+            .padding(.horizontal, 6)
+            .padding(.bottom, 8)
+            .id("\(settings.cardSortField.rawValue)-\(settings.cardSortDirection.rawValue)")
         }
-        .frame(width: width, alignment: .top)
+        .frame(width: width)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(group.colorKey.background.opacity(0.45))
         )
-        .onDrop(of: StringMoveDropDelegate.acceptedTypes, delegate: StringMoveDropDelegate { raw in
-            handleDrop(raw: raw, fallbackIndex: currentTasks.count)
-        })
+        .onDrop(
+            of: StringMoveDropDelegate.acceptedTypes,
+            delegate: TaskRowDropDelegate(
+                targetTask: nil,
+                targetGroup: group,
+                sortField: settings.cardSortField,
+                onPlaceTask: onPlaceTask,
+                onGroupReorder: onGroupReorder,
+                findTask: findTask,
+                findGroup: findGroup,
+                draggingTaskID: $draggingTaskID,
+                dragSessionEnded: $dragSessionEnded
+            )
+        )
+        .onChange(of: refreshToken) { _, _ in
+            visibleCount = pageSize
+        }
     }
 
     private func moreButton(hidden: Int) -> some View {
@@ -110,24 +140,6 @@ struct ColumnView: View {
         .padding(.top, 4)
     }
 
-    private func handleDrop(raw: String, fallbackIndex: Int) -> Bool {
-        if raw.hasPrefix(groupDragPrefix) {
-            let trimmed = String(raw.dropFirst(groupDragPrefix.count))
-            guard let droppedID = UUID(uuidString: trimmed),
-                  let dropped = findGroup(droppedID),
-                  dropped.id != group.id else { return false }
-            onGroupReorder(dropped)
-            return true
-        }
-        guard let droppedID = UUID(uuidString: raw),
-              let dropped = findTask(droppedID) else { return false }
-        if dropped.group?.id != group.id {
-            onDropTask(dropped)
-        }
-        onReorder(dropped, fallbackIndex)
-        return true
-    }
-
     private func findTask(_ id: UUID) -> TaskItem? {
         guard let board = group.board else { return nil }
         let tasks: [TaskItem] = board.tasks ?? []
@@ -137,5 +149,105 @@ struct ColumnView: View {
     private func findGroup(_ id: UUID) -> BoardGroup? {
         guard let board = group.board else { return nil }
         return board.orderedGroups.first(where: { $0.id == id })
+    }
+}
+
+private struct TaskRowDropDelegate: DropDelegate {
+    let targetTask: TaskItem?
+    let targetGroup: BoardGroup
+    let sortField: CardSortField
+    let onPlaceTask: (TaskItem, Int, Bool) -> Void
+    let onGroupReorder: (BoardGroup) -> Void
+    let findTask: (UUID) -> TaskItem?
+    let findGroup: (UUID) -> BoardGroup?
+    @Binding var draggingTaskID: UUID?
+    @Binding var dragSessionEnded: Bool
+
+    private func currentTargetIndex() -> Int {
+        let ordered = targetGroup.orderedTasks
+        if let target = targetTask {
+            return ordered.firstIndex(where: { $0.id == target.id }) ?? ordered.count
+        }
+        return ordered.count
+    }
+
+    private func currentTaskIndex(_ task: TaskItem) -> Int {
+        targetGroup.orderedTasks.firstIndex(where: { $0.id == task.id }) ?? targetGroup.orderedTasks.count
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let id = draggingTaskID, let task = findTask(id) else { return }
+        // The column-outer delegate (targetTask == nil) covers the area around
+        // the rows including the gap above the first row. If the dragged task
+        // is already in this column, firing "move to end" here fights with the
+        // first row's "move to index 0", producing visible bouncing. Skip.
+        if targetTask == nil && task.group?.id == targetGroup.id {
+            return
+        }
+        applyTaskMove(task, atIndex: currentTargetIndex(), commit: false)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let providers = info.itemProviders(for: StringMoveDropDelegate.acceptedTypes)
+        guard let provider = providers.first else {
+            cleanup()
+            return false
+        }
+        provider.loadItem(forTypeIdentifier: UTType.text.identifier, options: nil) { item, _ in
+            let resolved: String? = {
+                if let s = item as? String { return s }
+                if let data = item as? Data, let s = String(data: data, encoding: .utf8) { return s }
+                return nil
+            }()
+            DispatchQueue.main.async {
+                defer { cleanup() }
+                guard let raw = resolved else { return }
+                if raw.hasPrefix("group:") {
+                    let stripped = String(raw.dropFirst("group:".count))
+                    if let gid = UUID(uuidString: stripped),
+                       let g = findGroup(gid),
+                       g.id != targetGroup.id {
+                        onGroupReorder(g)
+                    }
+                } else if let tid = UUID(uuidString: raw), let task = findTask(tid) {
+                    let placementIndex: Int
+                    if targetTask == nil && task.group?.id == targetGroup.id {
+                        // Released in the column-outer area for a task already
+                        // in this column — keep it where the live drag left it
+                        // instead of forcing it to the end.
+                        placementIndex = currentTaskIndex(task)
+                    } else {
+                        placementIndex = currentTargetIndex()
+                    }
+                    applyTaskMove(task, atIndex: placementIndex, commit: true)
+                }
+            }
+        }
+        return true
+    }
+
+    private func applyTaskMove(_ task: TaskItem, atIndex index: Int, commit: Bool) {
+        let crossColumn = task.group?.id != targetGroup.id
+        if sortField == .manual {
+            onPlaceTask(task, index, commit)
+        } else if crossColumn {
+            onPlaceTask(task, Int.max, commit)
+        } else if commit {
+            // Same column, non-manual sort: persist any earlier cross-column
+            // live moves without disturbing the sort-driven order.
+            onPlaceTask(task, currentTaskIndex(task), true)
+        }
+    }
+
+    private func cleanup() {
+        draggingTaskID = nil
+        dragSessionEnded = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            dragSessionEnded = false
+        }
     }
 }

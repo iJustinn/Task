@@ -3,6 +3,7 @@ import SwiftData
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var settings: SettingsViewModel
     @Query private var boards: [Board]
 
     @State private var searchText: String = ""
@@ -10,6 +11,7 @@ struct RootView: View {
     @State private var showingAddTask: Bool = false
     @State private var showingSettings: Bool = false
     @State private var editingTaskFromSearch: TaskItem?
+    @State private var showingInMemoryWarning: Bool = false
 
     var body: some View {
         Group {
@@ -19,6 +21,18 @@ struct RootView: View {
                 ProgressView()
                     .onAppear { SwiftDataManager.ensureSeed(context: context) }
             }
+        }
+        .onAppear(perform: surfaceInMemoryWarningIfNeeded)
+        .alert("Storage Error", isPresented: $showingInMemoryWarning) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Task couldn't open its on-device database, so your changes this session won't be saved. Please export your data from Settings → Data → Manual Control and restart the app.")
+        }
+    }
+
+    private func surfaceInMemoryWarningIfNeeded() {
+        if UserDefaults.standard.bool(forKey: SwiftDataManager.inMemoryFallbackKey) {
+            showingInMemoryWarning = true
         }
     }
 
@@ -37,7 +51,7 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.18), value: isSearchActive)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .overlay(alignment: .bottom) {
             BottomNavBar(
                 searchText: $searchText,
                 onAdd: { showingAddTask = true },
@@ -46,7 +60,7 @@ struct RootView: View {
             )
         }
         .sheet(isPresented: $showingAddTask) {
-            TaskDetailView(board: board, mode: .create(defaultGroup: board.orderedGroups.first))
+            TaskDetailView(board: board, mode: .create(defaultGroup: settings.defaultGroup(in: board)))
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(board: board)

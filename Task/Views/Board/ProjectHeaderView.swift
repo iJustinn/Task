@@ -12,12 +12,12 @@ struct ProjectHeaderView: View {
     @FocusState private var subtitleFocused: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .center, spacing: 12) {
             Button {
                 showIconPicker = true
             } label: {
                 Text(board.iconEmoji)
-                    .font(.title2)
+                    .font(.system(size: 30))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Board icon")

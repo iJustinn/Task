@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ManageGroupsView: View {
     let board: Board
@@ -8,7 +9,8 @@ struct ManageGroupsView: View {
     @State private var newName: String = ""
     @State private var newColor: ColorKey = .purple
     @State private var editingGroup: BoardGroup?
-    @State private var isReordering: Bool = false
+    @State private var draggingGroupID: UUID?
+    @State private var dragSessionEnded: Bool = false
 
     var body: some View {
         ZStack {
@@ -25,16 +27,16 @@ struct ManageGroupsView: View {
         }
         .navigationTitle("Manage Groups")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(isReordering ? "Done" : "Reorder") {
-                    withAnimation { isReordering.toggle() }
-                }
-            }
-        }
         .sheet(item: $editingGroup) { group in
             GroupMenuSheet(group: group, board: board)
         }
+        .onDrop(
+            of: StringMoveDropDelegate.acceptedTypes,
+            delegate: GroupReorderFallbackDelegate(
+                draggingGroupID: $draggingGroupID,
+                dragSessionEnded: $dragSessionEnded
+            )
+        )
     }
 
     private var newGroupSection: some View {
@@ -67,19 +69,47 @@ struct ManageGroupsView: View {
     }
 
     private var groupsSection: some View {
-        SettingsCardSection("Groups") {
-            VStack(spacing: 0) {
-                ForEach(Array(board.orderedGroups.enumerated()), id: \.element.id) { index, group in
-                    groupRow(group, index: index)
-                    if index < board.orderedGroups.count - 1 {
-                        SettingsRowDivider()
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Groups")
+                .font(.system(.title3, design: .default).weight(.bold))
+                .padding(.leading, 4)
+            VStack(spacing: 8) {
+                ForEach(board.orderedGroups, id: \.id) { group in
+                    groupRow(group)
                 }
             }
         }
     }
 
-    private func groupRow(_ group: BoardGroup, index: Int) -> some View {
+    private func groupRow(_ group: BoardGroup) -> some View {
+        groupCardContent(group)
+            .onTapGesture { editingGroup = group }
+            .draggable(beginDrag(of: group)) {
+                groupCardContent(group)
+                    .frame(maxWidth: 360)
+            }
+            .onDrop(
+                of: StringMoveDropDelegate.acceptedTypes,
+                delegate: GroupReorderDropDelegate(
+                    target: group,
+                    board: board,
+                    context: context,
+                    draggingGroupID: $draggingGroupID,
+                    dragSessionEnded: $dragSessionEnded
+                )
+            )
+    }
+
+    private func beginDrag(of group: BoardGroup) -> String {
+        let groupID = group.id
+        DispatchQueue.main.async {
+            guard !dragSessionEnded else { return }
+            draggingGroupID = groupID
+        }
+        return group.id.uuidString
+    }
+
+    private func groupCardContent(_ group: BoardGroup) -> some View {
         HStack(spacing: 12) {
             SettingsIconTile(systemName: "circle.fill", color: group.colorKey.foreground)
             VStack(alignment: .leading, spacing: 2) {
@@ -91,47 +121,21 @@ struct ManageGroupsView: View {
                     .foregroundColor(.secondary)
             }
             Spacer()
-            if isReordering {
-                HStack(spacing: 8) {
-                    Button {
-                        moveGroup(at: index, by: -1)
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.system(.headline, weight: .semibold))
-                            .frame(width: 36, height: 36)
-                            .background(Circle().fill(Color.gray.opacity(0.15)))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(index == 0)
-                    Button {
-                        moveGroup(at: index, by: 1)
-                    } label: {
-                        Image(systemName: "arrow.down")
-                            .font(.system(.headline, weight: .semibold))
-                            .frame(width: 36, height: 36)
-                            .background(Circle().fill(Color.gray.opacity(0.15)))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(index >= board.orderedGroups.count - 1)
-                }
-            } else {
-                Button {
-                    editingGroup = group
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(.caption, weight: .bold))
-                        .foregroundColor(.secondary.opacity(0.7))
-                }
-                .buttonStyle(.plain)
-            }
+            Image(systemName: "line.3.horizontal")
+                .font(.system(.subheadline, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.45))
+            Image(systemName: "chevron.right")
+                .font(.system(.caption, weight: .bold))
+                .foregroundColor(.secondary.opacity(0.7))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if !isReordering { editingGroup = group }
-        }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func addGroup() {
@@ -144,13 +148,65 @@ struct ManageGroupsView: View {
         try? context.save()
         newName = ""
     }
+}
 
-    private func moveGroup(at index: Int, by delta: Int) {
-        var groups = board.orderedGroups
-        let newIndex = index + delta
-        guard newIndex >= 0 && newIndex < groups.count else { return }
-        groups.swapAt(index, newIndex)
-        for (i, g) in groups.enumerated() { g.sortIndex = i }
-        try? context.save()
+private struct GroupReorderFallbackDelegate: DropDelegate {
+    @Binding var draggingGroupID: UUID?
+    @Binding var dragSessionEnded: Bool
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingGroupID = nil
+        dragSessionEnded = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            dragSessionEnded = false
+        }
+        return false
+    }
+}
+
+private struct GroupReorderDropDelegate: DropDelegate {
+    let target: BoardGroup
+    let board: Board
+    let context: ModelContext
+    @Binding var draggingGroupID: UUID?
+    @Binding var dragSessionEnded: Bool
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let id = draggingGroupID, id != target.id else { return }
+        applyMove(draggedID: id)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if let id = draggingGroupID {
+            applyMove(draggedID: id)
+            try? context.save()
+        }
+        draggingGroupID = nil
+        dragSessionEnded = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            dragSessionEnded = false
+        }
+        return true
+    }
+
+    private func applyMove(draggedID: UUID) {
+        guard draggedID != target.id else { return }
+        var ordered = board.orderedGroups
+        guard let from = ordered.firstIndex(where: { $0.id == draggedID }),
+              let to = ordered.firstIndex(where: { $0.id == target.id }),
+              from != to else { return }
+        withAnimation(.easeInOut(duration: 0.22)) {
+            let item = ordered.remove(at: from)
+            ordered.insert(item, at: to)
+            for (i, g) in ordered.enumerated() { g.sortIndex = i }
+        }
     }
 }

@@ -8,27 +8,38 @@ struct BoardView: View {
 
     @State private var editingGroup: BoardGroup?
     @State private var editingTask: TaskItem?
+    @State private var draggingTaskID: UUID?
+    @State private var dragSessionEnded: Bool = false
+    @State private var refreshToken: Int = 0
 
     var body: some View {
         VStack(spacing: 0) {
             ProjectHeaderView(board: board)
             Divider().opacity(0.4)
-            ScrollView(.horizontal, showsIndicators: false) {
+            ScrollView([.horizontal, .vertical], showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(board.orderedGroups, id: \.id) { group in
                         ColumnView(
                             group: group,
                             width: settings.columnWidth.width,
+                            draggingTaskID: $draggingTaskID,
+                            dragSessionEnded: $dragSessionEnded,
+                            refreshToken: refreshToken,
                             onTapTask: { task in editingTask = task },
                             onMenuTap: { editingGroup = group },
-                            onDropTask: { task in moveTask(task, to: group) },
-                            onReorder: { task, index in reorder(task, in: group, toIndex: index) },
+                            onPlaceTask: { task, index, commit in placeTask(task, in: group, atIndex: index, commit: commit) },
                             onGroupReorder: { dragged in reorderGroup(dragged, toPositionOf: group) }
                         )
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.top, 10)
+                .padding(.bottom, 112)
+            }
+            .ignoresSafeArea(.container, edges: .bottom)
+            .refreshable {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                refreshToken &+= 1
             }
         }
         .sheet(item: $editingGroup) { group in
@@ -39,21 +50,39 @@ struct BoardView: View {
         }
     }
 
-    private func moveTask(_ task: TaskItem, to group: BoardGroup) {
-        task.group = group
-        task.touch()
-        try? context.save()
-        UpcomingSnapshotBuilder.writeSnapshot(from: context)
-    }
-
-    private func reorder(_ task: TaskItem, in group: BoardGroup, toIndex index: Int) {
-        var ordered = group.orderedTasks.filter { $0.id != task.id }
-        let safeIndex = max(0, min(index, ordered.count))
-        ordered.insert(task, at: safeIndex)
-        for (i, t) in ordered.enumerated() {
-            t.sortIndex = i
+    /// Reassigns the task's group if needed, places it at `index` in the destination
+    /// column's manual order, renumbers sortIndex, and (when `commit` is true) saves
+    /// + refreshes the widget snapshot. `commit: false` is used during the live drag
+    /// to animate without persisting until the user releases. Skips work entirely
+    /// when the move would be a no-op so live drag doesn't bounce.
+    private func placeTask(_ task: TaskItem, in group: BoardGroup, atIndex index: Int, commit: Bool) {
+        let crossColumn = task.group?.id != group.id
+        let currentOrdered = group.orderedTasks
+        let withoutTask = currentOrdered.filter { $0.id != task.id }
+        let safeIndex = max(0, min(index, withoutTask.count))
+        if !crossColumn,
+           let currentIndex = currentOrdered.firstIndex(where: { $0.id == task.id }),
+           currentIndex == safeIndex {
+            if commit { try? context.save() }
+            return
         }
-        try? context.save()
+        withAnimation(.easeInOut(duration: 0.18)) {
+            if crossColumn {
+                task.group = group
+                task.touch()
+            }
+            var newOrdered = withoutTask
+            newOrdered.insert(task, at: safeIndex)
+            for (i, t) in newOrdered.enumerated() {
+                if t.sortIndex != i {
+                    t.sortIndex = i
+                }
+            }
+        }
+        if commit {
+            try? context.save()
+            UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        }
     }
 
     private func reorderGroup(_ dragged: BoardGroup, toPositionOf target: BoardGroup) {
@@ -69,4 +98,3 @@ struct BoardView: View {
         try? context.save()
     }
 }
-

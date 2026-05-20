@@ -51,8 +51,8 @@ struct ManualControlSheet: View {
             .navigationTitle("Manual Control")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.fontWeight(.bold)
                 }
             }
             .sheet(isPresented: $showingResetConfirmation) {

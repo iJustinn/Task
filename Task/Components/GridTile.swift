@@ -4,6 +4,7 @@ struct GridTile: View {
     let title: String
     var subtitle: String? = nil
     var systemImage: String? = nil
+    var iconText: String? = nil
     var imageAsset: String? = nil
     var dotColor: Color? = nil
     var tintColor: Color = .accentColor
@@ -25,7 +26,13 @@ struct GridTile: View {
                         )
                 } else {
                     Group {
-                        if let systemImage {
+                        if let iconText {
+                            Text(iconText)
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(tintColor)
+                                .minimumScaleFactor(0.6)
+                                .lineLimit(1)
+                        } else if let systemImage {
                             Image(systemName: systemImage)
                                 .font(.system(size: 28, weight: .semibold))
                                 .foregroundColor(tintColor)
