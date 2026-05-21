@@ -249,10 +249,17 @@ struct StatusPickerSheet: View {
         guard groups.count > 1 else { return }
         let remaining = groups.filter { $0.id != group.id }
         if let fallback = remaining.first, let tasks = group.tasks {
+            // Snapshot the fallback's tail once — see GroupMenuSheet for why reading
+            // `fallback.orderedTasks.last` inside the loop produces duplicates.
+            var base = (fallback.orderedTasks.last?.sortIndex ?? -1)
             for task in tasks {
                 task.group = fallback
-                task.sortIndex = (fallback.orderedTasks.last?.sortIndex ?? -1) + 1
+                base += 1
+                task.sortIndex = base
             }
+        }
+        if board.defaultGroupUUID == group.id {
+            board.defaultGroupUUID = remaining.first?.id
         }
         if selection?.id == group.id {
             selection = remaining.first

@@ -112,7 +112,7 @@ struct HowToUseSheet: View {
             tintColor: .blue,
             steps: [
                 "Tap + in the bottom bar to start a new task and type a title.",
-                "New tasks open in the active board's default Status (Settings > Default > Status) — pick a different group, add Tags, and set a Working date or Due date.",
+                "New tasks open in the board's Default Status (tap the flag icon on the board header to pick which group new tasks land in) — pick a different group inline, add Tags, and set a Working date or Due date.",
                 "Toggle Reminder to schedule a local notification. A small footer on the card shows a notes icon when the task has notes and an alarm icon when a reminder is set."
             ]
         ),
@@ -141,9 +141,9 @@ struct HowToUseSheet: View {
             systemImage: "tag.fill",
             tintColor: .orange,
             steps: [
-                "Settings > Customization > Groups manages the active board's groups: add, rename, recolor, long-press drag-reorder, or delete.",
-                "Settings > Customization > Tags manages tags scoped to the active board with a custom color, long-press drag-reorder, or delete one to remove it from every task on that board.",
-                "Tap a group's ··· menu on the board for quick rename / recolor / delete."
+                "Tap a group's ··· menu on the board to rename, recolor, or delete it. Inside a task, tap Status to add a new group or drag any tile onto the trash bar to delete one.",
+                "Inside a task, tap Tags to choose or create tags scoped to the active board. Long-press a tile to drag-reorder, or drag onto the trash bar to remove it from every task on the board.",
+                "Two boards can each have their own group called \"Doing\" — groups and tags don't cross boards."
             ]
         ),
         AboutGuideSection(
@@ -153,7 +153,7 @@ struct HowToUseSheet: View {
             steps: [
                 "Tap a day on the calendar to set the date; tap it again to clear.",
                 "Enable End Date in the Working date sheet to select a range — the strip between the two days highlights blue.",
-                "Dates show blue on cards when the date is still in the future, and red once it has arrived or passed. Reminders fire at the time you set in Settings > Default > Reminder Time."
+                "Dates show blue on cards when the date is still in the future, and red once it has arrived or passed. Reminders fire at the time you set per-board — tap the bell icon on the board header to change it."
             ]
         ),
         AboutGuideSection(
@@ -171,8 +171,8 @@ struct HowToUseSheet: View {
             systemImage: "flag.fill",
             tintColor: .teal,
             steps: [
-                "Settings > Default is scoped to the active board — each board remembers its own default Status, Card Order, and Reminder Time.",
-                "Status sets which group new tasks on that board land in. Falls back to the first group if your choice is later deleted. Card Order controls how cards sort inside every group on that board — Manual (drag), Title (alphabetical), or Date (smart).",
+                "Three small icons on the board header configure that board: flag for Default Status, up-down arrows for Card Order, and bell for Reminder Time. Each board remembers its own.",
+                "Default Status sets which group new tasks on that board land in. Falls back to the first group if your choice is later deleted. Card Order controls how cards sort inside every group on that board — Manual (drag), Title (alphabetical), or Date (smart).",
                 "Reminder Time sets the hour and minute (defaults to 9:00) that this board's per-task reminders fire on the chosen date."
             ]
         ),
@@ -226,9 +226,6 @@ struct HowToUseSheet: View {
             .navigationTitle("How to Use")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -375,9 +372,6 @@ struct PrivacySheet: View {
             .navigationTitle("Privacy")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -416,9 +410,6 @@ struct DisclaimerSheet: View {
             .navigationTitle("Disclaimer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -465,9 +456,6 @@ struct CopyrightSheet: View {
             .navigationTitle("Copyright")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }

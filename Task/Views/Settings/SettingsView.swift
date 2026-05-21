@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var exportFileName = DataImportExport.defaultExportFileName()
     @State private var isImporting = false
     @State private var isExporting = false
+    @State private var isResetting = false
     @State private var resultAlert: ResultAlert?
     @State private var importOrphanMessage: String? = nil
 
@@ -32,7 +33,7 @@ struct SettingsView: View {
     }
 
     private enum ResultAlert: String, Identifiable {
-        case importSuccess, importFailure, exportSuccess, exportFailure
+        case importSuccess, importFailure, exportSuccess, exportFailure, resetFailure
         var id: String { rawValue }
     }
 
@@ -57,9 +58,13 @@ struct SettingsView: View {
                 if isExporting {
                     ProgressOverlay(title: "Exporting Data", message: "Preparing your task export…")
                 }
+                if isResetting {
+                    ProgressOverlay(title: "Resetting Data", message: "Restoring the default boards…")
+                }
             }
             .animation(.easeInOut(duration: 0.18), value: isImporting)
             .animation(.easeInOut(duration: 0.18), value: isExporting)
+            .animation(.easeInOut(duration: 0.18), value: isResetting)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -103,7 +108,7 @@ struct SettingsView: View {
             .alert(item: $resultAlert) { kind in
                 switch kind {
                 case .importSuccess:
-                    let body = importOrphanMessage ?? String(localized: "Your data has been imported successfully.")
+                    let body = importOrphanMessage ?? String(localized: "Your data has been imported.")
                     return Alert(
                         title: Text("Import Successful"),
                         message: Text(body),
@@ -125,6 +130,12 @@ struct SettingsView: View {
                     return Alert(
                         title: Text("Export Failed"),
                         message: Text("Couldn't prepare your data for export."),
+                        dismissButton: .default(Text("OK"))
+                    )
+                case .resetFailure:
+                    return Alert(
+                        title: Text("Reset Failed"),
+                        message: Text("Couldn't reset your data. Your existing boards and tasks should still be intact — try again, or restart the app."),
                         dismissButton: .default(Text("OK"))
                     )
                 }
@@ -218,7 +229,8 @@ struct SettingsView: View {
                 title: "iCloud Sync",
                 value: "Coming Soon",
                 systemName: "icloud.fill",
-                tintColor: .blue
+                tintColor: .blue,
+                dimmed: true
             )
             SettingsRowDivider()
             SettingsButtonRow(
@@ -423,17 +435,32 @@ struct SettingsView: View {
     }
 
     private func orphanMessage(for outcome: ImportResult) -> String? {
-        let pieces = [
-            outcome.orphanTasks > 0 ? String(localized: "\(outcome.orphanTasks) task(s) moved to the first group because their original group wasn't in the file.") : nil,
-            outcome.orphanTagRefs > 0 ? String(localized: "\(outcome.orphanTagRefs) tag reference(s) couldn't be resolved and were dropped.") : nil
+        let summary = String(
+            localized: "Imported ^[\(outcome.boardCount) board](inflect: true) and ^[\(outcome.taskCount) task](inflect: true)."
+        )
+        let warnings = [
+            outcome.orphanTasks > 0 ? String(
+                localized: "^[\(outcome.orphanTasks) task](inflect: true) moved to the first group because their original group wasn't in the file."
+            ) : nil,
+            outcome.orphanTagRefs > 0 ? String(
+                localized: "^[\(outcome.orphanTagRefs) tag reference](inflect: true) couldn't be resolved and were dropped."
+            ) : nil
         ].compactMap { $0 }
-        guard !pieces.isEmpty else { return nil }
-        return String(localized: "Your data has been imported.") + "\n\n" + pieces.joined(separator: "\n")
+        if warnings.isEmpty {
+            return summary
+        }
+        return summary + "\n\n" + warnings.joined(separator: "\n")
     }
 
     private func performReset() {
         Task { @MainActor in
-            await DataImportExport.resetAll(context: context)
+            isResetting = true
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            let ok = await DataImportExport.resetAll(context: context)
+            isResetting = false
+            if !ok {
+                resultAlert = .resetFailure
+            }
         }
     }
 

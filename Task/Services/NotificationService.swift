@@ -9,21 +9,46 @@ enum NotificationService {
         _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
     }
 
+    static func currentAuthorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+
+    /// How many upcoming occurrences to schedule for a repeating reminder. iOS caps
+    /// total pending notifications at 64 per app, so this is a safe per-task batch.
+    /// Subsequent occurrences are re-scheduled the next time the task is saved.
+    static let repeatBatchSize = 16
+
     static func schedule(for task: TaskItem) {
         cancel(for: task)
-        guard task.hasReminder, let fireDate = task.primaryReminderDate else { return }
+        guard task.hasReminder, let anchor = task.primaryReminderDate else { return }
 
-        var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
+        var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
         // Tasks only carry a date; the time-of-day comes from the board's Reminder Time setting.
         if components.hour == 0 && components.minute == 0 {
             let minutes = task.board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
             components.hour = minutes / 60
             components.minute = minutes % 60
         }
-        // UNCalendarNotificationTrigger with a past date never fires. Skip rather than
-        // schedule a silent no-op so callers don't believe a reminder is set.
-        if let resolved = Calendar.current.date(from: components), resolved <= Date() {
-            return
+        guard let resolvedAnchor = Calendar.current.date(from: components) else { return }
+
+        let rule = task.repeatRule
+
+        // Build the list of upcoming fire dates. `UNCalendarNotificationTrigger` with
+        // `repeats: true` can't express "fire daily *starting* on date X", so we
+        // schedule a batch of one-shots instead. When the user saves the task again
+        // (manual advance, edit, import), the batch is refreshed.
+        let fireDates: [Date]
+        if rule == .none {
+            fireDates = [resolvedAnchor]
+        } else {
+            var dates: [Date] = []
+            dates.reserveCapacity(Self.repeatBatchSize)
+            var cursor = resolvedAnchor
+            for _ in 0..<Self.repeatBatchSize {
+                dates.append(cursor)
+                cursor = rule.advance(cursor)
+            }
+            fireDates = dates
         }
 
         let content = UNMutableNotificationContent()
@@ -40,13 +65,26 @@ enum NotificationService {
         }
         content.sound = .default
 
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-        let request = UNNotificationRequest(identifier: task.id.uuidString, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+        let center = UNUserNotificationCenter.current()
+        for (offset, fire) in fireDates.enumerated() {
+            // Skip occurrences already in the past — they'd never deliver.
+            if fire <= Date() { continue }
+            let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
+            let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
+            let identifier = offset == 0 ? task.id.uuidString : "\(task.id.uuidString)@\(offset)"
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            center.add(request, withCompletionHandler: nil)
+        }
     }
 
     static func cancel(for task: TaskItem) {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [task.id.uuidString])
+        // Cover both the single-shot identifier and every repeat-batch index so a
+        // task that previously had a Daily repeat can be cleanly turned off.
+        var identifiers = [task.id.uuidString]
+        for i in 1..<Self.repeatBatchSize {
+            identifiers.append("\(task.id.uuidString)@\(i)")
+        }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
     }
 
     private static func boardSubtitle(for board: Board) -> String {

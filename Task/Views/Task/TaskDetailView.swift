@@ -12,6 +12,7 @@ struct TaskDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var settings: SettingsViewModel
 
     @State private var title: String = ""
     @State private var notes: String = ""
@@ -90,6 +91,11 @@ struct TaskDetailView: View {
                 }
             }
             .onAppear { load() }
+            .onChange(of: workingStart) { _, _ in disableReminderIfNoDates() }
+            .onChange(of: dueDate) { _, _ in disableReminderIfNoDates() }
+            .onChange(of: hasReminder) { _, isOn in
+                if isOn { Task { await requestNotificationPermissionIfNeeded() } }
+            }
             .sheet(isPresented: $showStatusPicker) {
                 StatusPickerSheet(board: board, selection: $selectedGroup)
                     .presentationDetents([.fraction(0.6), .large])
@@ -279,28 +285,54 @@ struct TaskDetailView: View {
     }
 
     private var reminderRow: some View {
-        propertyRow(icon: "alarm", label: "Reminder", valueAlignment: .trailing) {
-            Toggle("", isOn: $hasReminder)
-                .labelsHidden()
-                .disabled(workingStart == nil && dueDate == nil)
+        VStack(alignment: .leading, spacing: 4) {
+            propertyRow(icon: "alarm", label: "Reminder", valueAlignment: .trailing) {
+                Toggle("", isOn: $hasReminder)
+                    .labelsHidden()
+                    .disabled(workingStart == nil && dueDate == nil)
+            }
+            if hasReminder, settings.notificationsAuthorized == false {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                    Text("Notifications are off for Task. Enable them in iOS Settings or this reminder won't fire.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 32)
+            }
         }
     }
 
     private var repeatRow: some View {
-        propertyRow(icon: "arrow.clockwise", label: "Repeat") {
-            HStack(spacing: 8) {
-                Button { showRepeatPicker = true } label: {
-                    if repeatRule == .none {
-                        emptyValueLabel
-                    } else {
-                        TagChip(name: repeatRule.displayName, colorKey: .gray)
+        // The whole row is tappable for consistency with Status / Tags / Working /
+        // Due. The advance "→" chip lives outside the row's Button so it doesn't
+        // open the picker when tapped.
+        ZStack {
+            Button { showRepeatPicker = true } label: {
+                propertyRow(icon: "arrow.clockwise", label: "Repeat") {
+                    HStack(spacing: 8) {
+                        if repeatRule == .none {
+                            emptyValueLabel
+                        } else {
+                            TagChip(name: repeatRule.displayName, colorKey: .gray)
+                        }
+                        Spacer(minLength: 0)
+                        // Reserve trailing space so the chip never overlaps the
+                        // advance button below.
+                        if repeatRule != .none && (workingStart != nil || dueDate != nil) {
+                            Color.clear.frame(width: 62, height: 30)
+                        }
                     }
                 }
-                .buttonStyle(.plain)
+            }
+            .buttonStyle(.plain)
 
-                Spacer(minLength: 0)
-
-                if repeatRule != .none && (workingStart != nil || dueDate != nil) {
+            if repeatRule != .none && (workingStart != nil || dueDate != nil) {
+                HStack {
+                    Spacer()
                     Button { advanceRepeatDates() } label: {
                         Image(systemName: "arrow.right")
                             .font(.system(size: 15, weight: .bold))
@@ -478,7 +510,15 @@ struct TaskDetailView: View {
         task.workingStart = workingStart
         task.workingEnd = isWorkingRange ? workingEnd : nil
         task.dueDate = dueDate
-        task.hasReminder = hasReminder && (workingStart != nil || dueDate != nil)
+        let intendsReminder = hasReminder && (workingStart != nil || dueDate != nil)
+        // For non-repeating tasks, a fire date in the past would never deliver a
+        // notification. Clear the flag so the card/editor don't show the alarm icon
+        // for a reminder that won't fire.
+        if intendsReminder, repeatRule == .none, let fire = candidateFireDate(), fire <= Date() {
+            task.hasReminder = false
+        } else {
+            task.hasReminder = intendsReminder
+        }
         task.repeatRule = repeatRule
         task.touch()
 
@@ -492,6 +532,44 @@ struct TaskDetailView: View {
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
 
         dismiss()
+    }
+
+    /// Keep the Reminder toggle visibly in sync with whether any date is set, so
+    /// `save()` never has to silently strip a reminder the user thinks is on.
+    private func disableReminderIfNoDates() {
+        if workingStart == nil && dueDate == nil && hasReminder {
+            hasReminder = false
+        }
+    }
+
+    /// Request notification permission lazily — only when the user actually opts in
+    /// to a reminder. This matches the privacy copy ("Task asks for notification
+    /// permission only to deliver local reminders you opt into per task") and keeps
+    /// the system prompt from interrupting first-launch onboarding.
+    private func requestNotificationPermissionIfNeeded() async {
+        await NotificationService.requestAuthorizationIfNeeded()
+        await settings.refreshNotificationAuthorization()
+    }
+
+    /// Mirrors `TaskItem.primaryReminderDate` against the editor's local @State so
+    /// the save path can predict whether a non-repeating reminder would fire in the
+    /// past (and therefore should not flip `hasReminder` to true on disk). Time of
+    /// day comes from the board's reminder setting when the picked date is midnight.
+    private func candidateFireDate() -> Date? {
+        let anchor: Date?
+        if let w = workingStart, let d = dueDate {
+            anchor = min(w, d)
+        } else {
+            anchor = dueDate ?? (isWorkingRange ? workingEnd : nil) ?? workingStart
+        }
+        guard let anchor else { return nil }
+        var comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
+        if comps.hour == 0 && comps.minute == 0 {
+            let minutes = board.reminderMinutesOfDay
+            comps.hour = minutes / 60
+            comps.minute = minutes % 60
+        }
+        return Calendar.current.date(from: comps)
     }
 
     /// Shift every set date (workingStart, workingEnd, dueDate) forward by one occurrence

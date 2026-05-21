@@ -26,7 +26,11 @@ final class BoardGroup {
     }
 
     var orderedTasks: [TaskItem] {
-        (tasks ?? []).sorted { $0.sortIndex < $1.sortIndex }
+        (tasks ?? []).sorted { lhs, rhs in
+            if lhs.sortIndex != rhs.sortIndex { return lhs.sortIndex < rhs.sortIndex }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
     }
 
     func sortedTasks(field: CardSortField, direction: CardSortDirection) -> [TaskItem] {

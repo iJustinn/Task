@@ -146,6 +146,8 @@ private struct LegacySingleBoardPayload: Codable {
 
 struct ImportResult {
     var success: Bool
+    var boardCount: Int = 0
+    var taskCount: Int = 0
     var orphanTasks: Int = 0
     var orphanTagRefs: Int = 0
 
@@ -249,25 +251,66 @@ enum DataImportExport {
 
         var orphanTasks = 0
         var orphanTagRefs = 0
+        var taskCount = 0
         var processed = 0
+        // Collect notification mutations from every board merge; replay them only
+        // after the final save commits. If the save fails we drop the plan, so
+        // cancelled reminders don't disappear and imported reminders aren't scheduled
+        // for tasks that never made it to disk.
+        var plan = NotificationPlan()
 
         for entry in payload.boards {
-            let (oTasks, oTagRefs) = await mergeBoard(entry, into: context)
+            let (oTasks, oTagRefs) = await mergeBoard(entry, into: context, plan: &plan)
             orphanTasks += oTasks
             orphanTagRefs += oTagRefs
+            taskCount += entry.tasks.count
             processed += entry.tasks.count
             if processed % 50 >= 49 {
                 await Task.yield()
             }
         }
 
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // Surface the failure instead of returning success with unsaved state. The
+            // caller's failure alert is more useful than a misleading "imported".
+            return .failure
+        }
+        plan.apply()
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
-        return ImportResult(success: true, orphanTasks: orphanTasks, orphanTagRefs: orphanTagRefs)
+        return ImportResult(
+            success: true,
+            boardCount: payload.boards.count,
+            taskCount: taskCount,
+            orphanTasks: orphanTasks,
+            orphanTagRefs: orphanTagRefs
+        )
+    }
+
+    /// Notification side effects queued during a `mergeBoard` pass. Replayed by
+    /// `apply()` only after the final import save commits, so a failed save can't
+    /// leave the user with cancelled-but-not-replaced reminders.
+    private struct NotificationPlan {
+        var cancellations: [TaskItem] = []
+        var scheduleAfterSave: [TaskItem] = []
+
+        mutating func cancel(_ task: TaskItem) {
+            cancellations.append(task)
+        }
+
+        mutating func schedule(_ task: TaskItem) {
+            scheduleAfterSave.append(task)
+        }
+
+        func apply() {
+            for t in cancellations { NotificationService.cancel(for: t) }
+            for t in scheduleAfterSave where t.hasReminder { NotificationService.schedule(for: t) }
+        }
     }
 
     @MainActor
-    private static func mergeBoard(_ entry: BoardExportEntry, into context: ModelContext) async -> (orphanTasks: Int, orphanTagRefs: Int) {
+    private static func mergeBoard(_ entry: BoardExportEntry, into context: ModelContext, plan: inout NotificationPlan) async -> (orphanTasks: Int, orphanTagRefs: Int) {
         let payloadBoard = entry.board
         let allBoards = (try? context.fetch(FetchDescriptor<Board>())) ?? []
 
@@ -300,11 +343,17 @@ enum DataImportExport {
 
         // Existing groups/tags scoped to *this* board. Cross-board name matches are
         // ignored on purpose — two boards may share a group called "Doing".
+        // Build the name-lookups with first-wins loops so duplicate case-folded names
+        // (legitimately possible after past imports or hand-edited JSON) don't trap
+        // Dictionary(uniqueKeysWithValues:).
         let existingGroups = (board.groups ?? [])
-        var groupsByID: [UUID: BoardGroup] = Dictionary(uniqueKeysWithValues: existingGroups.map { ($0.id, $0) })
-        var groupsByName: [String: BoardGroup] = Dictionary(uniqueKeysWithValues:
-            existingGroups.map { ($0.name.lowercased(), $0) }
-        )
+        var groupsByID: [UUID: BoardGroup] = [:]
+        var groupsByName: [String: BoardGroup] = [:]
+        for g in existingGroups {
+            groupsByID[g.id] = g
+            let key = g.name.lowercased()
+            if groupsByName[key] == nil { groupsByName[key] = g }
+        }
         for g in entry.groups {
             if let existing = groupsByID[g.id] {
                 existing.name = g.name
@@ -333,10 +382,13 @@ enum DataImportExport {
         }
 
         let existingTags = (board.tags ?? [])
-        var tagsByID: [UUID: TaskTag] = Dictionary(uniqueKeysWithValues: existingTags.map { ($0.id, $0) })
-        var tagsByName: [String: TaskTag] = Dictionary(uniqueKeysWithValues:
-            existingTags.map { ($0.name.lowercased(), $0) }
-        )
+        var tagsByID: [UUID: TaskTag] = [:]
+        var tagsByName: [String: TaskTag] = [:]
+        for t in existingTags {
+            tagsByID[t.id] = t
+            let key = t.name.lowercased()
+            if tagsByName[key] == nil { tagsByName[key] = t }
+        }
         for t in entry.tags {
             if let existing = tagsByID[t.id] {
                 existing.name = t.name
@@ -373,21 +425,21 @@ enum DataImportExport {
             let resolvedTags = t.tagIDs.compactMap { tagsByID[$0] }
             orphanTagRefs += (t.tagIDs.count - resolvedTags.count)
 
+            // A task without a group can't be rendered on the board (BoardView only
+            // iterates `board.orderedGroups`), so route both "unknown groupID" and
+            // "no groupID" through the fallback. Without this, the task is silently
+            // hidden after import.
             let resolvedGroup: BoardGroup?
-            if let gid = t.groupID {
-                if let match = groupsByID[gid] {
-                    resolvedGroup = match
-                } else {
-                    orphanTasks += 1
-                    resolvedGroup = fallbackGroup
-                }
+            if let gid = t.groupID, let match = groupsByID[gid] {
+                resolvedGroup = match
             } else {
-                resolvedGroup = nil
+                orphanTasks += 1
+                resolvedGroup = fallbackGroup
             }
 
             let task: TaskItem
             if let existing = tasksByID[t.id] {
-                NotificationService.cancel(for: existing)
+                plan.cancel(existing)
                 existing.title = t.title
                 existing.notes = t.notes
                 existing.workingStart = t.workingStart
@@ -398,7 +450,7 @@ enum DataImportExport {
                 existing.sortIndex = t.sortIndex
                 existing.updatedAt = t.updatedAt
                 existing.board = board
-                if t.groupID != nil { existing.group = resolvedGroup }
+                existing.group = resolvedGroup
                 existing.tags = resolvedTags
                 task = existing
             } else {
@@ -419,7 +471,7 @@ enum DataImportExport {
                 task = new
             }
             if task.hasReminder {
-                NotificationService.schedule(for: task)
+                plan.schedule(task)
             }
             if idx % 50 == 49 {
                 await Task.yield()
@@ -429,22 +481,42 @@ enum DataImportExport {
         return (orphanTasks, orphanTagRefs)
     }
 
+    /// `true` when the destructive delete saved cleanly and the re-seed completed.
+    /// `false` means the user's data is in an indeterminate state and the caller
+    /// should show a failure alert instead of pretending the reset succeeded.
     @MainActor
-    static func resetAll(context: ModelContext) async {
+    @discardableResult
+    static func resetAll(context: ModelContext) async -> Bool {
         let existingTasks = (try? context.fetch(FetchDescriptor<TaskItem>())) ?? []
-        for (idx, task) in existingTasks.enumerated() {
+        let plannedCancellations = existingTasks
+        for board in (try? context.fetch(FetchDescriptor<Board>())) ?? [] {
+            context.delete(board)
+        }
+        // Save the destructive deletion first so we can bail out cleanly if it fails,
+        // before we cancel real notifications or wipe UserDefaults.
+        do {
+            try context.save()
+        } catch {
+            return false
+        }
+        for (idx, task) in plannedCancellations.enumerated() {
             NotificationService.cancel(for: task)
             if idx % 50 == 49 {
                 await Task.yield()
             }
         }
-        for board in (try? context.fetch(FetchDescriptor<Board>())) ?? [] {
-            context.delete(board)
-        }
-        try? context.save()
         UserDefaults.standard.removeObject(forKey: "task.activeBoardID")
+
+        // If we're running in the in-memory fallback, the corrupt SQLite file on
+        // disk is still there and would re-trap us into fallback on the next launch.
+        // Wipe it now so the next `makeModelContainer()` can rebuild cleanly.
+        if UserDefaults.standard.bool(forKey: SwiftDataManager.inMemoryFallbackKey) {
+            SwiftDataManager.purgePersistentStoreFiles()
+        }
+
         SwiftDataManager.ensureSeed(context: context)
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        return true
     }
 
     static func defaultExportFileName() -> String {

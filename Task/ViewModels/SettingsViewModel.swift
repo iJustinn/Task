@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import UIKit
+import UserNotifications
 
 enum AppTheme: String, CaseIterable, Identifiable {
     case system
@@ -297,46 +298,52 @@ enum AppTextSize: String, CaseIterable, Identifiable {
     case small
     case medium
     case large
+    case extraLarge
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .small:  return String(localized: "Small")
-        case .medium: return String(localized: "Medium")
-        case .large:  return String(localized: "Large")
+        case .small:      return String(localized: "Small")
+        case .medium:     return String(localized: "Medium")
+        case .large:      return String(localized: "Large")
+        case .extraLarge: return String(localized: "Extra Large")
         }
     }
 
     var descriptor: String {
         switch self {
-        case .small:  return String(localized: "Compact")
-        case .medium: return String(localized: "Standard")
-        case .large:  return String(localized: "Roomy")
+        case .small:      return String(localized: "Compact")
+        case .medium:     return String(localized: "Standard")
+        case .large:      return String(localized: "Roomy")
+        case .extraLarge: return String(localized: "Spacious")
         }
     }
 
     var systemImage: String {
         switch self {
-        case .small:  return "textformat.size.smaller"
-        case .medium: return "textformat.size"
-        case .large:  return "textformat.size.larger"
+        case .small:      return "textformat.size.smaller"
+        case .medium:     return "textformat.size"
+        case .large:      return "textformat.size.larger"
+        case .extraLarge: return "textformat.size.larger"
         }
     }
 
     var tintColor: Color {
         switch self {
-        case .small:  return .gray
-        case .medium: return .teal
-        case .large:  return .blue
+        case .small:      return .gray
+        case .medium:     return .teal
+        case .large:      return .blue
+        case .extraLarge: return .purple
         }
     }
 
     var dynamicType: DynamicTypeSize {
         switch self {
-        case .small:  return .medium
-        case .medium: return .xLarge
-        case .large:  return .xxxLarge
+        case .small:      return .medium
+        case .medium:     return .large
+        case .large:      return .xLarge
+        case .extraLarge: return .xxLarge
         }
     }
 }
@@ -475,7 +482,10 @@ final class SettingsViewModel: ObservableObject {
     }
 
     @Published var language: AppLanguage {
-        didSet { UserDefaults.standard.set(language.rawValue, forKey: AppLanguage.storageKey) }
+        didSet {
+            UserDefaults.standard.set(language.rawValue, forKey: AppLanguage.storageKey)
+            TaskDateFormat.locale = language.locale
+        }
     }
 
     @Published var accent: AppAccent {
@@ -501,6 +511,16 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(columnWidth.rawValue, forKey: SettingsViewModel.columnWidthKey) }
     }
 
+    /// Cached so TaskDetailView can show a warning when the user enables a reminder
+    /// while notifications are denied. Refresh from `RootView.task` and after the
+    /// permission request.
+    @Published var notificationsAuthorized: Bool? = nil
+
+    func refreshNotificationAuthorization() async {
+        let status = await NotificationService.currentAuthorizationStatus()
+        notificationsAuthorized = (status == .authorized || status == .provisional || status == .ephemeral)
+    }
+
     static let themeKey = "task.appTheme"
     static let accentKey = "task.appAccent"
     static let timeFormatKey = "task.timeFormat"
@@ -511,12 +531,14 @@ final class SettingsViewModel: ObservableObject {
     init() {
         let d = UserDefaults.standard
         self.theme = AppTheme(rawValue: d.string(forKey: SettingsViewModel.themeKey) ?? "") ?? .system
-        self.language = AppLanguage(rawValue: d.string(forKey: AppLanguage.storageKey) ?? "") ?? .system
+        let resolvedLanguage = AppLanguage(rawValue: d.string(forKey: AppLanguage.storageKey) ?? "") ?? .system
+        self.language = resolvedLanguage
         self.accent = AppAccent(rawValue: d.string(forKey: SettingsViewModel.accentKey) ?? "") ?? .blue
         self.timeFormat = AppTimeFormat(rawValue: d.string(forKey: SettingsViewModel.timeFormatKey) ?? "") ?? .system
         self.appIcon = AppIconOption(rawValue: d.string(forKey: SettingsViewModel.appIconKey) ?? "") ?? .classic
         self.textSize = AppTextSize(rawValue: d.string(forKey: SettingsViewModel.textSizeKey) ?? "") ?? .medium
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium
+        TaskDateFormat.locale = resolvedLanguage.locale
     }
 
     private func applyAppIcon() {

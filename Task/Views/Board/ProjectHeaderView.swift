@@ -11,6 +11,7 @@ struct ProjectHeaderView: View {
     @State private var showIconPicker: Bool = false
     @State private var showingSort: Bool = false
     @State private var showingReminder: Bool = false
+    @State private var showingDefaultStatus: Bool = false
     @FocusState private var titleFocused: Bool
     @FocusState private var subtitleFocused: Bool
 
@@ -42,6 +43,9 @@ struct ProjectHeaderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 8) {
+                headerIconButton(systemName: "flag.fill", tint: .primary, label: "Default Status") {
+                    showingDefaultStatus = true
+                }
                 headerIconButton(systemName: "arrow.up.arrow.down", tint: .primary, label: "Sort") {
                     showingSort = true
                 }
@@ -86,6 +90,11 @@ struct ProjectHeaderView: View {
         .sheet(isPresented: $showingReminder) {
             ReminderTimePickerSheet(board: board)
                 .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingDefaultStatus) {
+            DefaultStatusPickerSheet(board: board)
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }

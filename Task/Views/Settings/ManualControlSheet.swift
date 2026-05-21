@@ -60,7 +60,7 @@ struct ManualControlSheet: View {
                     icon: "trash.fill",
                     iconTint: .red,
                     title: "Reset All Data?",
-                    message: "This will delete every group, tag, and task, then restore the six default groups. This can't be undone.",
+                    message: "This will delete every board, group, tag, and task on this device, then restore the three default boards (Personal, Study, Work) with five groups each. This can't be undone.",
                     confirmLabel: "Reset All Data"
                 ) {
                     dismissThenRun(onReset)

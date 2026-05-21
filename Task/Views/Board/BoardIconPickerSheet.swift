@@ -5,6 +5,8 @@ struct BoardIconPickerSheet: View {
     var onSelect: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @State private var pendingIcon: String = ""
+
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
 
     private let icons: [String] = [
@@ -26,8 +28,7 @@ struct BoardIconPickerSheet: View {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(icons, id: \.self) { emoji in
                             Button {
-                                onSelect(emoji)
-                                dismiss()
+                                pendingIcon = emoji
                             } label: {
                                 cell(for: emoji)
                             }
@@ -46,14 +47,19 @@ struct BoardIconPickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        if pendingIcon != currentIcon { onSelect(pendingIcon) }
+                        dismiss()
+                    }
+                    .disabled(pendingIcon == currentIcon)
                 }
             }
+            .onAppear { pendingIcon = currentIcon }
         }
     }
 
     private func cell(for emoji: String) -> some View {
-        let isSelected = emoji == currentIcon
+        let isSelected = emoji == pendingIcon
         return Text(emoji)
             .font(.system(size: 34))
             .frame(maxWidth: .infinity)

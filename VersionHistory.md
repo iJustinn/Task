@@ -8,7 +8,7 @@ Multi-board support across the app, the settings, and the home-screen widget.
 
 - **Three default boards seed on fresh install** — Personal 🏃, Study 🎓, Work 💼 — each with the standard five default groups (Waiting, Doing, Pending, Done, Archive) and no preset tags. Existing single-board installs upgrade in place; no migration code needed for the new defaulted `Board` fields.
 - **Default seed groups slimmed down** — removed Daily and Weekly, added Archive. New order: Waiting, Doing, Pending, Done, Archive. Tests updated.
-- **Board switcher** — folder button on the bottom nav between Search and Settings opens a 60% sheet with a 3-column grid of board tiles (icon + title + task count, via the shared `GridTile`). Drag indicator + pullable to large.
+- **Board switcher** — archivebox button on the bottom nav between Search and Settings opens a 60% sheet with a 3-column grid of board tiles (icon + title + task count, via the shared `GridTile`). Drag indicator + pullable to large.
 - **Long-press drag-reorder boards** — same `.draggable` + per-tile `DropDelegate` pattern as Groups / Tags / Columns. Reorder persists via the new `Board.sortIndex`.
 - **Drag-to-delete with confirmation** — while reordering, a red trash bar slides up from the bottom edge. Dropping a tile onto it opens the existing `ConfirmationSheet` (`Delete Board?` / red Delete Board / gray Cancel). Disabled when only one board remains. Active board auto-falls-back to the next-remaining board on delete.
 - **In-place board create** — tap **Add** in the switcher; a new board lands as the active one with placeholder text ("Choose a Title" / "Choose a Subtitle"). Edit title/subtitle/icon directly in the board header (`ProjectHeaderView`), which now also re-syncs its draft strings when the active board changes via `onChange(of: board.id)`.
@@ -39,7 +39,7 @@ Multi-board support across the app, the settings, and the home-screen widget.
 
 ### Bottom nav
 
-- New **folder** circle button (`folder.fill`) between the search field and the gear, opens the board switcher.
+- New **archive** circle button (`archivebox`) between the search field and the gear, opens the board switcher.
 - Long-press on the `+` button (which previously was a route to create a board) was removed — board creation goes through the switcher's **Add** button.
 
 ### Testdata
