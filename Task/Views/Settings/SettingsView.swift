@@ -12,8 +12,6 @@ struct SettingsView: View {
     @State private var activeSheet: AppearanceSheet?
     @State private var activeAboutSheet: AboutSheet?
     @State private var showingManualControl = false
-    @State private var showingCardOrder = false
-    @State private var showingDefaultStatus = false
     @State private var showingImportPicker = false
     @State private var showingExportPicker = false
     @State private var exportDocument = TaskExportDocument()
@@ -24,7 +22,7 @@ struct SettingsView: View {
     @State private var importOrphanMessage: String? = nil
 
     private enum AppearanceSheet: String, Identifiable {
-        case theme, language, textSize, columnWidth, accent, icon, timeFormat, reminderTime
+        case theme, language, textSize, columnWidth, accent, icon, timeFormat
         var id: String { rawValue }
     }
 
@@ -46,8 +44,6 @@ struct SettingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                         appearanceSection
-                        defaultSection
-                        customizationSection
                         dataSection
                         aboutSection
                     }
@@ -76,18 +72,6 @@ struct SettingsView: View {
             }
             .sheet(item: $activeAboutSheet) { sheet in
                 aboutSheetContent(for: sheet)
-            }
-            .sheet(isPresented: $showingCardOrder) {
-                CardOrderPickerSheet(board: board)
-                    .environmentObject(settings)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showingDefaultStatus) {
-                DefaultStatusPickerSheet(board: board)
-                    .environmentObject(settings)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showingManualControl) {
                 ManualControlSheet(
@@ -220,96 +204,11 @@ struct SettingsView: View {
         }
     }
 
-    private var defaultSection: some View {
-        SettingsCardSection("Default") {
-            SettingsButtonRow(
-                title: "Status",
-                systemName: "circle.fill",
-                tintColor: defaultStatusTint,
-                action: { showingDefaultStatus = true }
-            ) {
-                trailing(value: defaultStatusSummary)
-            }
-            SettingsRowDivider()
-            SettingsButtonRow(
-                title: "Card Order",
-                systemName: board.cardSortField.systemImage,
-                tintColor: board.cardSortField.tintColor,
-                action: { showingCardOrder = true }
-            ) {
-                trailing(value: cardOrderSummary)
-            }
-            SettingsRowDivider()
-            SettingsButtonRow(
-                title: "Reminder Time",
-                systemName: "bell.badge.fill",
-                tintColor: .red,
-                action: { activeSheet = .reminderTime }
-            ) {
-                trailing(value: reminderTimeSummary)
-            }
-        }
-    }
-
-    private var defaultStatusSummary: String {
-        board.defaultGroup?.name ?? "—"
-    }
-
-    private var defaultStatusTint: Color {
-        board.defaultGroup?.colorKey.foreground ?? .gray
-    }
-
-    private var cardOrderSummary: String {
-        if board.cardSortField == .manual {
-            return board.cardSortField.label
-        }
-        return "\(board.cardSortField.label) · \(board.cardSortDirection.label)"
-    }
-
     private var timeFormatRowSystemName: String {
         switch settings.timeFormat {
         case .system:         return "clock.badge.checkmark.fill"
         case .twelveHour:     return "clock.fill"
         case .twentyFourHour: return "timer"
-        }
-    }
-
-    private var reminderTimeSummary: String {
-        let total = board.reminderMinutesOfDay
-        return TimeFormatting.format(
-            hour: total / 60,
-            minute: total % 60,
-            uses24Hour: settings.timeFormat.uses24HourClock
-        )
-    }
-
-    private var customizationSection: some View {
-        SettingsCardSection("Customization") {
-            NavigationLink {
-                ManageGroupsView(board: board)
-            } label: {
-                SettingsRowLabel(
-                    title: "Groups",
-                    value: "\(board.orderedGroups.count)",
-                    systemName: "rectangle.3.group.fill",
-                    tintColor: .pink,
-                    accessory: .chevron
-                )
-            }
-            .buttonStyle(.plain)
-            SettingsRowDivider()
-            NavigationLink {
-                ManageTagsView(board: board)
-            } label: {
-                SettingsRowLabel(
-                    title: "Tags",
-                    value: "\(board.orderedTags.count)",
-                    systemName: "tag.fill",
-                    tintColor: .orange,
-                    accessory: .chevron
-                )
-            }
-            .buttonStyle(.plain)
         }
     }
 
@@ -478,11 +377,6 @@ struct SettingsView: View {
             TimeFormatPickerSheet()
                 .environmentObject(settings)
                 .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        case .reminderTime:
-            ReminderTimePickerSheet(board: board)
-                .environmentObject(settings)
-                .presentationDetents([.height(560)])
                 .presentationDragIndicator(.visible)
         }
     }

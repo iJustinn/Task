@@ -1,6 +1,6 @@
 # Version History
 
-## 0.4.0 (build 1) — 2026-05-21
+## 0.4.5 (build 1) — 2026-05-21
 
 Multi-board support across the app, the settings, and the home-screen widget.
 
