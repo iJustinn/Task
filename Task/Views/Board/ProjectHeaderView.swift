@@ -42,15 +42,15 @@ struct ProjectHeaderView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 8) {
-                headerIconButton(systemName: "flag.fill", tint: .primary, label: "Default Status") {
-                    showingDefaultStatus = true
-                }
+            HStack(spacing: 2) {
                 headerIconButton(systemName: "arrow.up.arrow.down", tint: .primary, label: "Sort") {
                     showingSort = true
                 }
-                headerIconButton(systemName: "bell.fill", tint: .primary, label: "Reminder Time") {
+                headerIconButton(systemName: "bell", tint: .primary, label: "Reminder Time") {
                     showingReminder = true
+                }
+                headerIconButton(systemName: "flag", tint: .primary, label: "Default Status") {
+                    showingDefaultStatus = true
                 }
             }
         }
