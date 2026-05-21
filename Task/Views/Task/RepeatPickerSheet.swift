@@ -1,8 +1,10 @@
 import SwiftUI
 
-struct IconPickerSheet: View {
-    @EnvironmentObject private var settings: SettingsViewModel
+struct RepeatPickerSheet: View {
+    @Binding var selection: RepeatRule
     @Environment(\.dismiss) private var dismiss
+
+    private let options: [RepeatRule] = [.daily, .weekly, .monthly]
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -16,17 +18,16 @@ struct IconPickerSheet: View {
                 Color(.systemGroupedBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppIconOption.allCases) { option in
+                        ForEach(options) { rule in
                             Button {
-                                settings.appIcon = option
+                                selection = (selection == rule) ? .none : rule
                                 dismiss()
                             } label: {
                                 GridTile(
-                                    title: option.title,
-                                    subtitle: option.subtitle,
-                                    imageAsset: option.previewAssetName,
-                                    tintColor: .accentColor,
-                                    isSelected: settings.appIcon == option
+                                    title: rule.displayName,
+                                    systemImage: icon(for: rule),
+                                    tintColor: ColorKey.gray.foreground,
+                                    isSelected: selection == rule
                                 )
                             }
                             .buttonStyle(.plain)
@@ -37,7 +38,7 @@ struct IconPickerSheet: View {
                     .padding(.bottom, 30)
                 }
             }
-            .navigationTitle("App Icon")
+            .navigationTitle("Choose Repeat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -47,6 +48,15 @@ struct IconPickerSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private func icon(for rule: RepeatRule) -> String {
+        switch rule {
+        case .daily:   return "1.circle"
+        case .weekly:  return "7.circle"
+        case .monthly: return "calendar"
+        case .none:    return "arrow.clockwise"
         }
     }
 }

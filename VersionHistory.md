@@ -1,5 +1,94 @@
 # Version History
 
+## 0.4.0 (build 1) — 2026-05-21
+
+Multi-board support across the app, the settings, and the home-screen widget.
+
+### Multi-board
+
+- **Three default boards seed on fresh install** — Personal 🏃, Study 🎓, Work 💼 — each with the standard five default groups (Waiting, Doing, Pending, Done, Archive) and no preset tags. Existing single-board installs upgrade in place; no migration code needed for the new defaulted `Board` fields.
+- **Default seed groups slimmed down** — removed Daily and Weekly, added Archive. New order: Waiting, Doing, Pending, Done, Archive. Tests updated.
+- **Board switcher** — folder button on the bottom nav between Search and Settings opens a 60% sheet with a 3-column grid of board tiles (icon + title + task count, via the shared `GridTile`). Drag indicator + pullable to large.
+- **Long-press drag-reorder boards** — same `.draggable` + per-tile `DropDelegate` pattern as Groups / Tags / Columns. Reorder persists via the new `Board.sortIndex`.
+- **Drag-to-delete with confirmation** — while reordering, a red trash bar slides up from the bottom edge. Dropping a tile onto it opens the existing `ConfirmationSheet` (`Delete Board?` / red Delete Board / gray Cancel). Disabled when only one board remains. Active board auto-falls-back to the next-remaining board on delete.
+- **In-place board create** — tap **Add** in the switcher; a new board lands as the active one with placeholder text ("Choose a Title" / "Choose a Subtitle"). Edit title/subtitle/icon directly in the board header (`ProjectHeaderView`), which now also re-syncs its draft strings when the active board changes via `onChange(of: board.id)`.
+
+### Settings rewired per-board
+
+- **Default → Status / Card Order / Reminder Time** moved from `SettingsViewModel` global UserDefaults into per-board fields on the `Board` model (`defaultGroupID`, `cardSortFieldRaw`, `cardSortDirectionRaw`, `reminderMinutesOfDay`). Each board remembers its own. `DefaultStatusPickerSheet`, `CardOrderPickerSheet`, and `ReminderTimePickerSheet` now take a `Board` and write to it directly.
+- **Customization → Groups / Tags** already scoped to a board via SwiftData relationships; switching boards swaps which board they manage.
+- **One-shot legacy migration** — on first launch after upgrade, copies the four legacy `UserDefaults` keys onto the first board (by `createdAt`) so 0.3.x users keep their preferences. Guarded by `task.boardDefaultsMigrated` so it never re-runs.
+
+### Notifications
+
+- `NotificationService.schedule(for:)` reads `task.board?.reminderMinutesOfDay` instead of the deleted global UserDefaults key, falling back to 9 AM when the board reference is nil.
+
+### Multi-board import / export
+
+- **New wire format**: `MultiBoardExportPayload { version: 2, exportedAt, boards: [BoardExportEntry] }`. Each `BoardExport` carries its per-board prefs.
+- **Legacy v1 single-board exports** still decode — wrapped into a one-entry `boards` array.
+- **Reset All Data** wipes every board, clears the active-board UserDefaults key, then re-seeds the three defaults.
+- **Board match is ID-only** for imports (no "reuse first existing board" fallback that 0.3.x had). Group/tag merge is ID → same-board-name → insert, scoped to each board.
+
+### Widget — per-widget board configuration
+
+- Converted `UpcomingTasksWidget` from `StaticConfiguration` to `AppIntentConfiguration` with a new `BoardConfigurationIntent` (`@Parameter var board: BoardEntity?`, where nil = All Boards).
+- `BoardEntity` + `BoardEntityQuery` populate the widget edit picker by reading a new `BoardListEntry[]` written to the App Group every time the upcoming snapshot is rewritten.
+- `UpcomingSnapshotEntry` and the widget's `WidgetUpcomingEntry` gained `boardID`, `boardEmoji`, `boardTitle`. The widget UI shows the board emoji on each row when "All Boards" is configured; the header shows the chosen board's emoji + title when a specific board is selected.
+- Snapshot is rewritten on board create / rename / icon change / delete in addition to the existing task-change triggers.
+
+### Bottom nav
+
+- New **folder** circle button (`folder.fill`) between the search field and the gear, opens the board switcher.
+- Long-press on the `+` button (which previously was a route to create a board) was removed — board creation goes through the switcher's **Add** button.
+
+### Testdata
+
+- `TestData/testdata.json` regenerated for the three default boards (125 tasks each) with realistic date distribution (overdue / today / this week / later this month) and notes/reminder/tag mixes. Preserves board / group / tag IDs so re-imports update in place.
+
+## 0.3.0 (build 2) — 2026-05-20
+
+Notion-style task editor redesign and global toolbar/calendar polish.
+
+### Task detail screen — Notion-style flat redesign
+
+- **Replaced the four-card layout** (title / properties / notes / delete) with a single flat surface on `Color(.systemBackground)`. No more `taskCardBackground()` wrappers in the editor.
+- **Title** is now a large bold `TextField` (`.largeTitle`, rounded) sitting directly on the surface — no card.
+- **Properties** rewritten as compact rows: 16 pt secondary-gray SF Symbol + 120 pt label column + value. 42 pt min height (down from 64–70 pt). Five rows: Status, Tags, Working, Due Date, Reminder.
+- **Pastel pill values** for Status (group capsule with dot + name) and Tags (reuses `TagChip`); "Empty" gray placeholder when unset.
+- **Date tinting** in the editor mirrors `TaskCardView`: working/due dates render blue when `startOfDay(date) > today`, red when today or past.
+- **Reminder anchor**: when `hasReminder` is on, the alarm icon (`alarm` SF Symbol) appears on whichever row matches `TaskItem.primaryReminderDate` — i.e., the earlier of `workingStart` and `dueDate`. A new `reminderAnchor` computed prop in `TaskDetailView` mirrors that logic so the badge can never drift from where the notification actually fires.
+- **Working date range** wraps onto two explicit lines (`May 19, 2026 →\n May 22, 2026`) inside the editor. A private `workingDateDisplay(start:end:)` injects the `\n` so the shared `TaskDateFormat.formatRange` and the board card behavior are unaffected.
+- **Alarm icon** sits at the trailing edge of its row (pushed by `Spacer(minLength: 8)`) and vertically centers against the multi-line date text via `HStack(alignment: .center)`.
+- **Toggle rows** (Reminder, End Date) right-align their `Toggle` via a new `valueAlignment:` parameter on `propertyRow`. Text values still left-align at the 120 pt column.
+- **Delete moved out of the toolbar** and onto a flat full-width red button at the very bottom of the scroll content. Pinned to bottom when notes are short; flows naturally below the notes when they grow. Uses `GeometryReader` + `.frame(minHeight: proxy.size.height)` on the inner `VStack` and `Spacer(minLength: 24)` so the button never floats above content.
+
+### Date picker sheets match the new editor
+
+- Working Date / Due Date sheets switched from `Color(.systemGroupedBackground)` + cards to flat `Color(.systemBackground)`. Calendar sits naked in the scroll content.
+- **End Date toggle** now uses the same `propertyRow` helper as the Reminder row (small gray icon, 120 pt label column, trailing `Toggle`). The old purple-tile + headline pattern was retired.
+- Layout padding aligned with the main editor: 20 pt horizontal, 8 pt top, 24 pt bottom.
+
+### Calendar picker resizing + Today button
+
+- Day-cell metrics bumped to match the Coin project: `dayCellHeight` 44 → 50, endpoint backgrounds 38×38 → 44×44, day-number font 16 → 18, corner radius 11 → 12, range-strip height 34 → 40. The "today" outline opacity / lineWidth nudged up (0.55 → 0.7, 1.4 → 1.5) so the ring reads clearly.
+- **New `Today` button** in the header, sitting to the left of the prev-month chevron. Tapping jumps `visibleMonthStart` to today's month and sets the selection — in single mode this selects today, in range mode it sets `start = today` and clears the `end`. Disabled when today falls outside `minimumDate` / `maximumDate`.
+
+### Sheet detents
+
+- Add Task, Edit Task, Working Date, and Due Date sheets all open at **60%** (`[.fraction(0.6), .large]`) with a visible drag indicator. The previous `[.medium, .large]` default meant tasks without notes wasted vertical space on first present; users can still pull up to large when they want the full canvas.
+
+### Toolbar button weight cleanup (project-wide)
+
+- All trailing toolbar buttons (`Done` / `Save` / `Add`) stripped of `.fontWeight(.bold)` so they match the leading `Cancel` button in size and rendering. **23 buttons across 13 files**: AppearanceView (×7), AboutSheets (×5), TagPickerSheet (×2), TaskDetailView (×3), SettingsView, DefaultStatusPickerSheet, ManageTagsView, CardOrderPickerSheet, IconPickerSheet, ManualControlSheet, BoardIconPickerSheet, GroupMenuSheet, StatusPickerSheet (×1 each).
+- iOS convention is bold-primary in toolbars, but in this app the bolder weight made paired Cancel/Done look mismatched in height. Going uniform — the disabled-state tint and the action color still distinguish the primary action.
+- Body-style CTAs (`Add Tag`, `Add Group`, the bottom `Delete Task`) keep their bold weight — they aren't toolbar siblings.
+
+### Tag chip + property row text sizing
+
+- `TagChip` (non-compact branch only) bumped from `.subheadline.weight(.semibold)` / 10/4 padding / r7 to `.body.weight(.semibold)` / 11/5 padding / r8. Affects the Task detail tag row and the Manage Tags settings list; board card tags use `compact: true` and are unchanged.
+- Property row labels and values bumped from `.subheadline` (~15 pt) to `.body` (~17 pt). Icons 14 → 16 pt; row HStack spacing 10 → 12; label column 110 → 120 pt to fit "Due Date" at body size; row min height 36 → 42; inline alarm icon 13 → 15 pt; status pill dot 8 → 9 pt with bumped padding.
+
 ## 0.2.0 (build 2) — 2026-05-19
 
 Customization, reminders, and drag-and-drop overhaul.

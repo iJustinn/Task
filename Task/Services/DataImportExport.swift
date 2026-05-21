@@ -1,9 +1,14 @@
 import Foundation
 import SwiftData
 
-struct BoardExportPayload: Codable {
-    var version: Int = 1
+/// v2 wire format. Backward-compat with v1 single-board exports — see `decodePayload`.
+struct MultiBoardExportPayload: Codable {
+    var version: Int = 2
     var exportedAt: Date = Date()
+    var boards: [BoardExportEntry]
+}
+
+struct BoardExportEntry: Codable {
     var board: BoardExport
     var groups: [GroupExport]
     var tags: [TagExport]
@@ -15,6 +20,11 @@ struct BoardExport: Codable {
     var title: String
     var subtitle: String
     var iconEmoji: String?
+    var sortIndex: Int?
+    var defaultGroupID: String?
+    var cardSortFieldRaw: String?
+    var cardSortDirectionRaw: String?
+    var reminderMinutesOfDay: Int?
     var createdAt: Date
     var updatedAt: Date
 }
@@ -64,11 +74,74 @@ struct TaskExport: Codable {
     var workingEnd: Date?
     var dueDate: Date?
     var hasReminder: Bool
+    var repeatRule: String?
     var sortIndex: Int
     var createdAt: Date
     var updatedAt: Date
     var groupID: UUID?
     var tagIDs: [UUID]
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, notes, workingStart, workingEnd, dueDate, hasReminder
+        case repeatRule, sortIndex, createdAt, updatedAt, groupID, tagIDs
+    }
+
+    init(
+        id: UUID,
+        title: String,
+        notes: String,
+        workingStart: Date?,
+        workingEnd: Date?,
+        dueDate: Date?,
+        hasReminder: Bool,
+        repeatRule: String?,
+        sortIndex: Int,
+        createdAt: Date,
+        updatedAt: Date,
+        groupID: UUID?,
+        tagIDs: [UUID]
+    ) {
+        self.id = id
+        self.title = title
+        self.notes = notes
+        self.workingStart = workingStart
+        self.workingEnd = workingEnd
+        self.dueDate = dueDate
+        self.hasReminder = hasReminder
+        self.repeatRule = repeatRule
+        self.sortIndex = sortIndex
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.groupID = groupID
+        self.tagIDs = tagIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        title = try c.decode(String.self, forKey: .title)
+        notes = try c.decode(String.self, forKey: .notes)
+        workingStart = try c.decodeIfPresent(Date.self, forKey: .workingStart)
+        workingEnd = try c.decodeIfPresent(Date.self, forKey: .workingEnd)
+        dueDate = try c.decodeIfPresent(Date.self, forKey: .dueDate)
+        hasReminder = try c.decode(Bool.self, forKey: .hasReminder)
+        repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule)
+        sortIndex = try c.decode(Int.self, forKey: .sortIndex)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        updatedAt = try c.decode(Date.self, forKey: .updatedAt)
+        groupID = try c.decodeIfPresent(UUID.self, forKey: .groupID)
+        tagIDs = try c.decode([UUID].self, forKey: .tagIDs)
+    }
+}
+
+/// Legacy v1 wire format. Read-only — never emitted by current code.
+private struct LegacySingleBoardPayload: Codable {
+    var version: Int = 1
+    var exportedAt: Date = Date()
+    var board: BoardExport
+    var groups: [GroupExport]
+    var tags: [TagExport]
+    var tasks: [TaskExport]
 }
 
 struct ImportResult {
@@ -96,87 +169,143 @@ enum DataImportExport {
     @MainActor
     static func exportData(context: ModelContext) -> Data? {
         let boards = (try? context.fetch(FetchDescriptor<Board>())) ?? []
-        guard let board = boards.first else { return nil }
+        guard !boards.isEmpty else { return nil }
 
-        let groups: [GroupExport] = board.orderedGroups.map { g in
-            GroupExport(id: g.id, name: g.name, colorKey: g.colorKeyRaw, sortIndex: g.sortIndex, createdAt: g.createdAt)
-        }
-        let tags: [TagExport] = board.orderedTags.map { t in
-            TagExport(id: t.id, name: t.name, colorKey: t.colorKeyRaw, sortIndex: t.sortIndex, createdAt: t.createdAt)
-        }
-        let tasks: [TaskExport] = (board.tasks ?? []).map { task in
-            TaskExport(
-                id: task.id,
-                title: task.title,
-                notes: task.notes,
-                workingStart: task.workingStart,
-                workingEnd: task.workingEnd,
-                dueDate: task.dueDate,
-                hasReminder: task.hasReminder,
-                sortIndex: task.sortIndex,
-                createdAt: task.createdAt,
-                updatedAt: task.updatedAt,
-                groupID: task.group?.id,
-                tagIDs: (task.tags ?? []).map(\.id)
+        let sortedBoards = boards.sorted { $0.sortIndex < $1.sortIndex }
+        let entries = sortedBoards.map { board -> BoardExportEntry in
+            let groups: [GroupExport] = board.orderedGroups.map { g in
+                GroupExport(id: g.id, name: g.name, colorKey: g.colorKeyRaw, sortIndex: g.sortIndex, createdAt: g.createdAt)
+            }
+            let tags: [TagExport] = board.orderedTags.map { t in
+                TagExport(id: t.id, name: t.name, colorKey: t.colorKeyRaw, sortIndex: t.sortIndex, createdAt: t.createdAt)
+            }
+            let tasks: [TaskExport] = (board.tasks ?? []).map { task in
+                TaskExport(
+                    id: task.id,
+                    title: task.title,
+                    notes: task.notes,
+                    workingStart: task.workingStart,
+                    workingEnd: task.workingEnd,
+                    dueDate: task.dueDate,
+                    hasReminder: task.hasReminder,
+                    repeatRule: task.repeatRuleRaw.isEmpty ? nil : task.repeatRuleRaw,
+                    sortIndex: task.sortIndex,
+                    createdAt: task.createdAt,
+                    updatedAt: task.updatedAt,
+                    groupID: task.group?.id,
+                    tagIDs: (task.tags ?? []).map(\.id)
+                )
+            }
+            return BoardExportEntry(
+                board: BoardExport(
+                    id: board.id,
+                    title: board.title,
+                    subtitle: board.subtitle,
+                    iconEmoji: board.iconEmoji,
+                    sortIndex: board.sortIndex,
+                    defaultGroupID: board.defaultGroupID,
+                    cardSortFieldRaw: board.cardSortFieldRaw,
+                    cardSortDirectionRaw: board.cardSortDirectionRaw,
+                    reminderMinutesOfDay: board.reminderMinutesOfDay,
+                    createdAt: board.createdAt,
+                    updatedAt: board.updatedAt
+                ),
+                groups: groups,
+                tags: tags,
+                tasks: tasks
             )
         }
 
-        let payload = BoardExportPayload(
-            board: BoardExport(
-                id: board.id,
-                title: board.title,
-                subtitle: board.subtitle,
-                iconEmoji: board.iconEmoji,
-                createdAt: board.createdAt,
-                updatedAt: board.updatedAt
-            ),
-            groups: groups,
-            tags: tags,
-            tasks: tasks
-        )
-
+        let payload = MultiBoardExportPayload(boards: entries)
         return try? makeEncoder().encode(payload)
+    }
+
+    private static func decodePayload(_ data: Data) -> MultiBoardExportPayload? {
+        let decoder = makeDecoder()
+        if let multi = try? decoder.decode(MultiBoardExportPayload.self, from: data), !multi.boards.isEmpty {
+            return multi
+        }
+        if let legacy = try? decoder.decode(LegacySingleBoardPayload.self, from: data) {
+            return MultiBoardExportPayload(
+                version: 2,
+                exportedAt: legacy.exportedAt,
+                boards: [BoardExportEntry(
+                    board: legacy.board,
+                    groups: legacy.groups,
+                    tags: legacy.tags,
+                    tasks: legacy.tasks
+                )]
+            )
+        }
+        return nil
     }
 
     @MainActor
     @discardableResult
     static func importData(_ data: Data, context: ModelContext) async -> ImportResult {
-        guard let payload = try? makeDecoder().decode(BoardExportPayload.self, from: data) else {
+        guard let payload = decodePayload(data) else {
             return .failure
         }
 
-        // Resolve target board: prefer same-ID match, else reuse the existing singleton, else create.
+        var orphanTasks = 0
+        var orphanTagRefs = 0
+        var processed = 0
+
+        for entry in payload.boards {
+            let (oTasks, oTagRefs) = await mergeBoard(entry, into: context)
+            orphanTasks += oTasks
+            orphanTagRefs += oTagRefs
+            processed += entry.tasks.count
+            if processed % 50 >= 49 {
+                await Task.yield()
+            }
+        }
+
+        try? context.save()
+        UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        return ImportResult(success: true, orphanTasks: orphanTasks, orphanTagRefs: orphanTagRefs)
+    }
+
+    @MainActor
+    private static func mergeBoard(_ entry: BoardExportEntry, into context: ModelContext) async -> (orphanTasks: Int, orphanTagRefs: Int) {
+        let payloadBoard = entry.board
         let allBoards = (try? context.fetch(FetchDescriptor<Board>())) ?? []
+
         let board: Board
-        if let existing = allBoards.first(where: { $0.id == payload.board.id }) {
-            existing.title = payload.board.title
-            existing.subtitle = payload.board.subtitle
-            if let icon = payload.board.iconEmoji { existing.iconEmoji = icon }
-            existing.updatedAt = payload.board.updatedAt
-            board = existing
-        } else if let existing = allBoards.first {
-            existing.title = payload.board.title
-            existing.subtitle = payload.board.subtitle
-            if let icon = payload.board.iconEmoji { existing.iconEmoji = icon }
-            existing.updatedAt = payload.board.updatedAt
+        if let existing = allBoards.first(where: { $0.id == payloadBoard.id }) {
+            existing.title = payloadBoard.title
+            existing.subtitle = payloadBoard.subtitle
+            if let icon = payloadBoard.iconEmoji { existing.iconEmoji = icon }
+            if let s = payloadBoard.sortIndex { existing.sortIndex = s }
+            if let gid = payloadBoard.defaultGroupID { existing.defaultGroupID = gid }
+            if let sf = payloadBoard.cardSortFieldRaw { existing.cardSortFieldRaw = sf }
+            if let sd = payloadBoard.cardSortDirectionRaw { existing.cardSortDirectionRaw = sd }
+            if let m = payloadBoard.reminderMinutesOfDay { existing.reminderMinutesOfDay = m }
+            existing.updatedAt = payloadBoard.updatedAt
             board = existing
         } else {
-            let newBoard = Board(title: payload.board.title, subtitle: payload.board.subtitle)
-            newBoard.id = payload.board.id
-            if let icon = payload.board.iconEmoji { newBoard.iconEmoji = icon }
-            newBoard.createdAt = payload.board.createdAt
-            newBoard.updatedAt = payload.board.updatedAt
+            let newBoard = Board(title: payloadBoard.title, subtitle: payloadBoard.subtitle)
+            newBoard.id = payloadBoard.id
+            if let icon = payloadBoard.iconEmoji { newBoard.iconEmoji = icon }
+            newBoard.sortIndex = payloadBoard.sortIndex ?? ((allBoards.map(\.sortIndex).max() ?? -1) + 1)
+            if let gid = payloadBoard.defaultGroupID { newBoard.defaultGroupID = gid }
+            if let sf = payloadBoard.cardSortFieldRaw { newBoard.cardSortFieldRaw = sf }
+            if let sd = payloadBoard.cardSortDirectionRaw { newBoard.cardSortDirectionRaw = sd }
+            if let m = payloadBoard.reminderMinutesOfDay { newBoard.reminderMinutesOfDay = m }
+            newBoard.createdAt = payloadBoard.createdAt
+            newBoard.updatedAt = payloadBoard.updatedAt
             context.insert(newBoard)
             board = newBoard
         }
 
-        // Merge groups: prefer ID match, then name match (case-insensitive), else insert.
-        let existingGroups = (try? context.fetch(FetchDescriptor<BoardGroup>())) ?? []
+        // Existing groups/tags scoped to *this* board. Cross-board name matches are
+        // ignored on purpose — two boards may share a group called "Doing".
+        let existingGroups = (board.groups ?? [])
         var groupsByID: [UUID: BoardGroup] = Dictionary(uniqueKeysWithValues: existingGroups.map { ($0.id, $0) })
         var groupsByName: [String: BoardGroup] = Dictionary(uniqueKeysWithValues:
             existingGroups.map { ($0.name.lowercased(), $0) }
         )
-        for g in payload.groups {
+        for g in entry.groups {
             if let existing = groupsByID[g.id] {
                 existing.name = g.name
                 existing.colorKeyRaw = g.colorKey
@@ -184,7 +313,6 @@ enum DataImportExport {
                 existing.board = board
                 groupsByName[g.name.lowercased()] = existing
             } else if let existing = groupsByName[g.name.lowercased()] {
-                // Same-name match — collapse the imported group into the existing one.
                 existing.colorKeyRaw = g.colorKey
                 existing.sortIndex = g.sortIndex
                 existing.board = board
@@ -204,13 +332,12 @@ enum DataImportExport {
             }
         }
 
-        // Merge tags: prefer ID match, then name match (case-insensitive), else insert.
-        let existingTags = (try? context.fetch(FetchDescriptor<TaskTag>())) ?? []
+        let existingTags = (board.tags ?? [])
         var tagsByID: [UUID: TaskTag] = Dictionary(uniqueKeysWithValues: existingTags.map { ($0.id, $0) })
         var tagsByName: [String: TaskTag] = Dictionary(uniqueKeysWithValues:
             existingTags.map { ($0.name.lowercased(), $0) }
         )
-        for t in payload.tags {
+        for t in entry.tags {
             if let existing = tagsByID[t.id] {
                 existing.name = t.name
                 existing.colorKeyRaw = t.colorKey
@@ -237,14 +364,12 @@ enum DataImportExport {
             }
         }
 
-        // Merge tasks by ID. Orphan groupID falls back to the first known group so the
-        // task stays visible; orphan tagIDs are dropped and counted for the result alert.
         let fallbackGroup = board.orderedGroups.first
-        let existingTasks = (try? context.fetch(FetchDescriptor<TaskItem>())) ?? []
+        let existingTasks = (board.tasks ?? [])
         var tasksByID: [UUID: TaskItem] = Dictionary(uniqueKeysWithValues: existingTasks.map { ($0.id, $0) })
         var orphanTasks = 0
         var orphanTagRefs = 0
-        for (idx, t) in payload.tasks.enumerated() {
+        for (idx, t) in entry.tasks.enumerated() {
             let resolvedTags = t.tagIDs.compactMap { tagsByID[$0] }
             orphanTagRefs += (t.tagIDs.count - resolvedTags.count)
 
@@ -269,6 +394,7 @@ enum DataImportExport {
                 existing.workingEnd = t.workingEnd
                 existing.dueDate = t.dueDate
                 existing.hasReminder = t.hasReminder
+                existing.repeatRuleRaw = t.repeatRule ?? ""
                 existing.sortIndex = t.sortIndex
                 existing.updatedAt = t.updatedAt
                 existing.board = board
@@ -282,6 +408,7 @@ enum DataImportExport {
                 new.workingEnd = t.workingEnd
                 new.dueDate = t.dueDate
                 new.hasReminder = t.hasReminder
+                new.repeatRuleRaw = t.repeatRule ?? ""
                 new.createdAt = t.createdAt
                 new.updatedAt = t.updatedAt
                 new.board = board
@@ -294,16 +421,12 @@ enum DataImportExport {
             if task.hasReminder {
                 NotificationService.schedule(for: task)
             }
-            // Yield every 50 tasks so the import progress overlay can repaint on
-            // multi-thousand-task imports without freezing the UI.
             if idx % 50 == 49 {
                 await Task.yield()
             }
         }
 
-        try? context.save()
-        UpcomingSnapshotBuilder.writeSnapshot(from: context)
-        return ImportResult(success: true, orphanTasks: orphanTasks, orphanTagRefs: orphanTagRefs)
+        return (orphanTasks, orphanTagRefs)
     }
 
     @MainActor
@@ -319,6 +442,7 @@ enum DataImportExport {
             context.delete(board)
         }
         try? context.save()
+        UserDefaults.standard.removeObject(forKey: "task.activeBoardID")
         SwiftDataManager.ensureSeed(context: context)
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }

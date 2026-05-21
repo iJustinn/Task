@@ -127,9 +127,63 @@ Coin/Body's card-section visual language is in `Task/Components/`:
 
 Using these consistently across Settings, Manage Groups, Manage Tags, Task Detail, and the various sheets is what makes the app feel coherent.
 
-### Card style for detail forms
+### Notion-style detail form (0.3.0)
 
-`TaskDetailView` is built from four `taskCardBackground()` cards (title input / properties / notes / delete) on a `Color(.systemGroupedBackground)` background. **Don't use `Form` for the task detail** — `Form`'s built-in styling fights the card visual the rest of the app uses.
+`TaskDetailView` was rebuilt in 0.3.0 around a flat single-surface property list on `Color(.systemBackground)` — no more `taskCardBackground()` wrappers in the editor. Layout:
+
+- Large bold `TextField` as the title, sitting directly on the surface (not in a card).
+- A `propertyRow(icon:label:valueAlignment:value:)` helper renders five rows (Status / Tags / Working / Due Date / Reminder) as a 16 pt secondary-gray SF Symbol + 120 pt label column + value cell. 42 pt min height.
+- `valueAlignment: .trailing` (vs the `.leading` default) lets Toggle rows snap their control to the row's right edge while text values still left-align at the label column — the same helper covers both shapes.
+- Sub-sheets (Working Date, Due Date) reuse the same flat surface, the same `propertyRow` for the End Date toggle, and the unchanged `CalendarPicker` without any card around it.
+
+**Don't use `Form` for the task detail** — its built-in styling fights the rest of the app, and the property-row helper is small enough that hand-rolled HStacks are simpler than fighting Form. The earlier card-based design (`titleCard` / `propertiesCard` / `notesCard` / `deleteCard`) is gone; if you grep `taskCardBackground()` you should find it only in the Settings shell and the deeper Settings sheets.
+
+### Pin-to-bottom in a ScrollView (grow-with-content)
+
+The `Delete Task` button in `TaskDetailView` (edit mode) needed to sit at the bottom of the sheet when notes are short and float down with the notes when they grow. The trick is a `GeometryReader` around the `ScrollView` and a `.frame(minHeight: proxy.size.height)` on the inner `VStack`, plus a `Spacer(minLength: 24)` between the notes section and the delete button:
+
+```swift
+GeometryReader { proxy in
+    ScrollView {
+        VStack(alignment: .leading, spacing: 22) {
+            titleField
+            propertyList
+            Divider()
+            notesSection
+            if !isCreating {
+                Spacer(minLength: 24)
+                deleteButton
+            }
+        }
+        .padding(...)
+        .frame(minHeight: proxy.size.height, alignment: .topLeading)
+    }
+}
+```
+
+When the content's natural height is less than the viewport, `minHeight` stretches the VStack and the `Spacer` greedily eats the slack — delete ends up flush at the bottom. When the content overflows, `minHeight` is satisfied trivially, `Spacer` collapses to its 24 pt minimum, and the button scrolls with everything else. Avoid `safeAreaInset(edge: .bottom)` here — that *pins* the button to the bottom even while the content scrolls behind it, which is the opposite of what you want.
+
+### Mirroring model logic into the UI (reminderAnchor)
+
+`TaskItem.primaryReminderDate` returns `min(workingStart, dueDate)` when both are set — that's the date the `UNUserNotificationCenter` notification fires on. The editor's `alarm` badge has to land on the *same* row, or the UI lies about when the user will get pinged. Rather than recomputing the comparison ad hoc inside the row views, `TaskDetailView` has a `reminderAnchor: ReminderAnchor` computed prop that mirrors the model:
+
+```swift
+private var reminderAnchor: ReminderAnchor {
+    guard hasReminder else { return .none }
+    switch (workingStart, dueDate) {
+    case (nil, nil):    return .none
+    case (_, nil):      return .working
+    case (nil, _):      return .due
+    case let (w?, d?):  return w <= d ? .working : .due
+    }
+}
+```
+
+The working/due rows then each check `reminderAnchor == .working` / `.due` to decide whether to render the trailing alarm icon. If `primaryReminderDate`'s logic ever changes (e.g., always prefer due date), this is the one place to update — no risk of the badge and the actual notification drifting apart. **Reach for this pattern whenever UI affordances need to stay in lockstep with a model decision.**
+
+### Toolbar button weight consistency
+
+iOS convention bolds the trailing primary toolbar action (`.fontWeight(.bold)` on `Done` / `Save` / `Add`) and leaves the leading `Cancel` at default weight. In this app the visual mismatch was noticeable enough that 0.3.0 stripped the bold from all 23 trailing toolbar buttons (across 13 files) so paired Cancel/Done look identical. The disabled state and the action's blue tint still distinguish the primary action; that's enough emphasis here. Full-width *body* CTAs (`Add Tag`, `Add Group`, `Delete Task`) keep their bold weight — they aren't toolbar siblings and benefit from extra visual mass.
 
 ### Picker tiles
 
@@ -459,11 +513,76 @@ The model-level companion is `Board.orderedTags` sorting by `sortIndex` then `cr
 
 `Localizable.xcstrings` covers English and Simplified Chinese. New strings added via `String(localized: "…")` or plain `Text("…")` get auto-extracted on build thanks to `LOCALIZATION_PREFERS_STRING_CATALOGS = YES`. Don't manually edit the JSON unless adding translations.
 
+## Multi-board (0.4.0)
+
+### Default seed: three boards, not one
+
+`SwiftDataManager.defaultSeedBoards` lists the three boards a fresh install gets — `Personal 🏃`, `Study 🎓`, `Work 💼` — each created with the standard five groups (Waiting, Doing, Pending, Done, Archive) and no tags. The first entry becomes the initial active board. `ensureSeed` only runs when `boards` is empty, so existing installs are untouched on upgrade.
+
+### Per-board settings live on the `Board` model
+
+Default Status, Card Order, and Reminder Time were `UserDefaults`-scoped global preferences in 0.3.x. They are now `Board` fields (`defaultGroupID`, `cardSortFieldRaw`, `cardSortDirectionRaw`, `reminderMinutesOfDay`) so each board carries its own. All defaulted, no migration code needed.
+
+The one-shot `migrateLegacyBoardDefaultsIfNeeded` runs from `ensureSeed`; it reads the legacy `UserDefaults` keys (`task.defaultGroupID`, `task.cardSortField`, `task.cardSortDirection`, `task.reminderMinutesOfDay`) and copies them onto the first board (by `createdAt`), then flips `task.boardDefaultsMigrated` so it never re-fires. Users upgrading from 0.3.x keep their preferences on their existing board.
+
+`SettingsViewModel` only owns truly global preferences now (Theme, Language, Time Format, Text Size, Group Width, App Accent, App Icon). The per-board pickers (`DefaultStatusPickerSheet`, `CardOrderPickerSheet`, `ReminderTimePickerSheet`) take a `Board` and mutate it directly.
+
+### Active board tracking
+
+`RootView` keeps `@AppStorage("task.activeBoardID")` for the active board's UUID string. `activeBoard` resolves it against `@Query(sort: \Board.sortIndex)` and falls back to the first board if the stored id is missing/invalid. The board switcher writes a new id when the user picks a tile; deletion writes the next-remaining-board id.
+
+`ProjectHeaderView`'s `@State` title/subtitle drafts need a `.onChange(of: board.id)` to re-sync when the active board changes — without it, switching boards keeps the prior board's draft strings on screen.
+
+### `BoardSwitcherView` — drag reorder + drag-to-delete drop zone
+
+The switcher is a 60% sheet (`[.fraction(0.6), .large]`) with a 3-column `GridTile` grid (matches the other "choose" picker screens). Long-press a tile to drag-reorder — same `.draggable` + per-tile `DropDelegate` pattern as `ManageGroupsView` / `ManageTagsView` / `ColumnView`. Reorder persists via `Board.sortIndex`.
+
+The trash drop zone slides up from the bottom edge while a drag is in progress. Two pitfalls fixed during implementation:
+
+1. **`.scaleEffect` on hover makes the drop area "shake".** `scaleEffect(1.03)` changes the drop target's hit-testing geometry, which causes SwiftUI to flip-flop between `dropEntered` and `dropExited`. Each toggle fires the haptic again, producing a vibrating wobble. Drop the scale; use only background tint and stroke for hover feedback. Also guard the haptic with `guard !hovered else { return }` in `dropEntered` so even spurious double-enters only fire once per genuine entry.
+
+2. **Outer `isTargeted` flickers as the drag preview crosses geometry boundaries.** Using raw `dragOverScreen` (the `isTargeted` binding on the outer `.onDrop`) to gate the trash zone caused the zone to repeatedly slide in/out during a single drag. Fix: debounce the *hide* by 300 ms via an `onChange(of: dragOverScreen)` task — show is immediate on the first `true`, hide waits for stable `false`. Brief flips are absorbed.
+
+### Don't gate UI on the `.draggable` side-effect state
+
+`beginDrag` schedules `draggingBoardID = id` via `DispatchQueue.main.async` and the `@autoclosure` of `.draggable` is re-invoked across the drag lifecycle, sometimes after the drop. If `draggingBoardID` gates a visible affordance (like the trash zone), the affordance can reappear briefly after a drop. Gate visibility on the outer `isTargeted` instead (`dragOverScreen`) — that's authoritative for "a drag is actually over this view".
+
+### Outer `.onDrop` covers the whole sheet, not just the ScrollView
+
+`isTargeted` and the fallback drop closure both need to fire wherever the user might drop. Put the outer `.onDrop(of:isTargeted:perform:)` on the ZStack-level container (after `Color(.systemGroupedBackground).ignoresSafeArea().contentShape(Rectangle())`). Putting it on the `ScrollView` only leaves dead zones (e.g. the bottom padding area) where neither `isTargeted` updates nor the fallback fires.
+
+### `isTargeted: Binding<Bool>?` perform-closure returns `false`
+
+The outer drop on the switcher container is purely a state tracker + fallback cleanup. Returning `false` from its perform closure lets SwiftUI fall through to any inner delegate that actually claimed the drop (tile reorder, trash zone delete). Inner delegates handle the real work; the outer just gets to clear `draggingBoardID` and the hover state when nothing inner claims it.
+
+### Multi-board widget configuration
+
+`UpcomingTasksWidget` switched from `StaticConfiguration` to `AppIntentConfiguration(intent: BoardConfigurationIntent.self, provider:)`. The provider is now an `AppIntentTimelineProvider`. The intent has a single `@Parameter var board: BoardEntity?` — `nil` means "All Boards".
+
+`BoardEntity` / `BoardEntityQuery` populate the picker by reading a `BoardListEntry[]` from the App Group's shared defaults. The app writes this list (id + title + iconEmoji) every time it writes the upcoming snapshot, so the widget edit sheet always shows current boards.
+
+Each snapshot entry now carries `boardID`, `boardEmoji`, and `boardTitle`. The provider filters entries by the configured board (or returns all). When "All Boards" is selected, the widget UI shows the board emoji on each row for disambiguation.
+
+### Multi-board import/export
+
+`MultiBoardExportPayload { version: 2, exportedAt, boards: [BoardExportEntry] }` is the on-disk format. The decoder tries v2 first, falls back to a legacy v1 single-board payload wrapped into a one-entry `boards` array. Always emit v2 going forward.
+
+Board match is ID-only (no "reuse first existing board" fallback like v1 had — that doesn't make sense with multiple boards). Group and Tag matching stays ID → same-board-name → insert, scoped to each board so two boards can both have a "Doing" group without collision.
+
+### Drag-and-drop reorder pattern checklist (for future "pick from a grid of cards" screens)
+
+- `@State draggingID: UUID?` + `@State dragSessionEnded: Bool` (0.5 s post-drop guard against `beginDrag` re-firing).
+- Outer fallback `.onDrop(of:isTargeted:perform:)` on the screen-spanning container; bind `isTargeted` to your `dragOverScreen` state and return `false` from perform so inner delegates win.
+- Each item: `.onTapGesture { pick(item) }` + `.draggable(beginDrag(of: item)) { preview }` + `.onDrop(of:..., delegate: ReorderDelegate(...))`.
+- Reorder delegate returns `DropProposal(operation: .move)`, updates `sortIndex` in `dropEntered` for live shuffling, saves in `performDrop`.
+- Drag preview shape matches the resting card via `.contentShape(.dragPreview, RoundedRectangle(cornerRadius: 22, style: .continuous))`.
+- For any UI gated on the drag (drop zones, status banners): debounce the hide so geometry-boundary flicker doesn't show up as shake.
+
 ## Things to do later
 
 - **iCloud sync** — enable `cloudKitDatabase: .private` on `ModelConfiguration` and add the CloudKit entitlement. Schema is already compatible.
-- **Multi-board** — the data model is board-scoped from day one, so swapping `RootView`'s single-board lookup for a board picker is a UI change only.
 - **Custom group icons / tag icons** — currently colored dots / tag glyphs. Could add a per-group emoji like the board's.
-- **Per-task time override** — Reminder Time is now app-wide (Settings → Default → Reminder Time). Could add an optional per-task override that falls back to the setting when unset.
+- **Per-task time override** — Reminder Time is now per-board (Settings → Default → Reminder Time). Could add an optional per-task override that falls back to the board's setting when unset.
 - **Widget interactivity** — tapping the widget could deep-link to the relevant task via App Intents.
 - **Watch app** — board snapshot via the same App Group JSON would make a Watch complication trivial.
+- **Cross-board move** — moving a task between boards (currently tasks are pinned to their board).

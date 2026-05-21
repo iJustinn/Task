@@ -10,15 +10,17 @@ final class TaskTests: XCTestCase {
         return try ModelContainer(for: schema, configurations: [config])
     }
 
-    func testSeedCreatesSixDefaultGroups() throws {
+    func testSeedCreatesThreeDefaultBoards() throws {
         let container = try makeContainer()
         let context = container.mainContext
         SwiftDataManager.ensureSeed(context: context)
-        let boards = try context.fetch(FetchDescriptor<Board>())
-        XCTAssertEqual(boards.count, 1)
-        let board = try XCTUnwrap(boards.first)
-        XCTAssertEqual(board.orderedGroups.count, 6)
-        XCTAssertEqual(board.orderedGroups.map(\.name), ["Daily", "Weekly", "Waiting", "Doing", "Pending", "Done"])
+        let boards = try context.fetch(FetchDescriptor<Board>()).sorted { $0.sortIndex < $1.sortIndex }
+        XCTAssertEqual(boards.map(\.title), ["Personal", "Study", "Work"])
+        XCTAssertEqual(boards.map(\.iconEmoji), ["🏃", "🎓", "💼"])
+        for board in boards {
+            XCTAssertEqual(board.orderedGroups.map(\.name), ["Waiting", "Doing", "Pending", "Done", "Archive"])
+            XCTAssertTrue(board.orderedTags.isEmpty, "Default boards should have no preset tags")
+        }
     }
 
     func testTaskWorkingRangeDetection() throws {

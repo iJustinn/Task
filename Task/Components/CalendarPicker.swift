@@ -13,7 +13,7 @@ struct CalendarPicker: View {
     @State private var visibleMonthStart: Date
 
     private let calendar: Calendar = .current
-    private let dayCellHeight: CGFloat = 44
+    private let dayCellHeight: CGFloat = 50
 
     init(selectedDate: Binding<Date?>, minimumDate: Date? = nil, maximumDate: Date? = nil) {
         self.mode = .single(selectedDate)
@@ -71,6 +71,7 @@ struct CalendarPicker: View {
                 .lineLimit(1)
             Spacer()
             HStack(spacing: 8) {
+                todayButton
                 monthButton(systemName: "chevron.left", isEnabled: canMovePrev) { moveMonth(by: -1) }
                 monthButton(systemName: "chevron.right", isEnabled: canMoveNext) { moveMonth(by: 1) }
             }
@@ -104,6 +105,36 @@ struct CalendarPicker: View {
         .disabled(!isEnabled)
     }
 
+    private var todayButton: some View {
+        let enabled = isSelectable(Date())
+        return Button {
+            guard enabled else { return }
+            jumpToToday()
+        } label: {
+            Text("Today")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(enabled ? .primary : .secondary.opacity(0.35))
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .background(Color.primary.opacity(enabled ? 0.09 : 0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func jumpToToday() {
+        let today = calendar.startOfDay(for: Date())
+        visibleMonthStart = Self.monthStart(for: today)
+        switch mode {
+        case .single(let binding):
+            binding.wrappedValue = today
+        case .range(let startBinding, let endBinding):
+            startBinding.wrappedValue = today
+            endBinding.wrappedValue = nil
+        }
+    }
+
     // MARK: - Day cells
 
     @ViewBuilder
@@ -130,7 +161,7 @@ struct CalendarPicker: View {
             stripBackground(state: state)
             endpointBackground(state: state, isToday: isToday, isEnabled: isEnabled)
             Text("\(day)")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(textColor(state: state, isEnabled: isEnabled))
         }
         .frame(maxWidth: .infinity)
@@ -145,29 +176,29 @@ struct CalendarPicker: View {
             Rectangle()
                 .fill(state.hasRightStrip ? stripColor : Color.clear)
         }
-        .frame(height: 34)
+        .frame(height: 40)
     }
 
     @ViewBuilder
     private func endpointBackground(state: CellState, isToday: Bool, isEnabled: Bool) -> some View {
         switch state {
         case .none where isEnabled:
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.primary.opacity(0.08))
-                .frame(width: 38, height: 38)
+                .frame(width: 44, height: 44)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(isToday ? Color.accentColor.opacity(0.55) : Color.clear, lineWidth: 1.4)
-                        .frame(width: 38, height: 38)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isToday ? Color.accentColor.opacity(0.7) : Color.clear, lineWidth: 1.5)
+                        .frame(width: 44, height: 44)
                 )
         case .none:
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
-                .frame(width: 38, height: 38)
+                .frame(width: 44, height: 44)
         case .singleSelected, .start, .end:
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.accentColor)
-                .frame(width: 38, height: 38)
+                .frame(width: 44, height: 44)
         case .between:
             EmptyView()
         }

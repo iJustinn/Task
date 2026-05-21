@@ -4,18 +4,21 @@ import SwiftData
 struct RootView: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
-    @Query private var boards: [Board]
+    @Query(sort: \Board.sortIndex) private var boards: [Board]
+
+    @AppStorage("task.activeBoardID") private var activeBoardIDString: String = ""
 
     @State private var searchText: String = ""
     @State private var searchFocused: Bool = false
     @State private var showingAddTask: Bool = false
     @State private var showingSettings: Bool = false
+    @State private var showingBoardSwitcher: Bool = false
     @State private var editingTaskFromSearch: TaskItem?
     @State private var showingInMemoryWarning: Bool = false
 
     var body: some View {
         Group {
-            if let board = boards.first {
+            if let board = activeBoard {
                 content(board: board)
             } else {
                 ProgressView()
@@ -30,6 +33,14 @@ struct RootView: View {
         }
     }
 
+    private var activeBoard: Board? {
+        if let uuid = UUID(uuidString: activeBoardIDString),
+           let match = boards.first(where: { $0.id == uuid }) {
+            return match
+        }
+        return boards.first
+    }
+
     private func surfaceInMemoryWarningIfNeeded() {
         if UserDefaults.standard.bool(forKey: SwiftDataManager.inMemoryFallbackKey) {
             showingInMemoryWarning = true
@@ -40,33 +51,42 @@ struct RootView: View {
     private func content(board: Board) -> some View {
         ZStack {
             BoardView(board: board)
+                .id(board.id)
                 .opacity(isSearchActive ? 0 : 1)
                 .allowsHitTesting(!isSearchActive)
+                .transition(.opacity)
 
             if isSearchActive {
-                SearchView(board: board, queryText: searchText) { task in
+                SearchView(boards: boards, activeBoardID: board.id, queryText: searchText) { task in
                     editingTaskFromSearch = task
                 }
                 .transition(.opacity)
             }
         }
         .animation(.easeInOut(duration: 0.18), value: isSearchActive)
+        .animation(.easeInOut(duration: 0.32), value: board.id)
         .overlay(alignment: .bottom) {
             BottomNavBar(
                 searchText: $searchText,
                 onAdd: { showingAddTask = true },
+                onSwitchBoard: { showingBoardSwitcher = true },
                 onSettings: { showingSettings = true },
                 onFocusChange: { focused in searchFocused = focused }
             )
         }
         .sheet(isPresented: $showingAddTask) {
-            TaskDetailView(board: board, mode: .create(defaultGroup: settings.defaultGroup(in: board)))
+            TaskDetailView(board: board, mode: .create(defaultGroup: board.defaultGroup))
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(board: board)
         }
+        .sheet(isPresented: $showingBoardSwitcher) {
+            BoardSwitcherView(activeBoardID: board.id) { picked in
+                activeBoardIDString = picked.uuidString
+            }
+        }
         .sheet(item: $editingTaskFromSearch) { task in
-            TaskDetailView(board: board, mode: .edit(task))
+            TaskDetailView(board: task.board ?? board, mode: .edit(task))
         }
         .task {
             await NotificationService.requestAuthorizationIfNeeded()

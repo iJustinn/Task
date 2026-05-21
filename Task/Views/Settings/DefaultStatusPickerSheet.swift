@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DefaultStatusPickerSheet: View {
     let board: Board
-    @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
     private let columns = [
@@ -19,7 +19,9 @@ struct DefaultStatusPickerSheet: View {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(board.orderedGroups, id: \.id) { group in
                             Button {
-                                settings.defaultGroupID = group.id.uuidString
+                                board.defaultGroupID = group.id.uuidString
+                                board.updatedAt = Date()
+                                try? context.save()
                                 dismiss()
                             } label: {
                                 GridTile(
@@ -27,7 +29,7 @@ struct DefaultStatusPickerSheet: View {
                                     subtitle: "\(group.orderedTasks.count) tasks",
                                     dotColor: group.colorKey.dot,
                                     tintColor: group.colorKey.foreground,
-                                    isSelected: settings.defaultGroup(in: board)?.id == group.id
+                                    isSelected: board.defaultGroup?.id == group.id
                                 )
                             }
                             .buttonStyle(.plain)
@@ -45,7 +47,7 @@ struct DefaultStatusPickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }.fontWeight(.bold)
+                    Button("Done") { dismiss() }
                 }
             }
         }

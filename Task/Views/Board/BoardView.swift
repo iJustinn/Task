@@ -16,31 +16,36 @@ struct BoardView: View {
         VStack(spacing: 0) {
             ProjectHeaderView(board: board)
             Divider().opacity(0.4)
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                HStack(alignment: .top, spacing: 12) {
-                    ForEach(board.orderedGroups, id: \.id) { group in
-                        ColumnView(
-                            group: group,
-                            width: settings.columnWidth.width,
-                            draggingTaskID: $draggingTaskID,
-                            dragSessionEnded: $dragSessionEnded,
-                            refreshToken: refreshToken,
-                            onTapTask: { task in editingTask = task },
-                            onMenuTap: { editingGroup = group },
-                            onPlaceTask: { task, index, commit in placeTask(task, in: group, atIndex: index, commit: commit) },
-                            onGroupReorder: { dragged in reorderGroup(dragged, toPositionOf: group) }
-                        )
+            GeometryReader { geo in
+                ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(board.orderedGroups, id: \.id) { group in
+                            ColumnView(
+                                group: group,
+                                width: settings.columnWidth.width,
+                                sortField: board.cardSortField,
+                                sortDirection: board.cardSortDirection,
+                                draggingTaskID: $draggingTaskID,
+                                dragSessionEnded: $dragSessionEnded,
+                                refreshToken: refreshToken,
+                                onTapTask: { task in editingTask = task },
+                                onMenuTap: { editingGroup = group },
+                                onPlaceTask: { task, index, commit in placeTask(task, in: group, atIndex: index, commit: commit) },
+                                onGroupReorder: { dragged in reorderGroup(dragged, toPositionOf: group) }
+                            )
+                        }
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 112)
+                    .frame(minHeight: geo.size.height, alignment: .topLeading)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 112)
+                .refreshable {
+                    try? await Task.sleep(nanoseconds: 200_000_000)
+                    refreshToken &+= 1
+                }
             }
             .ignoresSafeArea(.container, edges: .bottom)
-            .refreshable {
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                refreshToken &+= 1
-            }
         }
         .sheet(item: $editingGroup) { group in
             GroupMenuSheet(group: group, board: board)

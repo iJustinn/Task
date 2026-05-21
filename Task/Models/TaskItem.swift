@@ -12,6 +12,7 @@ final class TaskItem {
     var dueDate: Date?
 
     var hasReminder: Bool = false
+    var repeatRuleRaw: String = ""
 
     var sortIndex: Int = 0
     var createdAt: Date = Date()
@@ -51,6 +52,11 @@ final class TaskItem {
             return min(w, d)
         }
         return dueDate ?? workingEnd ?? workingStart
+    }
+
+    var repeatRule: RepeatRule {
+        get { RepeatRule(rawValue: repeatRuleRaw) ?? .none }
+        set { repeatRuleRaw = newValue.rawValue }
     }
 
     func touch() {

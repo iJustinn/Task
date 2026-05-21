@@ -1,16 +1,17 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 struct UpcomingTasksWidget: Widget {
     let kind: String = "UpcomingTasksWidget"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: UpcomingTasksProvider()) { entry in
+        AppIntentConfiguration(kind: kind, intent: BoardConfigurationIntent.self, provider: UpcomingTasksProvider()) { entry in
             UpcomingTasksWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Upcoming Tasks")
-        .description("See your next tasks with reminders set.")
+        .description("See your next tasks with reminders set. Choose a board or show all of them.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -18,6 +19,10 @@ struct UpcomingTasksWidget: Widget {
 struct UpcomingTasksWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: UpcomingTasksEntry
+
+    private var showBoardBadge: Bool {
+        entry.configuration.board == nil
+    }
 
     var body: some View {
         switch family {
@@ -77,10 +82,18 @@ struct UpcomingTasksWidgetView: View {
         HStack(spacing: 6) {
             Image(systemName: "checklist")
                 .foregroundStyle(.tint)
-            Text("Upcoming")
+            Text(headerTitle)
                 .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
             Spacer()
         }
+    }
+
+    private var headerTitle: String {
+        if let board = entry.configuration.board {
+            return "\(board.iconEmoji) \(board.title)"
+        }
+        return "Upcoming"
     }
 
     @ViewBuilder
@@ -90,9 +103,15 @@ struct UpcomingTasksWidgetView: View {
                 .fill(task.widgetColor.hue)
                 .frame(width: 6, height: 6)
             VStack(alignment: .leading, spacing: 1) {
-                Text(task.title)
-                    .font(compact ? .caption.weight(.semibold) : .footnote.weight(.semibold))
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    if showBoardBadge, let emoji = task.boardEmoji, !emoji.isEmpty {
+                        Text(emoji)
+                            .font(compact ? .caption2 : .footnote)
+                    }
+                    Text(task.title)
+                        .font(compact ? .caption.weight(.semibold) : .footnote.weight(.semibold))
+                        .lineLimit(1)
+                }
                 if let date = task.primaryDate {
                     Text(date, style: .date)
                         .font(.caption2)

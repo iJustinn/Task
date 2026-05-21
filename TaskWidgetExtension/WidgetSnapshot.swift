@@ -27,6 +27,9 @@ struct WidgetUpcomingEntry: Codable, Identifiable {
     var workingEnd: Date?
     var groupName: String
     var groupColorKey: String
+    var boardID: UUID?
+    var boardEmoji: String?
+    var boardTitle: String?
 
     var primaryDate: Date? {
         dueDate ?? workingEnd ?? workingStart
@@ -42,9 +45,16 @@ struct WidgetUpcomingSnapshot: Codable {
     var updatedAt: Date = Date()
 }
 
+struct WidgetBoardListEntry: Codable, Identifiable {
+    var id: UUID
+    var title: String
+    var iconEmoji: String
+}
+
 enum WidgetSharedDefaults {
     static let appGroupIdentifier = "group.com.ijustin.task"
     static let upcomingSnapshotKey = "task.upcomingSnapshot"
+    static let boardListKey = "task.boardList"
 
     static func read() -> WidgetUpcomingSnapshot {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
@@ -54,5 +64,12 @@ enum WidgetSharedDefaults {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return (try? decoder.decode(WidgetUpcomingSnapshot.self, from: data)) ?? WidgetUpcomingSnapshot()
+    }
+
+    static func readBoardList() -> [WidgetBoardListEntry] {
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
+              let data = defaults.data(forKey: boardListKey) else { return [] }
+        let decoder = JSONDecoder()
+        return (try? decoder.decode([WidgetBoardListEntry].self, from: data)) ?? []
     }
 }

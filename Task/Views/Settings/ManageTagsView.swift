@@ -282,7 +282,7 @@ private struct TagEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") { save() }.fontWeight(.bold)
+                    Button("Save") { save() }
                 }
             }
             .onAppear {
