@@ -31,8 +31,10 @@ struct WidgetUpcomingEntry: Codable, Identifiable {
     var boardEmoji: String?
     var boardTitle: String?
 
+    /// Earliest set date so the widget row sorts and renders against whatever comes
+    /// next, matching the snapshot builder's inclusion logic.
     var primaryDate: Date? {
-        dueDate ?? workingEnd ?? workingStart
+        [workingStart, workingEnd, dueDate].compactMap { $0 }.min()
     }
 
     var widgetColor: WidgetColorKey {

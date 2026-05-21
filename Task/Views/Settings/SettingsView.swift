@@ -12,19 +12,18 @@ struct SettingsView: View {
     @State private var activeSheet: AppearanceSheet?
     @State private var activeAboutSheet: AboutSheet?
     @State private var showingManualControl = false
-    @State private var showingCardOrder = false
-    @State private var showingDefaultStatus = false
     @State private var showingImportPicker = false
     @State private var showingExportPicker = false
     @State private var exportDocument = TaskExportDocument()
     @State private var exportFileName = DataImportExport.defaultExportFileName()
     @State private var isImporting = false
     @State private var isExporting = false
+    @State private var isResetting = false
     @State private var resultAlert: ResultAlert?
     @State private var importOrphanMessage: String? = nil
 
     private enum AppearanceSheet: String, Identifiable {
-        case theme, language, textSize, columnWidth, accent, icon, timeFormat, reminderTime
+        case theme, language, textSize, columnWidth, accent, icon, timeFormat
         var id: String { rawValue }
     }
 
@@ -34,7 +33,7 @@ struct SettingsView: View {
     }
 
     private enum ResultAlert: String, Identifiable {
-        case importSuccess, importFailure, exportSuccess, exportFailure
+        case importSuccess, importFailure, exportSuccess, exportFailure, resetFailure
         var id: String { rawValue }
     }
 
@@ -46,8 +45,6 @@ struct SettingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                         appearanceSection
-                        defaultSection
-                        customizationSection
                         dataSection
                         aboutSection
                     }
@@ -61,9 +58,13 @@ struct SettingsView: View {
                 if isExporting {
                     ProgressOverlay(title: "Exporting Data", message: "Preparing your task export…")
                 }
+                if isResetting {
+                    ProgressOverlay(title: "Resetting Data", message: "Restoring the default boards…")
+                }
             }
             .animation(.easeInOut(duration: 0.18), value: isImporting)
             .animation(.easeInOut(duration: 0.18), value: isExporting)
+            .animation(.easeInOut(duration: 0.18), value: isResetting)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -76,18 +77,6 @@ struct SettingsView: View {
             }
             .sheet(item: $activeAboutSheet) { sheet in
                 aboutSheetContent(for: sheet)
-            }
-            .sheet(isPresented: $showingCardOrder) {
-                CardOrderPickerSheet(board: board)
-                    .environmentObject(settings)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showingDefaultStatus) {
-                DefaultStatusPickerSheet(board: board)
-                    .environmentObject(settings)
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showingManualControl) {
                 ManualControlSheet(
@@ -119,7 +108,7 @@ struct SettingsView: View {
             .alert(item: $resultAlert) { kind in
                 switch kind {
                 case .importSuccess:
-                    let body = importOrphanMessage ?? String(localized: "Your data has been imported successfully.")
+                    let body = importOrphanMessage ?? String(localized: "Your data has been imported.")
                     return Alert(
                         title: Text("Import Successful"),
                         message: Text(body),
@@ -141,6 +130,12 @@ struct SettingsView: View {
                     return Alert(
                         title: Text("Export Failed"),
                         message: Text("Couldn't prepare your data for export."),
+                        dismissButton: .default(Text("OK"))
+                    )
+                case .resetFailure:
+                    return Alert(
+                        title: Text("Reset Failed"),
+                        message: Text("Couldn't reset your data. Your existing boards and tasks should still be intact — try again, or restart the app."),
                         dismissButton: .default(Text("OK"))
                     )
                 }
@@ -220,96 +215,11 @@ struct SettingsView: View {
         }
     }
 
-    private var defaultSection: some View {
-        SettingsCardSection("Default") {
-            SettingsButtonRow(
-                title: "Status",
-                systemName: "circle.fill",
-                tintColor: defaultStatusTint,
-                action: { showingDefaultStatus = true }
-            ) {
-                trailing(value: defaultStatusSummary)
-            }
-            SettingsRowDivider()
-            SettingsButtonRow(
-                title: "Card Order",
-                systemName: board.cardSortField.systemImage,
-                tintColor: board.cardSortField.tintColor,
-                action: { showingCardOrder = true }
-            ) {
-                trailing(value: cardOrderSummary)
-            }
-            SettingsRowDivider()
-            SettingsButtonRow(
-                title: "Reminder Time",
-                systemName: "bell.badge.fill",
-                tintColor: .red,
-                action: { activeSheet = .reminderTime }
-            ) {
-                trailing(value: reminderTimeSummary)
-            }
-        }
-    }
-
-    private var defaultStatusSummary: String {
-        board.defaultGroup?.name ?? "—"
-    }
-
-    private var defaultStatusTint: Color {
-        board.defaultGroup?.colorKey.foreground ?? .gray
-    }
-
-    private var cardOrderSummary: String {
-        if board.cardSortField == .manual {
-            return board.cardSortField.label
-        }
-        return "\(board.cardSortField.label) · \(board.cardSortDirection.label)"
-    }
-
     private var timeFormatRowSystemName: String {
         switch settings.timeFormat {
         case .system:         return "clock.badge.checkmark.fill"
         case .twelveHour:     return "clock.fill"
         case .twentyFourHour: return "timer"
-        }
-    }
-
-    private var reminderTimeSummary: String {
-        let total = board.reminderMinutesOfDay
-        return TimeFormatting.format(
-            hour: total / 60,
-            minute: total % 60,
-            uses24Hour: settings.timeFormat.uses24HourClock
-        )
-    }
-
-    private var customizationSection: some View {
-        SettingsCardSection("Customization") {
-            NavigationLink {
-                ManageGroupsView(board: board)
-            } label: {
-                SettingsRowLabel(
-                    title: "Groups",
-                    value: "\(board.orderedGroups.count)",
-                    systemName: "rectangle.3.group.fill",
-                    tintColor: .pink,
-                    accessory: .chevron
-                )
-            }
-            .buttonStyle(.plain)
-            SettingsRowDivider()
-            NavigationLink {
-                ManageTagsView(board: board)
-            } label: {
-                SettingsRowLabel(
-                    title: "Tags",
-                    value: "\(board.orderedTags.count)",
-                    systemName: "tag.fill",
-                    tintColor: .orange,
-                    accessory: .chevron
-                )
-            }
-            .buttonStyle(.plain)
         }
     }
 
@@ -319,7 +229,8 @@ struct SettingsView: View {
                 title: "iCloud Sync",
                 value: "Coming Soon",
                 systemName: "icloud.fill",
-                tintColor: .blue
+                tintColor: .blue,
+                dimmed: true
             )
             SettingsRowDivider()
             SettingsButtonRow(
@@ -479,11 +390,6 @@ struct SettingsView: View {
                 .environmentObject(settings)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
-        case .reminderTime:
-            ReminderTimePickerSheet(board: board)
-                .environmentObject(settings)
-                .presentationDetents([.height(560)])
-                .presentationDragIndicator(.visible)
         }
     }
 
@@ -529,17 +435,32 @@ struct SettingsView: View {
     }
 
     private func orphanMessage(for outcome: ImportResult) -> String? {
-        let pieces = [
-            outcome.orphanTasks > 0 ? String(localized: "\(outcome.orphanTasks) task(s) moved to the first group because their original group wasn't in the file.") : nil,
-            outcome.orphanTagRefs > 0 ? String(localized: "\(outcome.orphanTagRefs) tag reference(s) couldn't be resolved and were dropped.") : nil
+        let summary = String(
+            localized: "Imported ^[\(outcome.boardCount) board](inflect: true) and ^[\(outcome.taskCount) task](inflect: true)."
+        )
+        let warnings = [
+            outcome.orphanTasks > 0 ? String(
+                localized: "^[\(outcome.orphanTasks) task](inflect: true) moved to the first group because their original group wasn't in the file."
+            ) : nil,
+            outcome.orphanTagRefs > 0 ? String(
+                localized: "^[\(outcome.orphanTagRefs) tag reference](inflect: true) couldn't be resolved and were dropped."
+            ) : nil
         ].compactMap { $0 }
-        guard !pieces.isEmpty else { return nil }
-        return String(localized: "Your data has been imported.") + "\n\n" + pieces.joined(separator: "\n")
+        if warnings.isEmpty {
+            return summary
+        }
+        return summary + "\n\n" + warnings.joined(separator: "\n")
     }
 
     private func performReset() {
         Task { @MainActor in
-            await DataImportExport.resetAll(context: context)
+            isResetting = true
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            let ok = await DataImportExport.resetAll(context: context)
+            isResetting = false
+            if !ok {
+                resultAlert = .resetFailure
+            }
         }
     }
 

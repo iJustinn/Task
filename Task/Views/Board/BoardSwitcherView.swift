@@ -77,7 +77,7 @@ struct BoardSwitcherView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
+                    Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Add") { addBoard() }

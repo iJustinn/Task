@@ -8,14 +8,18 @@ struct SearchView: View {
     var onSelectTask: (TaskItem) -> Void
 
     var body: some View {
-        Group {
+        // Compute once per render — `groupedResults` filters and sorts across every
+        // board, so evaluating it twice (empty check + ForEach) shows up as typing
+        // lag in the search bar at any reasonable task count.
+        let results = groupedResults
+        return Group {
             if queryText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ContentUnavailableView(
                     "Search Tasks",
                     systemImage: "magnifyingglass",
                     description: Text("Type to search title, notes, tags, or groups across all boards.")
                 )
-            } else if groupedResults.isEmpty {
+            } else if results.isEmpty {
                 ContentUnavailableView(
                     "No matches",
                     systemImage: "magnifyingglass",
@@ -23,7 +27,7 @@ struct SearchView: View {
                 )
             } else {
                 List {
-                    ForEach(groupedResults, id: \.board.id) { entry in
+                    ForEach(results, id: \.board.id) { entry in
                         Section {
                             ForEach(entry.tasks, id: \.id) { task in
                                 taskRow(task)

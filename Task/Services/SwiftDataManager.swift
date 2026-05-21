@@ -35,6 +35,28 @@ enum SwiftDataManager {
         }
     }
 
+    /// Delete every file SwiftData might have written for our default store so the
+    /// next `makeModelContainer()` call rebuilds a clean container. Used by the
+    /// reset flow when the app is running in the in-memory fallback — otherwise the
+    /// corrupt SQLite on disk would trap the user in fallback forever.
+    static func purgePersistentStoreFiles() {
+        let fm = FileManager.default
+        guard let support = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return }
+        // SwiftData's default store is `default.store` plus the SQLite sidecars
+        // (`.store-shm`, `.store-wal`) and an external-binary directory.
+        let candidates = ["default.store", "default.store-shm", "default.store-wal", "default.store_SUPPORT"]
+        for name in candidates {
+            let url = support.appendingPathComponent(name)
+            try? fm.removeItem(at: url)
+        }
+        UserDefaults.standard.set(false, forKey: inMemoryFallbackKey)
+    }
+
     /// Title, subtitle, and icon for each board the app seeds on first launch.
     /// Listed in display order — first entry becomes the initial active board.
     static let defaultSeedBoards: [(title: String, subtitle: String, icon: String)] = [
@@ -48,9 +70,18 @@ enum SwiftDataManager {
         let descriptor = FetchDescriptor<Board>()
         let existing = (try? context.fetch(descriptor)) ?? []
         if existing.isEmpty {
+            // Batch the seed: insert all boards + groups, save once at the end, then
+            // let the caller (resetAll / app launch) write the widget snapshot once.
             for spec in defaultSeedBoards {
-                _ = createBoard(title: spec.title, subtitle: spec.subtitle, iconEmoji: spec.icon, into: context)
+                _ = createBoard(
+                    title: spec.title,
+                    subtitle: spec.subtitle,
+                    iconEmoji: spec.icon,
+                    into: context,
+                    persist: false
+                )
             }
+            try? context.save()
         }
         migrateLegacyBoardDefaultsIfNeeded(context: context)
     }
@@ -58,10 +89,11 @@ enum SwiftDataManager {
     @MainActor
     @discardableResult
     static func createBoard(
-        title: String = "TooMuchToDo",
-        subtitle: String = "Work Harder Play Harder",
+        title: String,
+        subtitle: String = "",
         iconEmoji: String = "📌",
-        into context: ModelContext
+        into context: ModelContext,
+        persist: Bool = true
     ) -> Board {
         let existing = (try? context.fetch(FetchDescriptor<Board>())) ?? []
         let nextSortIndex = (existing.map(\.sortIndex).max() ?? -1) + 1
@@ -84,8 +116,10 @@ enum SwiftDataManager {
             context.insert(group)
         }
 
-        try? context.save()
-        UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        if persist {
+            try? context.save()
+            UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        }
         return board
     }
 

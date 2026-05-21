@@ -3,6 +3,7 @@ import SwiftData
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var settings: SettingsViewModel
     @Query(sort: \Board.sortIndex) private var boards: [Board]
 
@@ -26,6 +27,13 @@ struct RootView: View {
             }
         }
         .onAppear(perform: surfaceInMemoryWarningIfNeeded)
+        .onChange(of: scenePhase) { _, phase in
+            // The user may have changed notification permission in iOS Settings while
+            // the app was backgrounded; re-read so TaskDetailView's warning is accurate.
+            if phase == .active {
+                Task { await settings.refreshNotificationAuthorization() }
+            }
+        }
         .alert("Storage Error", isPresented: $showingInMemoryWarning) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -89,7 +97,10 @@ struct RootView: View {
             TaskDetailView(board: task.board ?? board, mode: .edit(task))
         }
         .task {
-            await NotificationService.requestAuthorizationIfNeeded()
+            // Permission is requested only when the user opts in to a reminder
+            // (see TaskDetailView.requestNotificationPermissionIfNeeded). The launch
+            // path just reads the current status so banners are accurate.
+            await settings.refreshNotificationAuthorization()
             UpcomingSnapshotBuilder.writeSnapshot(from: context)
         }
     }

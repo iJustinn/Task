@@ -58,6 +58,7 @@ struct SettingsRowLabel: View {
     let systemName: String
     let tintColor: Color
     var accessory: SettingsRowAccessory = .none
+    var dimmed: Bool = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -66,7 +67,7 @@ struct SettingsRowLabel: View {
             Text(title)
                 .font(.system(.headline, design: .rounded))
                 .fontWeight(.semibold)
-                .foregroundColor(.primary)
+                .foregroundColor(dimmed ? .secondary : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 

@@ -4,8 +4,8 @@ import SwiftData
 @Model
 final class Board {
     var id: UUID = UUID()
-    var title: String = "TooMuchToDo"
-    var subtitle: String = "Work Harder Play Harder"
+    var title: String = ""
+    var subtitle: String = ""
     var iconEmoji: String = "📌"
     var sortIndex: Int = 0
     var createdAt: Date = Date()
@@ -25,13 +25,17 @@ final class Board {
     @Relationship(deleteRule: .cascade, inverse: \TaskItem.board)
     var tasks: [TaskItem]? = []
 
-    init(title: String = "TooMuchToDo", subtitle: String = "Work Harder Play Harder") {
+    init(title: String, subtitle: String = "") {
         self.title = title
         self.subtitle = subtitle
     }
 
     var orderedGroups: [BoardGroup] {
-        (groups ?? []).sorted { $0.sortIndex < $1.sortIndex }
+        (groups ?? []).sorted { lhs, rhs in
+            if lhs.sortIndex != rhs.sortIndex { return lhs.sortIndex < rhs.sortIndex }
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
     }
 
     var orderedTags: [TaskTag] {
@@ -43,10 +47,18 @@ final class Board {
         }
     }
 
+    /// Type-safe view over the stringly-typed `defaultGroupID` column. Stored as a
+    /// String for backward compatibility with on-disk data; callers should prefer
+    /// this accessor.
+    var defaultGroupUUID: UUID? {
+        get { defaultGroupID.flatMap(UUID.init(uuidString:)) }
+        set { defaultGroupID = newValue?.uuidString }
+    }
+
     var defaultGroup: BoardGroup? {
         let all = orderedGroups
-        if let id = defaultGroupID,
-           let match = all.first(where: { $0.id.uuidString == id }) {
+        if let id = defaultGroupUUID,
+           let match = all.first(where: { $0.id == id }) {
             return match
         }
         return all.first

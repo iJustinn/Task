@@ -155,6 +155,7 @@ struct ReminderTimePickerSheet: View {
 
     @State private var digits: String = ""
     @State private var isPM: Bool = false
+    @State private var hasUserInput: Bool = false
 
     private var uses24Hour: Bool { settings.timeFormat.uses24HourClock }
 
@@ -215,7 +216,28 @@ struct ReminderTimePickerSheet: View {
                         .disabled(parsedComponents == nil)
                 }
             }
+            .onAppear { loadFromBoard() }
         }
+    }
+
+    private func loadFromBoard() {
+        let total = board.reminderMinutesOfDay
+        let hour24 = total / 60
+        let minute = total % 60
+        if uses24Hour {
+            digits = String(format: "%d%02d", hour24, minute)
+            isPM = false
+        } else {
+            let displayHour: Int
+            switch hour24 {
+            case 0:        displayHour = 12; isPM = false
+            case 12:       displayHour = 12; isPM = true
+            case 13...23:  displayHour = hour24 - 12; isPM = true
+            default:       displayHour = hour24; isPM = false
+            }
+            digits = String(format: "%d%02d", displayHour, minute)
+        }
+        hasUserInput = false
     }
 
     @ViewBuilder
@@ -302,18 +324,22 @@ struct ReminderTimePickerSheet: View {
     }
 
     private func append(_ s: String) {
-        let combined = digits + s
+        let base = hasUserInput ? digits : ""
+        let combined = base + s
         guard combined.count <= 4 else { return }
         digits = combined
+        hasUserInput = true
     }
 
     private func deleteLast() {
         guard !digits.isEmpty else { return }
         digits.removeLast()
+        hasUserInput = true
     }
 
     private func clear() {
         digits = ""
+        hasUserInput = true
     }
 
     private func setNow() {
@@ -334,6 +360,7 @@ struct ReminderTimePickerSheet: View {
             }
             digits = String(format: "%d%02d", displayHour, minute)
         }
+        hasUserInput = true
     }
 
     private func applyAndDismiss() {

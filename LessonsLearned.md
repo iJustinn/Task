@@ -32,6 +32,14 @@ When working with synchronized folders, SourceKit in the editor will frequently 
 - App Group: `group.com.ijustin.task` (entitlement on both the app and the widget — needed for the widget snapshot)
 - Asset Catalog: alternate app icons registered via build setting `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "Rose Violet Midnight Neutral Light"` plus `ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES`.
 
+### RTK path-limited git diffs
+
+`rtk git diff -- README.md ...` can report `fatal: bad revision 'README.md'` because the `--` path separator may not survive RTK's filtering layer. Use `rtk proxy git diff -- <paths>` when reviewing a path-limited diff.
+
+### Asset catalog JSON validation
+
+`plutil -lint` validates `task.xcodeproj/project.pbxproj`, but it can reject `.xcassets/.../Contents.json` files with `Unexpected character { at line 1`. Validate asset catalog JSON with `node -e` / `JSON.parse` or another JSON parser instead.
+
 ## SwiftData
 
 ### Naming collisions to avoid

@@ -12,11 +12,19 @@ enum UpcomingSnapshotBuilder {
         let now = Date()
         let sevenDaysOut = calendar.date(byAdding: .day, value: 7, to: now) ?? now
 
+        // Use the earliest set date so a task that "starts tomorrow" but is "due next
+        // month" still surfaces in the 7-day widget window — the old `dueDate ??
+        // workingEnd ?? workingStart` would have hidden it behind the later due date.
+        func earliestDate(_ task: TaskItem) -> Date? {
+            let candidates = [task.workingStart, task.workingEnd, task.dueDate].compactMap { $0 }
+            return candidates.min()
+        }
+        let windowStart = calendar.startOfDay(for: now)
+        let windowEnd = calendar.startOfDay(for: sevenDaysOut).addingTimeInterval(86_400 - 1)
+
         let upcoming = allTasks.compactMap { task -> SharedDefaultsService.UpcomingSnapshotEntry? in
-            guard let when = task.dueDate ?? task.workingEnd ?? task.workingStart else { return nil }
-            guard when >= calendar.startOfDay(for: now), when <= calendar.startOfDay(for: sevenDaysOut).addingTimeInterval(86_400 - 1) else {
-                return nil
-            }
+            guard let when = earliestDate(task) else { return nil }
+            guard when >= windowStart, when <= windowEnd else { return nil }
             guard let board = task.board else { return nil }
             return SharedDefaultsService.UpcomingSnapshotEntry(
                 id: task.id,
@@ -31,8 +39,8 @@ enum UpcomingSnapshotBuilder {
                 boardTitle: board.title
             )
         }.sorted { left, right in
-            let l = left.dueDate ?? left.workingEnd ?? left.workingStart ?? .distantFuture
-            let r = right.dueDate ?? right.workingEnd ?? right.workingStart ?? .distantFuture
+            let l = [left.workingStart, left.workingEnd, left.dueDate].compactMap { $0 }.min() ?? .distantFuture
+            let r = [right.workingStart, right.workingEnd, right.dueDate].compactMap { $0 }.min() ?? .distantFuture
             return l < r
         }
 

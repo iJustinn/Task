@@ -4,10 +4,14 @@ import SwiftData
 struct ProjectHeaderView: View {
     let board: Board
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var settings: SettingsViewModel
 
     @State private var draftTitle: String = ""
     @State private var draftSubtitle: String = ""
     @State private var showIconPicker: Bool = false
+    @State private var showingSort: Bool = false
+    @State private var showingReminder: Bool = false
+    @State private var showingDefaultStatus: Bool = false
     @FocusState private var titleFocused: Bool
     @FocusState private var subtitleFocused: Bool
 
@@ -37,6 +41,18 @@ struct ProjectHeaderView: View {
                     .onSubmit { commit() }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 2) {
+                headerIconButton(systemName: "arrow.up.arrow.down", tint: .primary, label: "Sort") {
+                    showingSort = true
+                }
+                headerIconButton(systemName: "bell", tint: .primary, label: "Reminder Time") {
+                    showingReminder = true
+                }
+                headerIconButton(systemName: "flag", tint: .primary, label: "Default Status") {
+                    showingDefaultStatus = true
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
@@ -65,6 +81,37 @@ struct ProjectHeaderView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showingSort) {
+            CardOrderPickerSheet(board: board)
+                .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingReminder) {
+            ReminderTimePickerSheet(board: board)
+                .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingDefaultStatus) {
+            DefaultStatusPickerSheet(board: board)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func headerIconButton(systemName: String, tint: Color, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(tint)
+                .frame(width: 38, height: 38)
+                .background(
+                    Circle().fill(Color(.secondarySystemGroupedBackground))
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private func commit() {

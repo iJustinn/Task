@@ -19,7 +19,7 @@ struct DefaultStatusPickerSheet: View {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(board.orderedGroups, id: \.id) { group in
                             Button {
-                                board.defaultGroupID = group.id.uuidString
+                                board.defaultGroupUUID = group.id
                                 board.updatedAt = Date()
                                 try? context.save()
                                 dismiss()

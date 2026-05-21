@@ -104,10 +104,22 @@ struct GroupMenuSheet: View {
         guard groups.count > 1 else { return }
         let remaining = groups.filter { $0.id != group.id }
         if let fallback = remaining.first, let tasks = group.tasks {
+            // Capture the fallback's max sortIndex once. Reading
+            // `fallback.orderedTasks.last?.sortIndex` inside the loop returns the same
+            // value for every iteration (the inverse relationship doesn't visibly
+            // update before the next read), so every moved task would otherwise get
+            // the same sortIndex.
+            var base = (fallback.orderedTasks.last?.sortIndex ?? -1)
             for task in tasks {
                 task.group = fallback
-                task.sortIndex = (fallback.orderedTasks.last?.sortIndex ?? -1) + 1
+                base += 1
+                task.sortIndex = base
             }
+        }
+        // If this group was the board's default-status, point the default at the
+        // fallback before deletion so exports don't preserve a dangling ID.
+        if board.defaultGroupUUID == group.id {
+            board.defaultGroupUUID = remaining.first?.id
         }
         context.delete(group)
         for (idx, g) in remaining.enumerated() { g.sortIndex = idx }

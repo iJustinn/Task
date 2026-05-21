@@ -1,17 +1,20 @@
 import Foundation
 
 enum TaskDateFormat {
+    /// Mutated when the user picks a non-system language in Settings so dates render
+    /// in the same locale as the surrounding UI (rather than the device locale).
+    nonisolated(unsafe) static var locale: Locale = .autoupdatingCurrent {
+        didSet {
+            guard oldValue != locale else { return }
+            medium.locale = locale
+        }
+    }
+
     static let medium: DateFormatter = {
         let f = DateFormatter()
+        f.locale = locale
         f.dateStyle = .medium
         f.timeStyle = .none
-        return f
-    }()
-
-    static let mediumWithTime: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
         return f
     }()
 
@@ -24,10 +27,6 @@ enum TaskDateFormat {
             return format(start)
         }
         return "\(format(start)) → \(format(end))"
-    }
-
-    static func isSameDay(_ a: Date, _ b: Date) -> Bool {
-        Calendar.current.isDate(a, inSameDayAs: b)
     }
 }
 

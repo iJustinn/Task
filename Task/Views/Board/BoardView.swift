@@ -11,6 +11,12 @@ struct BoardView: View {
     @State private var draggingTaskID: UUID?
     @State private var dragSessionEnded: Bool = false
     @State private var refreshToken: Int = 0
+    /// Pre-drag (groupID, sortIndex) per task captured the first time `placeTask`
+    /// runs with `commit: false`. If the user releases outside any drop target,
+    /// `dragWatchdog` fires and restores these values so the unsaved mutations
+    /// don't silently commit on the next unrelated save.
+    @State private var preDragState: [UUID: (groupID: UUID?, sortIndex: Int)] = [:]
+    @State private var dragWatchdog: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -61,6 +67,17 @@ struct BoardView: View {
     /// to animate without persisting until the user releases. Skips work entirely
     /// when the move would be a no-op so live drag doesn't bounce.
     private func placeTask(_ task: TaskItem, in group: BoardGroup, atIndex index: Int, commit: Bool) {
+        if !commit {
+            // First hover of a fresh drag — capture every task's anchor so we can
+            // roll back if the drag is released outside any drop target.
+            captureSnapshotIfNeeded()
+            armDragWatchdog()
+        } else {
+            dragWatchdog?.cancel()
+            dragWatchdog = nil
+            preDragState.removeAll()
+        }
+
         let crossColumn = task.group?.id != group.id
         let currentOrdered = group.orderedTasks
         let withoutTask = currentOrdered.filter { $0.id != task.id }
@@ -88,6 +105,52 @@ struct BoardView: View {
             try? context.save()
             UpcomingSnapshotBuilder.writeSnapshot(from: context)
         }
+    }
+
+    private func captureSnapshotIfNeeded() {
+        guard preDragState.isEmpty, let tasks = board.tasks else { return }
+        var snap: [UUID: (groupID: UUID?, sortIndex: Int)] = [:]
+        snap.reserveCapacity(tasks.count)
+        for t in tasks {
+            snap[t.id] = (t.group?.id, t.sortIndex)
+        }
+        preDragState = snap
+    }
+
+    /// Cancel + re-arm a 5-second watchdog. SwiftUI fires `dropEntered` continuously
+    /// while the user moves over a target, so an active drag keeps resetting the
+    /// timer. Only a stationary stretch with no further drag events (or a release
+    /// outside any drop target) lets it elapse and trigger a rollback.
+    private func armDragWatchdog() {
+        dragWatchdog?.cancel()
+        dragWatchdog = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { return }
+            rollbackDragIfNeeded()
+        }
+    }
+
+    private func rollbackDragIfNeeded() {
+        guard !preDragState.isEmpty else { return }
+        let groupsByID: [UUID: BoardGroup] = Dictionary(
+            uniqueKeysWithValues: board.orderedGroups.map { ($0.id, $0) }
+        )
+        let tasks = board.tasks ?? []
+        withAnimation(.easeInOut(duration: 0.18)) {
+            for t in tasks {
+                guard let original = preDragState[t.id] else { continue }
+                if t.sortIndex != original.sortIndex {
+                    t.sortIndex = original.sortIndex
+                }
+                let originalGroup = original.groupID.flatMap { groupsByID[$0] }
+                if t.group?.id != original.groupID {
+                    t.group = originalGroup
+                }
+            }
+        }
+        try? context.save()
+        preDragState.removeAll()
+        dragWatchdog = nil
     }
 
     private func reorderGroup(_ dragged: BoardGroup, toPositionOf target: BoardGroup) {

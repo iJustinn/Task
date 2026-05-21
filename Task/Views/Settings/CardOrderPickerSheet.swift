@@ -25,7 +25,7 @@ struct CardOrderPickerSheet: View {
                     .padding(.bottom, 30)
                 }
             }
-            .navigationTitle("Card Order")
+            .navigationTitle("Sort")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

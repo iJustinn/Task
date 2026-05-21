@@ -94,6 +94,9 @@ struct ColumnView: View {
                 if ordered.count > visibleCount {
                     moreButton(hidden: ordered.count - visibleCount)
                 }
+                if ordered.isEmpty {
+                    emptyStatePlaceholder
+                }
             }
             .padding(.horizontal, 6)
             .padding(.bottom, 8)
@@ -125,6 +128,27 @@ struct ColumnView: View {
             if !animateIn {
                 animateIn = true
             }
+        }
+    }
+
+    private var emptyStatePlaceholder: some View {
+        Text(emptyStateText)
+            .font(.footnote)
+            .foregroundStyle(group.colorKey.foreground.opacity(0.55))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+    }
+
+    private var emptyStateText: String {
+        switch group.name {
+        case "Waiting": return String(localized: "Parked until you're ready")
+        case "Doing":   return String(localized: "What you're on right now")
+        case "Pending": return String(localized: "Blocked or waiting on others")
+        case "Done":    return String(localized: "Completed tasks land here")
+        case "Archive": return String(localized: "Older tasks stored away")
+        default:        return String(localized: "No tasks yet")
         }
     }
 
