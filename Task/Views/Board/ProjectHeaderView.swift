@@ -45,6 +45,10 @@ struct ProjectHeaderView: View {
             draftTitle = board.title
             draftSubtitle = board.subtitle
         }
+        .onChange(of: board.id) { _, _ in
+            draftTitle = board.title
+            draftSubtitle = board.subtitle
+        }
         .onChange(of: titleFocused) { _, focused in
             if !focused { commit() }
         }
@@ -56,6 +60,7 @@ struct ProjectHeaderView: View {
                 board.iconEmoji = emoji
                 board.updatedAt = Date()
                 try? context.save()
+                UpcomingSnapshotBuilder.writeSnapshot(from: context)
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -65,14 +70,20 @@ struct ProjectHeaderView: View {
     private func commit() {
         let title = draftTitle.trimmingCharacters(in: .whitespaces)
         let subtitle = draftSubtitle.trimmingCharacters(in: .whitespaces)
+        var changed = false
         if !title.isEmpty, board.title != title {
             board.title = title
             board.updatedAt = Date()
+            changed = true
         }
         if board.subtitle != subtitle {
             board.subtitle = subtitle
             board.updatedAt = Date()
+            changed = true
         }
         try? context.save()
+        if changed {
+            UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        }
     }
 }

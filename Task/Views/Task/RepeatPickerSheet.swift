@@ -1,9 +1,10 @@
 import SwiftUI
 
-struct DefaultStatusPickerSheet: View {
-    let board: Board
-    @Environment(\.modelContext) private var context
+struct RepeatPickerSheet: View {
+    @Binding var selection: RepeatRule
     @Environment(\.dismiss) private var dismiss
+
+    private let options: [RepeatRule] = [.daily, .weekly, .monthly]
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -17,19 +18,16 @@ struct DefaultStatusPickerSheet: View {
                 Color(.systemGroupedBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(board.orderedGroups, id: \.id) { group in
+                        ForEach(options) { rule in
                             Button {
-                                board.defaultGroupID = group.id.uuidString
-                                board.updatedAt = Date()
-                                try? context.save()
+                                selection = (selection == rule) ? .none : rule
                                 dismiss()
                             } label: {
                                 GridTile(
-                                    title: group.name,
-                                    subtitle: "\(group.orderedTasks.count) tasks",
-                                    dotColor: group.colorKey.dot,
-                                    tintColor: group.colorKey.foreground,
-                                    isSelected: board.defaultGroup?.id == group.id
+                                    title: rule.displayName,
+                                    systemImage: icon(for: rule),
+                                    tintColor: ColorKey.gray.foreground,
+                                    isSelected: selection == rule
                                 )
                             }
                             .buttonStyle(.plain)
@@ -40,7 +38,7 @@ struct DefaultStatusPickerSheet: View {
                     .padding(.bottom, 30)
                 }
             }
-            .navigationTitle("Default Status")
+            .navigationTitle("Choose Repeat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -50,6 +48,15 @@ struct DefaultStatusPickerSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+        }
+    }
+
+    private func icon(for rule: RepeatRule) -> String {
+        switch rule {
+        case .daily:   return "1.circle"
+        case .weekly:  return "7.circle"
+        case .monthly: return "calendar"
+        case .none:    return "arrow.clockwise"
         }
     }
 }

@@ -78,7 +78,7 @@ struct SettingsView: View {
                 aboutSheetContent(for: sheet)
             }
             .sheet(isPresented: $showingCardOrder) {
-                CardOrderPickerSheet()
+                CardOrderPickerSheet(board: board)
                     .environmentObject(settings)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
@@ -233,8 +233,8 @@ struct SettingsView: View {
             SettingsRowDivider()
             SettingsButtonRow(
                 title: "Card Order",
-                systemName: settings.cardSortField.systemImage,
-                tintColor: settings.cardSortField.tintColor,
+                systemName: board.cardSortField.systemImage,
+                tintColor: board.cardSortField.tintColor,
                 action: { showingCardOrder = true }
             ) {
                 trailing(value: cardOrderSummary)
@@ -252,18 +252,18 @@ struct SettingsView: View {
     }
 
     private var defaultStatusSummary: String {
-        settings.defaultGroup(in: board)?.name ?? "—"
+        board.defaultGroup?.name ?? "—"
     }
 
     private var defaultStatusTint: Color {
-        settings.defaultGroup(in: board)?.colorKey.foreground ?? .gray
+        board.defaultGroup?.colorKey.foreground ?? .gray
     }
 
     private var cardOrderSummary: String {
-        if settings.cardSortField == .manual {
-            return settings.cardSortField.label
+        if board.cardSortField == .manual {
+            return board.cardSortField.label
         }
-        return "\(settings.cardSortField.label) · \(settings.cardSortDirection.label)"
+        return "\(board.cardSortField.label) · \(board.cardSortDirection.label)"
     }
 
     private var timeFormatRowSystemName: String {
@@ -275,7 +275,7 @@ struct SettingsView: View {
     }
 
     private var reminderTimeSummary: String {
-        let total = settings.reminderMinutesOfDay
+        let total = board.reminderMinutesOfDay
         return TimeFormatting.format(
             hour: total / 60,
             minute: total % 60,
@@ -480,7 +480,7 @@ struct SettingsView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         case .reminderTime:
-            ReminderTimePickerSheet()
+            ReminderTimePickerSheet(board: board)
                 .environmentObject(settings)
                 .presentationDetents([.height(560)])
                 .presentationDragIndicator(.visible)

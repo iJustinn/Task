@@ -21,6 +21,7 @@ struct TaskDetailView: View {
     @State private var workingEnd: Date? = nil
     @State private var dueDate: Date? = nil
     @State private var hasReminder: Bool = false
+    @State private var repeatRule: RepeatRule = .none
     @State private var isWorkingRange: Bool = false
     @State private var didLoad: Bool = false
 
@@ -28,6 +29,7 @@ struct TaskDetailView: View {
     @State private var showTagPicker: Bool = false
     @State private var showWorkingPicker: Bool = false
     @State private var showDuePicker: Bool = false
+    @State private var showRepeatPicker: Bool = false
     @State private var showDeleteConfirm: Bool = false
 
     private enum ReminderAnchor { case working, due, none }
@@ -90,12 +92,12 @@ struct TaskDetailView: View {
             .onAppear { load() }
             .sheet(isPresented: $showStatusPicker) {
                 StatusPickerSheet(board: board, selection: $selectedGroup)
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showTagPicker) {
                 TagPickerSheet(board: board, selection: $selectedTags)
-                    .presentationDetents([.medium, .large])
+                    .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showWorkingPicker) {
@@ -105,6 +107,11 @@ struct TaskDetailView: View {
             }
             .sheet(isPresented: $showDuePicker) {
                 dueDateSheet
+                    .presentationDetents([.fraction(0.6), .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showRepeatPicker) {
+                RepeatPickerSheet(selection: $repeatRule)
                     .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
             }
@@ -142,6 +149,7 @@ struct TaskDetailView: View {
             tagsRow
             workingDateRow
             dueDateRow
+            repeatRow
             reminderRow
         }
     }
@@ -278,6 +286,38 @@ struct TaskDetailView: View {
         }
     }
 
+    private var repeatRow: some View {
+        propertyRow(icon: "arrow.clockwise", label: "Repeat") {
+            HStack(spacing: 8) {
+                Button { showRepeatPicker = true } label: {
+                    if repeatRule == .none {
+                        emptyValueLabel
+                    } else {
+                        TagChip(name: repeatRule.displayName, colorKey: .gray)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+
+                if repeatRule != .none && (workingStart != nil || dueDate != nil) {
+                    Button { advanceRepeatDates() } label: {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(ColorKey.gray.foreground)
+                            .frame(width: 62, height: 30)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(ColorKey.gray.background)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Reset to next occurrence"))
+                }
+            }
+        }
+    }
+
     // MARK: - Row helpers
 
     @ViewBuilder
@@ -406,6 +446,7 @@ struct TaskDetailView: View {
             workingEnd = task.workingEnd
             dueDate = task.dueDate
             hasReminder = task.hasReminder
+            repeatRule = task.repeatRule
             isWorkingRange = task.workingIsRange
         }
         didLoad = true
@@ -438,6 +479,7 @@ struct TaskDetailView: View {
         task.workingEnd = isWorkingRange ? workingEnd : nil
         task.dueDate = dueDate
         task.hasReminder = hasReminder && (workingStart != nil || dueDate != nil)
+        task.repeatRule = repeatRule
         task.touch()
 
         try? context.save()
@@ -450,6 +492,15 @@ struct TaskDetailView: View {
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
 
         dismiss()
+    }
+
+    /// Shift every set date (workingStart, workingEnd, dueDate) forward by one occurrence
+    /// of the current rule so the relative window is preserved. No-op when no dates exist.
+    private func advanceRepeatDates() {
+        guard repeatRule != .none, workingStart != nil || dueDate != nil else { return }
+        workingStart = workingStart.map { repeatRule.advance($0) }
+        workingEnd = workingEnd.map { repeatRule.advance($0) }
+        dueDate = dueDate.map { repeatRule.advance($0) }
     }
 
     private func delete() {

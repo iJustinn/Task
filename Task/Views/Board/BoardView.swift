@@ -23,6 +23,8 @@ struct BoardView: View {
                             ColumnView(
                                 group: group,
                                 width: settings.columnWidth.width,
+                                sortField: board.cardSortField,
+                                sortDirection: board.cardSortDirection,
                                 draggingTaskID: $draggingTaskID,
                                 dragSessionEnded: $dragSessionEnded,
                                 refreshToken: refreshToken,

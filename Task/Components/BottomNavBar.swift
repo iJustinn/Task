@@ -4,6 +4,7 @@ import UIKit
 struct BottomNavBar: View {
     @Binding var searchText: String
     var onAdd: () -> Void
+    var onSwitchBoard: () -> Void
     var onSettings: () -> Void
     var onFocusChange: ((Bool) -> Void)? = nil
 
@@ -44,6 +45,8 @@ struct BottomNavBar: View {
                     glassCircleButton(systemName: "xmark", weight: .semibold, action: cancelSearch, label: "Cancel search")
                         .transition(.scale.combined(with: .opacity))
                 } else {
+                    glassCircleButton(systemName: "archivebox", weight: .medium, action: onSwitchBoard, label: "Switch board")
+                        .transition(.scale.combined(with: .opacity))
                     glassCircleButton(systemName: "gearshape", weight: .medium, action: onSettings, label: "Settings")
                         .transition(.scale.combined(with: .opacity))
                 }
@@ -83,6 +86,8 @@ struct BottomNavBar: View {
                 legacyCircleButton(systemName: "xmark", weight: .semibold, action: cancelSearch, label: "Cancel search")
                     .transition(.scale.combined(with: .opacity))
             } else {
+                legacyCircleButton(systemName: "archivebox", weight: .medium, action: onSwitchBoard, label: "Switch board")
+                    .transition(.scale.combined(with: .opacity))
                 legacyCircleButton(systemName: "gearshape", weight: .medium, action: onSettings, label: "Settings")
                     .transition(.scale.combined(with: .opacity))
             }

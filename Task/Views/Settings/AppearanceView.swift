@@ -148,7 +148,9 @@ struct TimeFormatPickerSheet: View {
 // MARK: - Reminder time picker
 
 struct ReminderTimePickerSheet: View {
+    let board: Board
     @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
     @State private var digits: String = ""
@@ -336,7 +338,9 @@ struct ReminderTimePickerSheet: View {
 
     private func applyAndDismiss() {
         guard let components = parsedComponents else { return }
-        settings.reminderMinutesOfDay = components.hour * 60 + components.minute
+        board.reminderMinutesOfDay = components.hour * 60 + components.minute
+        board.updatedAt = Date()
+        try? context.save()
         dismiss()
     }
 }

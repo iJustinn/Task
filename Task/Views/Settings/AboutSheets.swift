@@ -97,12 +97,22 @@ struct HowToUseSheet: View {
 
     private let sections: [AboutGuideSection] = [
         AboutGuideSection(
+            title: "Boards",
+            systemImage: "archivebox.fill",
+            tintColor: .accentColor,
+            steps: [
+                "Tap the folder button in the bottom bar to open the board switcher. Fresh installs ship with three boards — Personal, Study, and Work — each with their own groups, tags, and tasks.",
+                "Tap Add in the switcher to create a new board with placeholder text — then tap the title, subtitle, or icon on the board header to edit them in place.",
+                "Long-press a board tile to drag-reorder it. While dragging, a red trash bar slides up at the bottom — drop the tile there to delete the board (with a confirmation popup). Disabled when only one board remains."
+            ]
+        ),
+        AboutGuideSection(
             title: "Create Tasks",
             systemImage: "plus.circle.fill",
             tintColor: .blue,
             steps: [
                 "Tap + in the bottom bar to start a new task and type a title.",
-                "New tasks open in your default Status (Settings > Default > Status) — pick a different group, add Tags, and set a Working date or Due date.",
+                "New tasks open in the active board's default Status (Settings > Default > Status) — pick a different group, add Tags, and set a Working date or Due date.",
                 "Toggle Reminder to schedule a local notification. A small footer on the card shows a notes icon when the task has notes and an alarm icon when a reminder is set."
             ]
         ),
@@ -131,8 +141,8 @@ struct HowToUseSheet: View {
             systemImage: "tag.fill",
             tintColor: .orange,
             steps: [
-                "Settings > Customization > Groups to add, rename, recolor, long-press drag-reorder, or delete groups.",
-                "Settings > Customization > Tags to create tags with a custom color, long-press drag-reorder, or delete one to remove it from every task.",
+                "Settings > Customization > Groups manages the active board's groups: add, rename, recolor, long-press drag-reorder, or delete.",
+                "Settings > Customization > Tags manages tags scoped to the active board with a custom color, long-press drag-reorder, or delete one to remove it from every task on that board.",
                 "Tap a group's ··· menu on the board for quick rename / recolor / delete."
             ]
         ),
@@ -161,9 +171,9 @@ struct HowToUseSheet: View {
             systemImage: "flag.fill",
             tintColor: .teal,
             steps: [
-                "Settings > Default > Status sets which group new tasks land in. Falls back to the first group if your choice is later deleted.",
-                "Settings > Default > Card Order controls how cards sort inside every group — Manual (drag), Title (alphabetical), or Date (smart) — with Ascending / Descending for Title and Date.",
-                "Settings > Default > Reminder Time sets the hour and minute (defaults to 9:00) that per-task reminders fire on the chosen date."
+                "Settings > Default is scoped to the active board — each board remembers its own default Status, Card Order, and Reminder Time.",
+                "Status sets which group new tasks on that board land in. Falls back to the first group if your choice is later deleted. Card Order controls how cards sort inside every group on that board — Manual (drag), Title (alphabetical), or Date (smart).",
+                "Reminder Time sets the hour and minute (defaults to 9:00) that this board's per-task reminders fire on the chosen date."
             ]
         ),
         AboutGuideSection(
@@ -181,9 +191,19 @@ struct HowToUseSheet: View {
             systemImage: "externaldrive.fill",
             tintColor: .gray,
             steps: [
-                "Settings > Data > Manual Control to Export your board as a JSON file or Import a previously exported file.",
-                "Reset All Data deletes every task, tag, and group, then re-creates the six default groups.",
-                "iCloud Sync is on the roadmap — your schema is already CloudKit-compatible."
+                "Settings > Data > Manual Control to Export every board as a single JSON file or Import a previously exported file. Older single-board exports also import cleanly.",
+                "Reset All Data wipes every board and re-seeds the three defaults (Personal, Study, Work) with the standard five groups.",
+                "iCloud Sync is on the roadmap — the schema is already CloudKit-compatible."
+            ]
+        ),
+        AboutGuideSection(
+            title: "Widget",
+            systemImage: "apps.iphone",
+            tintColor: .accentColor,
+            steps: [
+                "Add the Upcoming Tasks widget from the iOS widget gallery in Small, Medium, or Large.",
+                "Long-press the widget and tap Edit Widget to choose a specific board — or leave Board empty to show upcoming tasks from every board.",
+                "When All Boards is selected, each row shows the board's emoji so you can tell them apart at a glance."
             ]
         )
     ]

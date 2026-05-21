@@ -14,9 +14,9 @@ enum NotificationService {
         guard task.hasReminder, let fireDate = task.primaryReminderDate else { return }
 
         var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
-        // Tasks only carry a date; the time-of-day comes from the user's Reminder Time setting.
+        // Tasks only carry a date; the time-of-day comes from the board's Reminder Time setting.
         if components.hour == 0 && components.minute == 0 {
-            let minutes = ReminderDefaults.storedMinutesOfDay()
+            let minutes = task.board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
             components.hour = minutes / 60
             components.minute = minutes % 60
         }

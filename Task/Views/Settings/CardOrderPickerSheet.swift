@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct CardOrderPickerSheet: View {
-    @EnvironmentObject private var settings: SettingsViewModel
+    let board: Board
+    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
     private let gridColumns = [
@@ -45,14 +46,16 @@ struct CardOrderPickerSheet: View {
             LazyVGrid(columns: gridColumns, spacing: 12) {
                 ForEach(CardSortField.allCases) { field in
                     Button {
-                        settings.cardSortField = field
+                        board.cardSortField = field
+                        board.updatedAt = Date()
+                        try? context.save()
                     } label: {
                         GridTile(
                             title: field.label,
                             subtitle: field.descriptor,
                             systemImage: field.systemImage,
                             tintColor: field.tintColor,
-                            isSelected: settings.cardSortField == field
+                            isSelected: board.cardSortField == field
                         )
                     }
                     .buttonStyle(.plain)
@@ -69,23 +72,25 @@ struct CardOrderPickerSheet: View {
             LazyVGrid(columns: gridColumns, spacing: 12) {
                 ForEach(CardSortDirection.allCases) { dir in
                     Button {
-                        settings.cardSortDirection = dir
+                        board.cardSortDirection = dir
+                        board.updatedAt = Date()
+                        try? context.save()
                     } label: {
                         GridTile(
                             title: dir.label,
                             subtitle: dir.descriptor,
                             systemImage: dir.systemImage,
                             tintColor: dir.tintColor,
-                            isSelected: settings.cardSortDirection == dir
+                            isSelected: board.cardSortDirection == dir
                         )
                     }
                     .buttonStyle(.plain)
-                    .disabled(settings.cardSortField == .manual)
+                    .disabled(board.cardSortField == .manual)
                 }
             }
-            .opacity(settings.cardSortField == .manual ? 0.45 : 1)
+            .opacity(board.cardSortField == .manual ? 0.45 : 1)
 
-            if settings.cardSortField == .manual {
+            if board.cardSortField == .manual {
                 Text("Order doesn't apply to Manual — drag a card to reorder it inside its group.")
                     .font(.system(.footnote, design: .rounded).weight(.medium))
                     .foregroundColor(.secondary)

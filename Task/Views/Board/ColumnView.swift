@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 struct ColumnView: View {
     let group: BoardGroup
     var width: CGFloat = 220
+    let sortField: CardSortField
+    let sortDirection: CardSortDirection
     @Binding var draggingTaskID: UUID?
     @Binding var dragSessionEnded: Bool
     var refreshToken: Int = 0
@@ -13,14 +15,14 @@ struct ColumnView: View {
     var onPlaceTask: (TaskItem, Int, Bool) -> Void
     var onGroupReorder: (BoardGroup) -> Void
 
-    @EnvironmentObject private var settings: SettingsViewModel
     @State private var visibleCount: Int = 10
+    @State private var animateIn: Bool = false
 
     private let groupDragPrefix = "group:"
     private let pageSize: Int = 10
 
     private var currentTasks: [TaskItem] {
-        group.sortedTasks(field: settings.cardSortField, direction: settings.cardSortDirection)
+        group.sortedTasks(field: sortField, direction: sortDirection)
     }
 
     private func beginDragTask(_ task: TaskItem) -> String {
@@ -57,7 +59,7 @@ struct ColumnView: View {
             LazyVStack(spacing: 8) {
                 let ordered = currentTasks
                 let visible = Array(ordered.prefix(visibleCount))
-                let sortKey = "\(settings.cardSortField.rawValue)-\(settings.cardSortDirection.rawValue)"
+                let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)"
                 let _ = sortKey // forces dependency for re-render
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
                     TaskCardView(task: task)
@@ -73,7 +75,7 @@ struct ColumnView: View {
                             delegate: TaskRowDropDelegate(
                                 targetTask: task,
                                 targetGroup: group,
-                                sortField: settings.cardSortField,
+                                sortField: sortField,
                                 onPlaceTask: onPlaceTask,
                                 onGroupReorder: onGroupReorder,
                                 findTask: findTask,
@@ -82,6 +84,12 @@ struct ColumnView: View {
                                 dragSessionEnded: $dragSessionEnded
                             )
                         )
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 8)
+                        .animation(
+                            .easeOut(duration: 0.30).delay(Double(index) * 0.04),
+                            value: animateIn
+                        )
                 }
                 if ordered.count > visibleCount {
                     moreButton(hidden: ordered.count - visibleCount)
@@ -89,7 +97,7 @@ struct ColumnView: View {
             }
             .padding(.horizontal, 6)
             .padding(.bottom, 8)
-            .id("\(settings.cardSortField.rawValue)-\(settings.cardSortDirection.rawValue)")
+            .id("\(sortField.rawValue)-\(sortDirection.rawValue)")
         }
         .frame(width: width)
         .background(
@@ -101,7 +109,7 @@ struct ColumnView: View {
             delegate: TaskRowDropDelegate(
                 targetTask: nil,
                 targetGroup: group,
-                sortField: settings.cardSortField,
+                sortField: sortField,
                 onPlaceTask: onPlaceTask,
                 onGroupReorder: onGroupReorder,
                 findTask: findTask,
@@ -112,6 +120,11 @@ struct ColumnView: View {
         )
         .onChange(of: refreshToken) { _, _ in
             visibleCount = pageSize
+        }
+        .onAppear {
+            if !animateIn {
+                animateIn = true
+            }
         }
     }
 

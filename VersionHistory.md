@@ -1,5 +1,51 @@
 # Version History
 
+## 0.4.0 (build 1) — 2026-05-21
+
+Multi-board support across the app, the settings, and the home-screen widget.
+
+### Multi-board
+
+- **Three default boards seed on fresh install** — Personal 🏃, Study 🎓, Work 💼 — each with the standard five default groups (Waiting, Doing, Pending, Done, Archive) and no preset tags. Existing single-board installs upgrade in place; no migration code needed for the new defaulted `Board` fields.
+- **Default seed groups slimmed down** — removed Daily and Weekly, added Archive. New order: Waiting, Doing, Pending, Done, Archive. Tests updated.
+- **Board switcher** — folder button on the bottom nav between Search and Settings opens a 60% sheet with a 3-column grid of board tiles (icon + title + task count, via the shared `GridTile`). Drag indicator + pullable to large.
+- **Long-press drag-reorder boards** — same `.draggable` + per-tile `DropDelegate` pattern as Groups / Tags / Columns. Reorder persists via the new `Board.sortIndex`.
+- **Drag-to-delete with confirmation** — while reordering, a red trash bar slides up from the bottom edge. Dropping a tile onto it opens the existing `ConfirmationSheet` (`Delete Board?` / red Delete Board / gray Cancel). Disabled when only one board remains. Active board auto-falls-back to the next-remaining board on delete.
+- **In-place board create** — tap **Add** in the switcher; a new board lands as the active one with placeholder text ("Choose a Title" / "Choose a Subtitle"). Edit title/subtitle/icon directly in the board header (`ProjectHeaderView`), which now also re-syncs its draft strings when the active board changes via `onChange(of: board.id)`.
+
+### Settings rewired per-board
+
+- **Default → Status / Card Order / Reminder Time** moved from `SettingsViewModel` global UserDefaults into per-board fields on the `Board` model (`defaultGroupID`, `cardSortFieldRaw`, `cardSortDirectionRaw`, `reminderMinutesOfDay`). Each board remembers its own. `DefaultStatusPickerSheet`, `CardOrderPickerSheet`, and `ReminderTimePickerSheet` now take a `Board` and write to it directly.
+- **Customization → Groups / Tags** already scoped to a board via SwiftData relationships; switching boards swaps which board they manage.
+- **One-shot legacy migration** — on first launch after upgrade, copies the four legacy `UserDefaults` keys onto the first board (by `createdAt`) so 0.3.x users keep their preferences. Guarded by `task.boardDefaultsMigrated` so it never re-runs.
+
+### Notifications
+
+- `NotificationService.schedule(for:)` reads `task.board?.reminderMinutesOfDay` instead of the deleted global UserDefaults key, falling back to 9 AM when the board reference is nil.
+
+### Multi-board import / export
+
+- **New wire format**: `MultiBoardExportPayload { version: 2, exportedAt, boards: [BoardExportEntry] }`. Each `BoardExport` carries its per-board prefs.
+- **Legacy v1 single-board exports** still decode — wrapped into a one-entry `boards` array.
+- **Reset All Data** wipes every board, clears the active-board UserDefaults key, then re-seeds the three defaults.
+- **Board match is ID-only** for imports (no "reuse first existing board" fallback that 0.3.x had). Group/tag merge is ID → same-board-name → insert, scoped to each board.
+
+### Widget — per-widget board configuration
+
+- Converted `UpcomingTasksWidget` from `StaticConfiguration` to `AppIntentConfiguration` with a new `BoardConfigurationIntent` (`@Parameter var board: BoardEntity?`, where nil = All Boards).
+- `BoardEntity` + `BoardEntityQuery` populate the widget edit picker by reading a new `BoardListEntry[]` written to the App Group every time the upcoming snapshot is rewritten.
+- `UpcomingSnapshotEntry` and the widget's `WidgetUpcomingEntry` gained `boardID`, `boardEmoji`, `boardTitle`. The widget UI shows the board emoji on each row when "All Boards" is configured; the header shows the chosen board's emoji + title when a specific board is selected.
+- Snapshot is rewritten on board create / rename / icon change / delete in addition to the existing task-change triggers.
+
+### Bottom nav
+
+- New **folder** circle button (`folder.fill`) between the search field and the gear, opens the board switcher.
+- Long-press on the `+` button (which previously was a route to create a board) was removed — board creation goes through the switcher's **Add** button.
+
+### Testdata
+
+- `TestData/testdata.json` regenerated for the three default boards (125 tasks each) with realistic date distribution (overdue / today / this week / later this month) and notes/reminder/tag mixes. Preserves board / group / tag IDs so re-imports update in place.
+
 ## 0.3.0 (build 2) — 2026-05-20
 
 Notion-style task editor redesign and global toolbar/calendar polish.

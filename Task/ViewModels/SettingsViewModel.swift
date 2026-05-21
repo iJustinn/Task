@@ -465,15 +465,7 @@ enum AppColumnWidth: String, CaseIterable, Identifiable {
 }
 
 enum ReminderDefaults {
-    static let minutesKey = "task.reminderMinutesOfDay"
     static let defaultMinutesOfDay = 9 * 60
-
-    static func storedMinutesOfDay() -> Int {
-        let d = UserDefaults.standard
-        guard d.object(forKey: minutesKey) != nil else { return defaultMinutesOfDay }
-        let stored = d.integer(forKey: minutesKey)
-        return (0..<24*60).contains(stored) ? stored : defaultMinutesOfDay
-    }
 }
 
 @MainActor
@@ -494,10 +486,6 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(timeFormat.rawValue, forKey: SettingsViewModel.timeFormatKey) }
     }
 
-    @Published var reminderMinutesOfDay: Int {
-        didSet { UserDefaults.standard.set(reminderMinutesOfDay, forKey: ReminderDefaults.minutesKey) }
-    }
-
     @Published var appIcon: AppIconOption {
         didSet {
             UserDefaults.standard.set(appIcon.rawValue, forKey: SettingsViewModel.appIconKey)
@@ -513,33 +501,12 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(columnWidth.rawValue, forKey: SettingsViewModel.columnWidthKey) }
     }
 
-    @Published var cardSortField: CardSortField {
-        didSet { UserDefaults.standard.set(cardSortField.rawValue, forKey: SettingsViewModel.cardSortFieldKey) }
-    }
-
-    @Published var cardSortDirection: CardSortDirection {
-        didSet { UserDefaults.standard.set(cardSortDirection.rawValue, forKey: SettingsViewModel.cardSortDirectionKey) }
-    }
-
-    @Published var defaultGroupID: String? {
-        didSet {
-            if let id = defaultGroupID {
-                UserDefaults.standard.set(id, forKey: SettingsViewModel.defaultGroupIDKey)
-            } else {
-                UserDefaults.standard.removeObject(forKey: SettingsViewModel.defaultGroupIDKey)
-            }
-        }
-    }
-
     static let themeKey = "task.appTheme"
     static let accentKey = "task.appAccent"
     static let timeFormatKey = "task.timeFormat"
     static let appIconKey = "task.appIcon"
     static let textSizeKey = "task.textSize"
     static let columnWidthKey = "task.columnWidth"
-    static let cardSortFieldKey = "task.cardSortField"
-    static let cardSortDirectionKey = "task.cardSortDirection"
-    static let defaultGroupIDKey = "task.defaultGroupID"
 
     init() {
         let d = UserDefaults.standard
@@ -547,29 +514,9 @@ final class SettingsViewModel: ObservableObject {
         self.language = AppLanguage(rawValue: d.string(forKey: AppLanguage.storageKey) ?? "") ?? .system
         self.accent = AppAccent(rawValue: d.string(forKey: SettingsViewModel.accentKey) ?? "") ?? .blue
         self.timeFormat = AppTimeFormat(rawValue: d.string(forKey: SettingsViewModel.timeFormatKey) ?? "") ?? .system
-        self.reminderMinutesOfDay = ReminderDefaults.storedMinutesOfDay()
         self.appIcon = AppIconOption(rawValue: d.string(forKey: SettingsViewModel.appIconKey) ?? "") ?? .classic
         self.textSize = AppTextSize(rawValue: d.string(forKey: SettingsViewModel.textSizeKey) ?? "") ?? .medium
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium
-        let rawSort = d.string(forKey: SettingsViewModel.cardSortFieldKey) ?? ""
-        if rawSort == "workingDate" || rawSort == "dueDate" {
-            self.cardSortField = .date
-        } else {
-            self.cardSortField = CardSortField(rawValue: rawSort) ?? .manual
-        }
-        self.cardSortDirection = CardSortDirection(rawValue: d.string(forKey: SettingsViewModel.cardSortDirectionKey) ?? "") ?? .ascending
-        self.defaultGroupID = d.string(forKey: SettingsViewModel.defaultGroupIDKey)
-    }
-
-    /// Resolves the user's preferred default status group, falling back to the
-    /// first group when nothing was chosen or the chosen group no longer exists.
-    func defaultGroup(in board: Board) -> BoardGroup? {
-        let groups = board.orderedGroups
-        if let id = defaultGroupID,
-           let match = groups.first(where: { $0.id.uuidString == id }) {
-            return match
-        }
-        return groups.first
     }
 
     private func applyAppIcon() {

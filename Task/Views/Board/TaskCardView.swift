@@ -35,9 +35,14 @@ struct TaskCardView: View {
                 DueDateRow(date: due, isUpcoming: upcoming)
             }
 
-            if task.hasNotes || task.hasReminder {
+            if task.repeatRule != .none || task.hasNotes || task.hasReminder {
                 HStack(spacing: 6) {
                     footerDividerLine
+                    if task.repeatRule != .none {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     if task.hasNotes {
                         Image(systemName: "doc.text")
                             .font(.caption2)
