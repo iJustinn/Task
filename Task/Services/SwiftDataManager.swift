@@ -1,7 +1,10 @@
 import Foundation
+import OSLog
 import SwiftData
 
 enum SwiftDataManager {
+    private static let log = Logger(subsystem: "com.ijustin.task", category: "SwiftData")
+
     static let schema = Schema([
         Board.self,
         BoardGroup.self,
@@ -29,9 +32,18 @@ enum SwiftDataManager {
         } catch {
             // Persistent store failed to open. Keep the app usable with an in-memory store
             // and flag the situation so RootView can surface it.
+            log.error("Persistent ModelContainer failed to open: \(String(describing: error), privacy: .public)")
             UserDefaults.standard.set(true, forKey: inMemoryFallbackKey)
             let memoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            return try! ModelContainer(for: schema, configurations: [memoryConfig])
+            do {
+                return try ModelContainer(for: schema, configurations: [memoryConfig])
+            } catch {
+                // In-memory init should never realistically fail — but if it does, we
+                // have no usable storage and can't render the app. Surface a clear
+                // crash message instead of an opaque `try!` trap.
+                log.fault("In-memory ModelContainer fallback also failed: \(String(describing: error), privacy: .public)")
+                fatalError("Task: SwiftData could not open the persistent store and the in-memory fallback also failed (\(error)). Reinstalling the app should clear corrupt on-disk state.")
+            }
         }
     }
 
@@ -65,8 +77,13 @@ enum SwiftDataManager {
         ("Work", "Grinding", "💼")
     ]
 
+    /// `true` when the database already had boards or the seed insert+save committed.
+    /// Callers that have just wiped the store (e.g. `resetAll`) should treat `false`
+    /// as a hard failure — the defaults didn't make it to disk and the UI is now
+    /// looking at an empty board list.
     @MainActor
-    static func ensureSeed(context: ModelContext) {
+    @discardableResult
+    static func ensureSeed(context: ModelContext) -> Bool {
         let descriptor = FetchDescriptor<Board>()
         let existing = (try? context.fetch(descriptor)) ?? []
         if existing.isEmpty {
@@ -81,9 +98,15 @@ enum SwiftDataManager {
                     persist: false
                 )
             }
-            try? context.save()
+            do {
+                try context.save()
+            } catch {
+                log.error("ensureSeed save failed: \(String(describing: error), privacy: .public)")
+                return false
+            }
         }
         migrateLegacyBoardDefaultsIfNeeded(context: context)
+        return true
     }
 
     @MainActor

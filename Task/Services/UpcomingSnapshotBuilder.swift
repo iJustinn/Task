@@ -12,23 +12,32 @@ enum UpcomingSnapshotBuilder {
         let now = Date()
         let sevenDaysOut = calendar.date(byAdding: .day, value: 7, to: now) ?? now
 
-        // Use the earliest set date so a task that "starts tomorrow" but is "due next
-        // month" still surfaces in the 7-day widget window — the old `dueDate ??
-        // workingEnd ?? workingStart` would have hidden it behind the later due date.
-        func earliestDate(_ task: TaskItem) -> Date? {
-            let candidates = [task.workingStart, task.workingEnd, task.dueDate].compactMap { $0 }
-            return candidates.min()
-        }
         let windowStart = calendar.startOfDay(for: now)
         let windowEnd = calendar.startOfDay(for: sevenDaysOut).addingTimeInterval(86_400 - 1)
 
+        // Include a task if any of its dates — or its working range — intersects the
+        // widget window. The previous "earliest date inside window" check excluded
+        // ongoing ranges that started before today, hiding active work during the
+        // period it most needs to be visible.
+        func overlapsWindow(_ task: TaskItem) -> Bool {
+            if let start = task.workingStart {
+                let end = task.workingEnd ?? start
+                let low = min(start, end)
+                let high = max(start, end)
+                if low <= windowEnd && high >= windowStart { return true }
+            }
+            if let due = task.dueDate, due >= windowStart, due <= windowEnd {
+                return true
+            }
+            return false
+        }
+
         let upcoming = allTasks.compactMap { task -> SharedDefaultsService.UpcomingSnapshotEntry? in
-            guard let when = earliestDate(task) else { return nil }
-            guard when >= windowStart, when <= windowEnd else { return nil }
+            guard overlapsWindow(task) else { return nil }
             guard let board = task.board else { return nil }
             return SharedDefaultsService.UpcomingSnapshotEntry(
                 id: task.id,
-                title: task.title.isEmpty ? "Untitled" : task.title,
+                title: task.title,
                 dueDate: task.dueDate,
                 workingStart: task.workingStart,
                 workingEnd: task.workingEnd,

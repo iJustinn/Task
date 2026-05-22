@@ -1,13 +1,13 @@
 import SwiftUI
 import SwiftData
-import UIKit
-import UniformTypeIdentifiers
 
 struct StatusPickerSheet: View {
     let board: Board
     @Binding var selection: BoardGroup?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var settings: SettingsViewModel
 
     @State private var showAddGroup = false
     @State private var newGroupName: String = ""
@@ -15,79 +15,60 @@ struct StatusPickerSheet: View {
     @State private var draggingGroupID: UUID?
     @State private var dragSessionEnded: Bool = false
     @State private var pendingDelete: BoardGroup?
-    @State private var deleteZoneHovered: Bool = false
-    @State private var dragOverScreen: Bool = false
-    @State private var showDeleteZone: Bool = false
-    @State private var hideDeleteZoneTask: Task<Void, Never>?
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
+    @State private var deleteMode: Bool = false
+    @State private var selectedDetent: PresentationDetent = .fraction(0.6)
+    /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
+    /// user cancels the drag (releases outside any row, dismisses the sheet, or
+    /// goes idle for 5 s) so dirty model mutations don't leak into the next save.
+    @State private var preDragSortIndex: [UUID: Int] = [:]
+    @State private var reorderWatchdog: Task<Void, Never>?
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
+    private var isExpanded: Bool { selectedDetent == .large }
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                Color(.systemGroupedBackground)
+            GeometryReader { proxy in
+                Color(.systemBackground)
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
+
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(board.orderedGroups, id: \.id) { group in
-                            groupTile(group)
+                    VStack(alignment: .leading, spacing: 0) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(board.orderedGroups.enumerated()), id: \.element.id) { index, group in
+                                groupRow(group)
+                                if index < board.orderedGroups.count - 1 {
+                                    Divider()
+                                }
+                            }
                         }
 
-                        Button {
-                            showAddGroup = true
-                        } label: {
-                            GridTile(
-                                title: "New",
-                                subtitle: "Create status",
-                                systemImage: "plus",
-                                tintColor: .accentColor
-                            )
+                        if isExpanded && canDelete && !deleteMode {
+                            Spacer(minLength: 24)
+                            deleteButton
                         }
-                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 120)
-                }
-
-                if showDeleteZone && canDelete {
-                    deleteDropZone
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
+                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .onDrop(of: StringMoveDropDelegate.acceptedTypes, isTargeted: $dragOverScreen) { _ in
-                draggingGroupID = nil
-                deleteZoneHovered = false
-                return false
-            }
-            .onChange(of: dragOverScreen) { _, isOver in
-                hideDeleteZoneTask?.cancel()
-                if isOver {
-                    showDeleteZone = true
-                } else {
-                    hideDeleteZoneTask = Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        if Task.isCancelled { return }
-                        showDeleteZone = false
-                    }
-                }
-            }
-            .animation(.easeInOut(duration: 0.22), value: showDeleteZone)
-            .navigationTitle("Choose Status")
+            .navigationTitle(deleteMode ? "Delete Status" : "Choose Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button(deleteMode ? "Cancel" : "Done") {
+                        if deleteMode {
+                            deleteMode = false
+                        } else {
+                            dismiss()
+                        }
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Add") { showAddGroup = true }
+                        .disabled(deleteMode)
                 }
             }
             .sheet(item: $pendingDelete) { group in
@@ -99,86 +80,138 @@ struct StatusPickerSheet: View {
                     confirmLabel: "Delete Status"
                 ) {
                     deleteGroup(group)
+                    deleteMode = false
                 }
-                .presentationDetents([.height(440)])
-                .presentationDragIndicator(.visible)
+                .confirmationSheetPresentationStyle()
             }
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
+        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
+        .presentationDragIndicator(.visible)
         .sheet(isPresented: $showAddGroup) {
             newGroupSheet
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }
+        .onDisappear {
+            if !preDragSortIndex.isEmpty {
+                rollbackReorderIfPending()
+            }
+            reorderWatchdog?.cancel()
+            reorderWatchdog = nil
+        }
     }
 
-    private func groupTile(_ group: BoardGroup) -> some View {
-        GridTile(
-            title: group.name,
-            subtitle: "\(group.orderedTasks.count) tasks",
-            dotColor: group.colorKey.dot,
-            tintColor: group.colorKey.foreground,
-            isSelected: selection?.id == group.id
-        )
-        .contentShape(Rectangle())
-        .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onTapGesture {
-            selection = group
-            dismiss()
-        }
-        .draggable(beginDragGroup(group)) {
-            GridTile(
-                title: group.name,
-                subtitle: "\(group.orderedTasks.count) tasks",
-                dotColor: group.colorKey.dot,
-                tintColor: group.colorKey.foreground
-            )
-            .frame(width: 120)
-        }
-        .onDrop(
-            of: StringMoveDropDelegate.acceptedTypes,
-            delegate: StatusPickerReorderDropDelegate(
-                target: group,
-                board: board,
-                context: context,
-                draggingGroupID: $draggingGroupID,
-                dragSessionEnded: $dragSessionEnded
-            )
-        )
+    // MARK: - Reorder rollback
+
+    private func captureReorderSnapshotIfNeeded() {
+        guard preDragSortIndex.isEmpty else { return }
+        var snap: [UUID: Int] = [:]
+        for group in board.orderedGroups { snap[group.id] = group.sortIndex }
+        preDragSortIndex = snap
+        armReorderWatchdog()
     }
 
-    private var deleteDropZone: some View {
-        let baseColor = Color.red
-        let tint = deleteZoneHovered ? baseColor.opacity(0.85) : baseColor.opacity(0.45)
-        return HStack(spacing: 10) {
-            Image(systemName: "trash.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
-            Text(deleteZoneHovered ? "Release to delete" : "Drag here to delete")
-                .font(.system(.headline, design: .rounded).weight(.semibold))
-                .foregroundColor(.white)
+    private func rearmReorderWatchdogIfDragging() {
+        guard !preDragSortIndex.isEmpty else { return }
+        armReorderWatchdog()
+    }
+
+    private func armReorderWatchdog() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { return }
+            rollbackReorderIfPending()
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 78)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(tint)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(baseColor.opacity(deleteZoneHovered ? 0.95 : 0.6), lineWidth: 1.6)
-        )
-        .padding(.horizontal, 16)
-        .padding(.bottom, 18)
-        .onDrop(
-            of: StringMoveDropDelegate.acceptedTypes,
-            delegate: GroupDeleteDropDelegate(
-                draggingGroupID: $draggingGroupID,
-                dragSessionEnded: $dragSessionEnded,
-                hovered: $deleteZoneHovered,
-                resolveGroup: { id in board.orderedGroups.first(where: { $0.id == id }) },
-                onDelete: { group in pendingDelete = group }
+    }
+
+    private func completeReorder() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
+        preDragSortIndex.removeAll()
+    }
+
+    private func rollbackReorderIfPending() {
+        guard !preDragSortIndex.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.22)) {
+            for group in board.orderedGroups {
+                if let original = preDragSortIndex[group.id], group.sortIndex != original {
+                    group.sortIndex = original
+                }
+            }
+        }
+        try? context.save()
+        preDragSortIndex.removeAll()
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
+    }
+
+    private func groupRow(_ group: BoardGroup) -> some View {
+        groupRowContent(group)
+            .contentShape(Rectangle())
+            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .onTapGesture {
+                if deleteMode {
+                    if canDelete {
+                        pendingDelete = group
+                    }
+                    return
+                }
+                selection = group
+                dismiss()
+            }
+            .draggable(beginDragGroup(group)) {
+                groupRowContent(group)
+                    .dynamicTypeSize(settings.textSize.dynamicType)
+                    .frame(width: 320)
+            }
+            .onDrop(
+                of: StringMoveDropDelegate.acceptedTypes,
+                delegate: ReorderDropDelegate<BoardGroup>(
+                    target: group,
+                    ordered: { board.orderedGroups },
+                    onCommit: { try? context.save() },
+                    onBeginDrag: { captureReorderSnapshotIfNeeded() },
+                    onTick: { rearmReorderWatchdogIfDragging() },
+                    onCompleteDrag: { completeReorder() },
+                    draggingID: $draggingGroupID,
+                    dragSessionEnded: $dragSessionEnded
+                )
             )
-        )
+    }
+
+    private func groupRowContent(_ group: BoardGroup) -> some View {
+        let isSelected = selection?.id == group.id
+        return HStack(alignment: .center, spacing: 12) {
+            Circle()
+                .fill(deleteMode ? Color.red : group.colorKey.dot)
+                .frame(width: 13, height: 13)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(group.name)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(deleteMode ? .red : .primary)
+
+                Text("\(group.orderedTasks.count) tasks")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            if deleteMode {
+                Image(systemName: "trash")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.red)
+            } else if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.accent)
+            }
+        }
+        .padding(.vertical, 16)
     }
 
     private func beginDragGroup(_ group: BoardGroup) -> String {
@@ -190,19 +223,36 @@ struct StatusPickerSheet: View {
         return group.id.uuidString
     }
 
+    private var deleteButton: some View {
+        Button { deleteMode = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.system(.subheadline, weight: .bold))
+                Text("Delete a Status")
+                    .font(.system(.headline, design: .rounded))
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var newGroupSheet: some View {
         NavigationStack {
             ZStack {
                 Color(.systemGroupedBackground).ignoresSafeArea()
                 ScrollView {
                     SettingsCardSection("New Status") {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 26) {
                             HStack(spacing: 14) {
                                 SettingsIconTile(systemName: "circle.fill", color: newGroupColor.foreground)
                                 TextField("Status name", text: $newGroupName)
                                     .font(.system(.headline, design: .rounded))
                             }
-                            ColorSwatchPicker(selection: $newGroupColor).padding(.leading, 58)
+                            ColorSwatchPicker(selection: $newGroupColor)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
@@ -268,88 +318,5 @@ struct StatusPickerSheet: View {
         for (idx, g) in remaining.enumerated() { g.sortIndex = idx }
         try? context.save()
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
-    }
-}
-
-private struct StatusPickerReorderDropDelegate: DropDelegate {
-    let target: BoardGroup
-    let board: Board
-    let context: ModelContext
-    @Binding var draggingGroupID: UUID?
-    @Binding var dragSessionEnded: Bool
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let id = draggingGroupID, id != target.id else { return }
-        applyMove(draggedID: id)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        if let id = draggingGroupID {
-            applyMove(draggedID: id)
-            try? context.save()
-        }
-        draggingGroupID = nil
-        dragSessionEnded = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            dragSessionEnded = false
-        }
-        return true
-    }
-
-    private func applyMove(draggedID: UUID) {
-        guard draggedID != target.id else { return }
-        var ordered = board.orderedGroups
-        guard let from = ordered.firstIndex(where: { $0.id == draggedID }),
-              let to = ordered.firstIndex(where: { $0.id == target.id }),
-              from != to else { return }
-        withAnimation(.easeInOut(duration: 0.22)) {
-            let item = ordered.remove(at: from)
-            ordered.insert(item, at: to)
-            for (i, g) in ordered.enumerated() { g.sortIndex = i }
-        }
-    }
-}
-
-private struct GroupDeleteDropDelegate: DropDelegate {
-    @Binding var draggingGroupID: UUID?
-    @Binding var dragSessionEnded: Bool
-    @Binding var hovered: Bool
-    let resolveGroup: (UUID) -> BoardGroup?
-    let onDelete: (BoardGroup) -> Void
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard !hovered else { return }
-        hovered = true
-        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-    }
-
-    func dropExited(info: DropInfo) {
-        hovered = false
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        let draggedID = draggingGroupID
-        hovered = false
-        draggingGroupID = nil
-        dragSessionEnded = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            dragSessionEnded = false
-        }
-        if let id = draggedID, let group = resolveGroup(id) {
-            DispatchQueue.main.async {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                onDelete(group)
-            }
-            return true
-        }
-        return false
     }
 }

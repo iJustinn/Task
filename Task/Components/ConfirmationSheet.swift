@@ -11,17 +11,18 @@ struct ConfirmationSheet: View {
     let onConfirm: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SettingsViewModel
 
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 Image(systemName: icon)
-                    .font(.system(size: 30, weight: .semibold))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(iconTint)
-                    .frame(width: 68, height: 68)
+                    .frame(width: 60, height: 60)
                     .background(
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
                             .fill(iconTint.opacity(0.14))
                     )
 
@@ -51,7 +52,7 @@ struct ConfirmationSheet: View {
                         Text(confirmLabel)
                             .font(.system(.headline, design: .rounded).weight(.bold))
                             .foregroundColor(.white)
-                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .frame(maxWidth: .infinity, minHeight: 48)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .fill(isDestructive ? Color.red : Color.accentColor)
@@ -65,7 +66,7 @@ struct ConfirmationSheet: View {
                         Text(cancelLabel)
                             .font(.system(.headline, design: .rounded).weight(.semibold))
                             .foregroundColor(.primary)
-                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .frame(maxWidth: .infinity, minHeight: 48)
                             .background(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                                     .fill(Color.primary.opacity(0.08))
@@ -75,7 +76,15 @@ struct ConfirmationSheet: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 28)
+            .padding(.vertical, 22)
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
+    }
+}
+
+extension View {
+    func confirmationSheetPresentationStyle() -> some View {
+        presentationDetents([.height(360)])
+            .presentationDragIndicator(.visible)
     }
 }

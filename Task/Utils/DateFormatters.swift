@@ -7,8 +7,14 @@ enum TaskDateFormat {
         didSet {
             guard oldValue != locale else { return }
             medium.locale = locale
+            for f in styledFormatters.values { f.locale = locale }
         }
     }
+
+    /// The user's chosen Date Format. Mirrored from `SettingsViewModel.dateFormat`
+    /// so nonisolated contexts (e.g. `NotificationService`) can render dates in the
+    /// same style as the rest of the app without crossing the `@MainActor` boundary.
+    nonisolated(unsafe) static var currentStyle: AppDateFormat = .shortText
 
     static let medium: DateFormatter = {
         let f = DateFormatter()
@@ -17,6 +23,22 @@ enum TaskDateFormat {
         f.timeStyle = .none
         return f
     }()
+
+    private nonisolated(unsafe) static var styledFormatters: [String: DateFormatter] = [:]
+
+    private static func formatter(for style: AppDateFormat) -> DateFormatter {
+        if let cached = styledFormatters[style.rawValue] { return cached }
+        let f = DateFormatter()
+        f.locale = locale
+        switch style {
+        case .shortNumeric: f.dateFormat = "MM.dd"
+        case .shortText:    f.setLocalizedDateFormatFromTemplate("MMMd")
+        case .longNumeric:  f.dateFormat = "yyyy.MM.dd"
+        case .longText:     f.setLocalizedDateFormatFromTemplate("MMMdy")
+        }
+        styledFormatters[style.rawValue] = f
+        return f
+    }
 
     static func format(_ date: Date) -> String {
         medium.string(from: date)
@@ -27,6 +49,17 @@ enum TaskDateFormat {
             return format(start)
         }
         return "\(format(start)) → \(format(end))"
+    }
+
+    static func format(_ date: Date, style: AppDateFormat) -> String {
+        formatter(for: style).string(from: date)
+    }
+
+    static func formatRange(_ start: Date, _ end: Date?, style: AppDateFormat) -> String {
+        guard let end, Calendar.current.startOfDay(for: end) != Calendar.current.startOfDay(for: start) else {
+            return format(start, style: style)
+        }
+        return "\(format(start, style: style)) → \(format(end, style: style))"
     }
 }
 

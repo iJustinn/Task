@@ -11,7 +11,7 @@ struct UpcomingTasksWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Upcoming Tasks")
-        .description("See your next tasks with reminders set. Choose a board or show all of them.")
+        .description("See tasks with a working or due date in the next seven days. Choose a board or show all of them.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -91,9 +91,10 @@ struct UpcomingTasksWidgetView: View {
 
     private var headerTitle: String {
         if let board = entry.configuration.board {
-            return "\(board.iconEmoji) \(board.title)"
+            let resolvedTitle = board.title.isEmpty ? String(localized: "Untitled") : board.title
+            return "\(board.iconEmoji) \(resolvedTitle)"
         }
-        return "Upcoming"
+        return String(localized: "Upcoming")
     }
 
     @ViewBuilder
@@ -108,7 +109,7 @@ struct UpcomingTasksWidgetView: View {
                         Text(emoji)
                             .font(compact ? .caption2 : .footnote)
                     }
-                    Text(task.title)
+                    Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
                         .font(compact ? .caption.weight(.semibold) : .footnote.weight(.semibold))
                         .lineLimit(1)
                 }

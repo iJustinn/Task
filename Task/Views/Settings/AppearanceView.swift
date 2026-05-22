@@ -1,147 +1,242 @@
 import SwiftUI
 
-// MARK: - Theme picker
+// MARK: - Flat choice picker
+
+private protocol FlatSettingsChoice: Identifiable, Equatable {
+    var pickerTitle: String { get }
+    var pickerSubtitle: String? { get }
+    var pickerSystemImage: String? { get }
+    var pickerIconText: String? { get }
+    var pickerTintColor: Color { get }
+}
+
+private extension FlatSettingsChoice {
+    var pickerIconText: String? { nil }
+}
+
+private struct FlatSettingsChoicePicker<Option: FlatSettingsChoice>: View {
+    let title: String
+    let options: [Option]
+    @Binding var selection: Option
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SettingsViewModel
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { proxy in
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                                optionRow(option)
+                                if index < options.count - 1 {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
+                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .dynamicTypeSize(settings.textSize.dynamicType)
+    }
+
+    private func optionRow(_ option: Option) -> some View {
+        Button {
+            selection = option
+            dismiss()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                optionIcon(option)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(option.pickerTitle)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    if let subtitle = option.pickerSubtitle {
+                        Text(subtitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                if selection == option {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.accent)
+                }
+            }
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func optionIcon(_ option: Option) -> some View {
+        if let text = option.pickerIconText {
+            Text(text)
+                .font(.body.weight(.bold))
+                .foregroundStyle(option.pickerTintColor)
+                .frame(width: 34)
+        } else if let systemImage = option.pickerSystemImage {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(option.pickerTintColor)
+                .frame(width: 34)
+        } else {
+            Circle()
+                .fill(option.pickerTintColor)
+                .frame(width: 13, height: 13)
+                .frame(width: 34)
+        }
+    }
+}
+
+extension AppTheme: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
+extension AppLanguage: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
+extension AppTimeFormat: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerIconText: String? { iconText }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
+extension AppAccent: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { color }
+}
+
+extension AppTextSize: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
+extension AppColumnWidth: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
+extension AppDateFormat: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
+extension AppNotesPreview: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
+extension AppDateFilterTarget: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
 
 struct ThemePickerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppTheme.allCases) { theme in
-                            Button {
-                                settings.theme = theme
-                                dismiss()
-                            } label: {
-                                GridTile(
-                                    title: theme.label,
-                                    subtitle: theme.descriptor,
-                                    systemImage: theme.systemImage,
-                                    tintColor: theme.tintColor,
-                                    isSelected: settings.theme == theme
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
-                }
-            }
-            .navigationTitle("Theme")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
+        FlatSettingsChoicePicker(title: "Theme", options: AppTheme.allCases, selection: $settings.theme)
     }
 }
 
-// MARK: - Accent picker
-
-struct AccentPickerSheet: View {
+struct LanguagePickerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppAccent.allCases) { accent in
-                            Button {
-                                settings.accent = accent
-                                dismiss()
-                            } label: {
-                                GridTile(
-                                    title: accent.label,
-                                    subtitle: accent.descriptor,
-                                    systemImage: accent.systemImage,
-                                    tintColor: accent.color,
-                                    isSelected: settings.accent == accent
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
-                }
-            }
-            .navigationTitle("App Accent")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
+        FlatSettingsChoicePicker(title: "Language", options: AppLanguage.allCases, selection: $settings.language)
     }
 }
-
-// MARK: - Time format picker
 
 struct TimeFormatPickerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppTimeFormat.allCases) { format in
-                            Button {
-                                settings.timeFormat = format
-                                dismiss()
-                            } label: {
-                                GridTile(
-                                    title: format.label,
-                                    subtitle: format.descriptor,
-                                    systemImage: format.systemImage,
-                                    iconText: format.iconText,
-                                    tintColor: format.tintColor,
-                                    isSelected: settings.timeFormat == format
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
-                }
-            }
-            .navigationTitle("Time Format")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
+        FlatSettingsChoicePicker(title: "Time Format", options: AppTimeFormat.allCases, selection: $settings.timeFormat)
+    }
+}
+
+struct TextSizePickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    var body: some View {
+        FlatSettingsChoicePicker(title: "Text Size", options: AppTextSize.allCases, selection: $settings.textSize)
+    }
+}
+
+struct ColumnWidthPickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    var body: some View {
+        FlatSettingsChoicePicker(title: "Group Width", options: AppColumnWidth.allCases, selection: $settings.columnWidth)
+    }
+}
+
+struct AccentPickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    var body: some View {
+        FlatSettingsChoicePicker(title: "App Accent", options: AppAccent.allCases, selection: $settings.accent)
+    }
+}
+
+struct DateFormatPickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    var body: some View {
+        FlatSettingsChoicePicker(title: "Date Format", options: AppDateFormat.allCases, selection: $settings.dateFormat)
+    }
+}
+
+struct NotesPreviewPickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    var body: some View {
+        FlatSettingsChoicePicker(title: "Notes Preview", options: AppNotesPreview.allCases, selection: $settings.notesPreview)
+    }
+}
+
+struct DateFilterTargetPickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    var body: some View {
+        FlatSettingsChoicePicker(title: "Date Filter", options: AppDateFilterTarget.allCases, selection: $settings.dateFilterTarget)
     }
 }
 
@@ -365,153 +460,23 @@ struct ReminderTimePickerSheet: View {
 
     private func applyAndDismiss() {
         guard let components = parsedComponents else { return }
-        board.reminderMinutesOfDay = components.hour * 60 + components.minute
+        let newMinutes = components.hour * 60 + components.minute
+        let changed = board.reminderMinutesOfDay != newMinutes
+        board.reminderMinutesOfDay = newMinutes
         board.updatedAt = Date()
         try? context.save()
+        if changed {
+            // Existing UNCalendarNotificationTriggers were anchored to the old hour/
+            // minute at scheduling time. Re-schedule every active reminder on this
+            // board so they pick up the new time of day.
+            rescheduleReminders()
+        }
         dismiss()
     }
-}
 
-// MARK: - Text size picker
-
-struct TextSizePickerSheet: View {
-    @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppTextSize.allCases) { size in
-                            Button {
-                                settings.textSize = size
-                                dismiss()
-                            } label: {
-                                GridTile(
-                                    title: size.label,
-                                    subtitle: size.descriptor,
-                                    systemImage: size.systemImage,
-                                    tintColor: size.tintColor,
-                                    isSelected: settings.textSize == size
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
-                }
-            }
-            .navigationTitle("Text Size")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Column width picker
-
-struct ColumnWidthPickerSheet: View {
-    @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppColumnWidth.allCases) { width in
-                            Button {
-                                settings.columnWidth = width
-                                dismiss()
-                            } label: {
-                                GridTile(
-                                    title: width.label,
-                                    subtitle: width.descriptor,
-                                    systemImage: width.systemImage,
-                                    tintColor: width.tintColor,
-                                    isSelected: settings.columnWidth == width
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
-                }
-            }
-            .navigationTitle("Group Width")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Language picker
-
-struct LanguagePickerSheet: View {
-    @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
-    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(AppLanguage.allCases) { lang in
-                            Button {
-                                settings.language = lang
-                                dismiss()
-                            } label: {
-                                GridTile(
-                                    title: lang.label,
-                                    subtitle: lang.descriptor,
-                                    systemImage: lang.systemImage,
-                                    tintColor: lang.tintColor,
-                                    isSelected: settings.language == lang
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
-                }
-            }
-            .navigationTitle("Language")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
-            }
+    private func rescheduleReminders() {
+        for task in (board.tasks ?? []) where task.hasReminder {
+            NotificationService.schedule(for: task)
         }
     }
 }

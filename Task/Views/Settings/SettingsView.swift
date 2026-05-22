@@ -23,7 +23,7 @@ struct SettingsView: View {
     @State private var importOrphanMessage: String? = nil
 
     private enum AppearanceSheet: String, Identifiable {
-        case theme, language, textSize, columnWidth, accent, icon, timeFormat
+        case theme, language, textSize, columnWidth, accent, icon, timeFormat, dateFormat, notesPreview, dateFilterTarget, reminderTime
         var id: String { rawValue }
     }
 
@@ -40,11 +40,12 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground)
+                Color(.systemBackground)
                     .ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                         appearanceSection
+                        boardSection
                         dataSection
                         aboutSection
                     }
@@ -85,7 +86,7 @@ struct SettingsView: View {
                     onImport: { showingImportPicker = true },
                     onReset: { performReset() }
                 )
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
             }
             .fileExporter(
@@ -142,6 +143,7 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(settings.theme.colorScheme)
+        .dynamicTypeSize(settings.textSize.dynamicType)
     }
 
     // MARK: - Sections
@@ -221,6 +223,54 @@ struct SettingsView: View {
         case .twelveHour:     return "clock.fill"
         case .twentyFourHour: return "timer"
         }
+    }
+
+    private var boardSection: some View {
+        SettingsCardSection("Board") {
+            SettingsButtonRow(
+                title: "Date Filter",
+                systemName: settings.dateFilterTarget.systemImage,
+                tintColor: settings.dateFilterTarget.tintColor,
+                action: { activeSheet = .dateFilterTarget }
+            ) {
+                trailing(value: settings.dateFilterTarget.label)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Date Format",
+                systemName: settings.dateFormat.systemImage,
+                tintColor: settings.dateFormat.tintColor,
+                action: { activeSheet = .dateFormat }
+            ) {
+                trailing(value: settings.dateFormat.descriptor)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Notes Preview",
+                systemName: settings.notesPreview.systemImage,
+                tintColor: settings.notesPreview.tintColor,
+                action: { activeSheet = .notesPreview }
+            ) {
+                trailing(value: settings.notesPreview.label)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Reminder Time",
+                systemName: "bell.fill",
+                tintColor: .orange,
+                action: { activeSheet = .reminderTime }
+            ) {
+                trailing(value: reminderTimeLabel)
+            }
+        }
+    }
+
+    private var reminderTimeLabel: String {
+        TimeFormatting.format(
+            hour: board.reminderMinutesOfDay / 60,
+            minute: board.reminderMinutesOfDay % 60,
+            uses24Hour: settings.timeFormat.uses24HourClock
+        )
     }
 
     private var dataSection: some View {
@@ -317,23 +367,23 @@ struct SettingsView: View {
         switch sheet {
         case .howToUse:
             HowToUseSheet()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .feedback:
             FeedbackSheet()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .privacy:
             PrivacySheet()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .disclaimer:
             DisclaimerSheet()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .copyright:
             CopyrightSheet()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }
     }
@@ -358,37 +408,57 @@ struct SettingsView: View {
         case .theme:
             ThemePickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .language:
             LanguagePickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .textSize:
             TextSizePickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .columnWidth:
             ColumnWidthPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .accent:
             AccentPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .icon:
             IconPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .timeFormat:
             TimeFormatPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        case .dateFormat:
+            DateFormatPickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        case .notesPreview:
+            NotesPreviewPickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        case .dateFilterTarget:
+            DateFilterTargetPickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        case .reminderTime:
+            ReminderTimePickerSheet(board: board)
+                .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }
     }

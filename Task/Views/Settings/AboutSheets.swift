@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Shared models / cards
+// MARK: - Shared models / sections
 
 struct AboutInfoSection: Identifiable {
     let id = UUID()
@@ -19,11 +19,19 @@ struct AboutGuideSection: Identifiable {
     let steps: [String]
 }
 
+private struct AboutSectionDivider: View {
+    var body: some View {
+        Divider()
+            .padding(.leading, 8)
+            .padding(.trailing, 8)
+    }
+}
+
 struct AboutInfoCard: View {
     let section: AboutInfoSection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 SettingsIconTile(systemName: section.systemImage, color: section.tintColor)
                 Text(section.title)
@@ -32,7 +40,7 @@ struct AboutInfoCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(section.details, id: \.self) { detail in
                     HStack(alignment: .top, spacing: 10) {
                         Circle()
@@ -48,9 +56,8 @@ struct AboutInfoCard: View {
                 }
             }
         }
-        .padding(20)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .taskCardBackground()
     }
 }
 
@@ -58,7 +65,7 @@ struct AboutGuideCard: View {
     let section: AboutGuideSection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
                 SettingsIconTile(systemName: section.systemImage, color: section.tintColor)
                 Text(section.title)
@@ -67,7 +74,7 @@ struct AboutGuideCard: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(section.steps.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .top, spacing: 10) {
                         Text("\(index + 1)")
@@ -84,9 +91,8 @@ struct AboutGuideCard: View {
                 }
             }
         }
-        .padding(20)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .taskCardBackground()
     }
 }
 
@@ -101,9 +107,9 @@ struct HowToUseSheet: View {
             systemImage: "archivebox.fill",
             tintColor: .accentColor,
             steps: [
-                "Tap the folder button in the bottom bar to open the board switcher. Fresh installs ship with three boards — Personal, Study, and Work — each with their own groups, tags, and tasks.",
+                "Tap the archive button in the bottom bar to open the board switcher. Fresh installs ship with three boards — Personal, Study, and Work — each with their own groups, tags, and tasks.",
                 "Tap Add in the switcher to create a new board with placeholder text — then tap the title, subtitle, or icon on the board header to edit them in place.",
-                "Long-press a board tile to drag-reorder it. While dragging, a red trash bar slides up at the bottom — drop the tile there to delete the board (with a confirmation popup). Disabled when only one board remains."
+                "Long-press a board row to drag-reorder it. Expand the switcher and tap Delete a Board to choose a board for deletion with a confirmation popup. Disabled when only one board remains."
             ]
         ),
         AboutGuideSection(
@@ -141,8 +147,8 @@ struct HowToUseSheet: View {
             systemImage: "tag.fill",
             tintColor: .orange,
             steps: [
-                "Tap a group's ··· menu on the board to rename, recolor, or delete it. Inside a task, tap Status to add a new group or drag any tile onto the trash bar to delete one.",
-                "Inside a task, tap Tags to choose or create tags scoped to the active board. Long-press a tile to drag-reorder, or drag onto the trash bar to remove it from every task on the board.",
+                "Tap a group's ··· menu on the board to rename, recolor, or delete it. Inside a task, tap Status to add a new group, drag-reorder rows, or expand the sheet and use Delete a Status.",
+                "Inside a task, tap Tags to choose or create tags scoped to the active board. Long-press a row to drag-reorder, or expand the sheet and use Delete a Tag to remove it from every task on the board.",
                 "Two boards can each have their own group called \"Doing\" — groups and tags don't cross boards."
             ]
         ),
@@ -153,7 +159,8 @@ struct HowToUseSheet: View {
             steps: [
                 "Tap a day on the calendar to set the date; tap it again to clear.",
                 "Enable End Date in the Working date sheet to select a range — the strip between the two days highlights blue.",
-                "Dates show blue on cards when the date is still in the future, and red once it has arrived or passed. Reminders fire at the time you set per-board — tap the bell icon on the board header to change it."
+                "Dates show blue on cards when the date is still in the future, and red once it has arrived or passed. Reminders fire at the time you set per-board — open Settings > Board > Reminder Time to change it.",
+                "When a task has both a working date and a due date, the reminder fires on whichever comes first. For a working range with no due date, the reminder fires on the first day of the range."
             ]
         ),
         AboutGuideSection(
@@ -211,16 +218,19 @@ struct HowToUseSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(sections) { section in
-                            AboutGuideCard(section: section)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(sections.indices), id: \.self) { index in
+                            AboutGuideCard(section: sections[index])
+                            if index < sections.count - 1 {
+                                AboutSectionDivider()
+                            }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("How to Use")
@@ -245,7 +255,7 @@ struct FeedbackSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     SettingsCardSection {
                         Button {
@@ -261,9 +271,9 @@ struct FeedbackSheet: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Feedback")
@@ -357,16 +367,19 @@ struct PrivacySheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(sections) { section in
-                            AboutInfoCard(section: section)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(sections.indices), id: \.self) { index in
+                            AboutInfoCard(section: sections[index])
+                            if index < sections.count - 1 {
+                                AboutSectionDivider()
+                            }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Privacy")
@@ -399,12 +412,12 @@ struct DisclaimerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     AboutInfoCard(section: section)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 6)
-                        .padding(.bottom, 30)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Disclaimer")
@@ -426,9 +439,9 @@ struct CopyrightSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 0) {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(spacing: 12) {
                                 SettingsIconTile(systemName: "c.circle.fill", color: .purple)
@@ -444,13 +457,12 @@ struct CopyrightSheet: View {
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        .padding(20)
+                        .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .taskCardBackground()
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Copyright")
