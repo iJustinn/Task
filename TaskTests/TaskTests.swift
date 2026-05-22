@@ -56,16 +56,60 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(task.matchesDateFilter(may13, target: .dueDate, calendar: calendar))
     }
 
-    func testBoardDateSliderWindowCentersRecentDaysOnReferenceDate() throws {
+    func testBoardDateSliderWindowUsesWorkingDateBoundsFromTasks() throws {
         let calendar = Calendar(identifier: .gregorian)
-        let may22 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 22, hour: 14)))
-        let dates = BoardDateSliderDayWindow.dates(center: may22, daysBefore: 2, daysAfter: 3, calendar: calendar)
+        let may10 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 10, hour: 14)))
+        let may12 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 12, hour: 9)))
+        let june3 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 6, day: 3, hour: 18)))
+        let ignoredDue = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 8)))
 
-        XCTAssertEqual(dates.count, 6)
-        XCTAssertEqual(dates.first, calendar.date(from: DateComponents(year: 2026, month: 5, day: 20)))
-        XCTAssertEqual(dates[2], calendar.date(from: DateComponents(year: 2026, month: 5, day: 22)))
-        XCTAssertEqual(dates.last, calendar.date(from: DateComponents(year: 2026, month: 5, day: 25)))
+        let rangeTask = TaskItem(title: "Range", notes: "")
+        rangeTask.workingStart = may12
+        rangeTask.workingEnd = may10
+        rangeTask.dueDate = ignoredDue
+
+        let laterTask = TaskItem(title: "Later", notes: "")
+        laterTask.workingStart = june3
+
+        let dates = BoardDateSliderDayWindow.dates(
+            for: [rangeTask, laterTask],
+            target: .workingDate,
+            fallback: may10,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(dates.first, calendar.startOfDay(for: may10))
+        XCTAssertEqual(dates.last, calendar.startOfDay(for: june3))
+        XCTAssertTrue(dates.contains(calendar.startOfDay(for: may12)))
+        XCTAssertFalse(dates.contains(calendar.startOfDay(for: ignoredDue)))
         XCTAssertTrue(dates.allSatisfy { calendar.isDate($0, equalTo: calendar.startOfDay(for: $0), toGranularity: .second) })
+    }
+
+    func testBoardDateSliderWindowUsesDueDateBoundsFromTasks() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let ignoredWorking = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 4, day: 2)))
+        let may9 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 9, hour: 22)))
+        let june14 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 6, day: 14, hour: 8)))
+
+        let firstTask = TaskItem(title: "First due", notes: "")
+        firstTask.workingStart = ignoredWorking
+        firstTask.dueDate = may9
+
+        let lastTask = TaskItem(title: "Last due", notes: "")
+        lastTask.dueDate = june14
+
+        let dates = BoardDateSliderDayWindow.dates(
+            for: [firstTask, lastTask],
+            target: .dueDate,
+            fallback: may9,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(dates.first, calendar.startOfDay(for: may9))
+        XCTAssertEqual(dates.last, calendar.startOfDay(for: june14))
+        XCTAssertTrue(dates.contains(calendar.startOfDay(for: may9)))
+        XCTAssertTrue(dates.contains(calendar.startOfDay(for: june14)))
+        XCTAssertFalse(dates.contains(calendar.startOfDay(for: ignoredWorking)))
     }
 
     func testTextSizeSettingsAreShiftedOneSizeUpAndDefaultToMedium() {

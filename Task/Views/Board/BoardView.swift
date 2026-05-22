@@ -80,7 +80,13 @@ struct BoardView: View {
     }
 
     private var dateFilterSlider: some View {
-        BoardDateSlider(selectedDate: $selectedDateFilter)
+        BoardDateSlider(
+            selectedDate: $selectedDateFilter,
+            dates: BoardDateSliderDayWindow.dates(
+                for: board.tasks ?? [],
+                target: settings.dateFilterTarget
+            )
+        )
             .background(Color(.systemBackground))
     }
 
@@ -198,23 +204,40 @@ struct BoardView: View {
 
 struct BoardDateSliderDayWindow {
     static func dates(
-        center: Date = Date(),
-        daysBefore: Int = 21,
-        daysAfter: Int = 21,
+        for tasks: [TaskItem],
+        target: AppDateFilterTarget,
+        fallback: Date = Date(),
         calendar: Calendar = .current
     ) -> [Date] {
-        let centerDay = calendar.startOfDay(for: center)
-        let lower = -max(daysBefore, 0)
-        let upper = max(daysAfter, 0)
-
-        return (lower...upper).compactMap { offset in
-            calendar.date(byAdding: .day, value: offset, to: centerDay)
+        let bounds: [Date]
+        switch target {
+        case .workingDate:
+            bounds = tasks.flatMap { task -> [Date] in
+                guard let start = task.workingStart else { return [] }
+                return [start, task.workingEnd ?? start].map { calendar.startOfDay(for: $0) }
+            }
+        case .dueDate:
+            bounds = tasks.compactMap(\.dueDate).map { calendar.startOfDay(for: $0) }
         }
+
+        guard let first = bounds.min(), let last = bounds.max() else {
+            return [calendar.startOfDay(for: fallback)]
+        }
+
+        var days: [Date] = []
+        var day = first
+        while day <= last {
+            days.append(day)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        return days
     }
 }
 
 private struct BoardDateSlider: View {
     @Binding var selectedDate: Date?
+    let dates: [Date]
     @Environment(\.colorScheme) private var colorScheme
     @State private var scrollPosition: Date?
 
@@ -226,10 +249,6 @@ private struct BoardDateSlider: View {
 
     private var today: Date {
         calendar.startOfDay(for: Date())
-    }
-
-    private var dates: [Date] {
-        BoardDateSliderDayWindow.dates(center: today, calendar: calendar)
     }
 
     var body: some View {
@@ -253,12 +272,23 @@ private struct BoardDateSlider: View {
         .onAppear {
             scrollPosition = scrollTarget
         }
+        .onChange(of: dates) { _, _ in
+            scrollPosition = scrollTarget
+        }
         .frame(height: tileHeight + 24)
     }
 
     private var scrollTarget: Date {
         let target = selectedDate.map { calendar.startOfDay(for: $0) } ?? today
-        return dates.contains(where: { calendar.isDate($0, inSameDayAs: target) }) ? target : today
+        if dates.contains(where: { calendar.isDate($0, inSameDayAs: target) }) {
+            return target
+        }
+        if dates.contains(where: { calendar.isDate($0, inSameDayAs: today) }) {
+            return today
+        }
+        return dates.min(by: {
+            abs($0.timeIntervalSince(today)) < abs($1.timeIntervalSince(today))
+        }) ?? today
     }
 
     private func dateTile(for date: Date) -> some View {
