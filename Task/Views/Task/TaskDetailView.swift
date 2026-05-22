@@ -247,11 +247,12 @@ struct TaskDetailView: View {
     }
 
     private func workingDateDisplay(start: Date, end: Date?) -> String {
+        let style = settings.dateFormat
         guard isWorkingRange,
               let end,
               Calendar.current.startOfDay(for: end) != Calendar.current.startOfDay(for: start)
-        else { return TaskDateFormat.format(start) }
-        return "\(TaskDateFormat.format(start)) →\n\(TaskDateFormat.format(end))"
+        else { return TaskDateFormat.format(start, style: style) }
+        return "\(TaskDateFormat.format(start, style: style)) →\n\(TaskDateFormat.format(end, style: style))"
     }
 
     private var dueDateRow: some View {
@@ -260,7 +261,7 @@ struct TaskDetailView: View {
                 if let due = dueDate {
                     let tint = dateTint(for: due)
                     HStack(alignment: .center, spacing: 8) {
-                        Text(TaskDateFormat.format(due))
+                        Text(TaskDateFormat.format(due, style: settings.dateFormat))
                             .font(.system(size: Self.propertyFontSize, weight: .semibold, design: .rounded))
                             .foregroundStyle(tint)
                         Spacer(minLength: 8)
@@ -497,6 +498,7 @@ struct TaskDetailView: View {
         guard !trimmed.isEmpty, let group = selectedGroup else { return }
 
         let task: TaskItem
+        let isNewTask: Bool
         switch mode {
         case .create:
             let sortIndex = (group.orderedTasks.last?.sortIndex ?? -1) + 1
@@ -504,6 +506,7 @@ struct TaskDetailView: View {
             task.board = board
             task.group = group
             context.insert(task)
+            isNewTask = true
         case .edit(let existing):
             task = existing
             task.title = trimmed
@@ -512,6 +515,7 @@ struct TaskDetailView: View {
                 task.group = group
                 task.sortIndex = (group.orderedTasks.last?.sortIndex ?? -1) + 1
             }
+            isNewTask = false
         }
 
         task.tags = selectedTags
@@ -530,7 +534,16 @@ struct TaskDetailView: View {
         task.repeatRule = repeatRule
         task.touch()
 
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // Save failed — don't schedule/cancel notifications or update the widget
+            // for state that didn't commit. Drop the new task from the context so a
+            // later unrelated save doesn't persist a half-built orphan.
+            if isNewTask { context.delete(task) }
+            dismiss()
+            return
+        }
 
         if task.hasReminder {
             NotificationService.schedule(for: task)
@@ -568,7 +581,7 @@ struct TaskDetailView: View {
         if let w = workingStart, let d = dueDate {
             anchor = min(w, d)
         } else {
-            anchor = dueDate ?? (isWorkingRange ? workingEnd : nil) ?? workingStart
+            anchor = dueDate ?? workingStart ?? workingEnd
         }
         guard let anchor else { return nil }
         var comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
@@ -591,9 +604,20 @@ struct TaskDetailView: View {
 
     private func delete() {
         guard let task = editingTask else { return }
-        NotificationService.cancel(for: task)
         context.delete(task)
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            // The task is still in the store. Roll back the pending delete and skip
+            // notification cancel + widget refresh so the UI stays consistent with
+            // disk.
+            context.rollback()
+            dismiss()
+            return
+        }
+        // Only cancel the reminder once the delete is durable — otherwise a failed
+        // save would leave the task on disk with its scheduled notification gone.
+        NotificationService.cancel(for: task)
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
         dismiss()
     }

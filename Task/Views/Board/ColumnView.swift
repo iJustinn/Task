@@ -17,6 +17,7 @@ struct ColumnView: View {
     var onMenuTap: () -> Void
     var onPlaceTask: (TaskItem, Int, Bool) -> Void
     var onGroupReorder: (BoardGroup) -> Void
+    var onDragTick: () -> Void = {}
 
     @State private var visibleCount: Int = 10
     @State private var animateIn: Bool = false
@@ -84,6 +85,7 @@ struct ColumnView: View {
                                 sortField: sortField,
                                 onPlaceTask: onPlaceTask,
                                 onGroupReorder: onGroupReorder,
+                                onDragTick: onDragTick,
                                 findTask: findTask,
                                 findGroup: findGroup,
                                 draggingTaskID: $draggingTaskID,
@@ -121,6 +123,7 @@ struct ColumnView: View {
                 sortField: sortField,
                 onPlaceTask: onPlaceTask,
                 onGroupReorder: onGroupReorder,
+                onDragTick: onDragTick,
                 findTask: findTask,
                 findGroup: findGroup,
                 draggingTaskID: $draggingTaskID,
@@ -164,10 +167,13 @@ struct ColumnView: View {
                 visibleCount += pageSize
             }
         } label: {
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("More")
                     .font(.subheadline.weight(.semibold))
-                Text("+\(min(pageSize, hidden))")
+                Text("·")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(group.colorKey.foreground.opacity(0.7))
+                Text("\(hidden) left")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(group.colorKey.foreground.opacity(0.7))
             }
@@ -201,6 +207,7 @@ private struct TaskRowDropDelegate: DropDelegate {
     let sortField: CardSortField
     let onPlaceTask: (TaskItem, Int, Bool) -> Void
     let onGroupReorder: (BoardGroup) -> Void
+    let onDragTick: () -> Void
     let findTask: (UUID) -> TaskItem?
     let findGroup: (UUID) -> BoardGroup?
     @Binding var draggingTaskID: UUID?
@@ -219,7 +226,12 @@ private struct TaskRowDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        // `dropEntered` fires once per target entry; `dropUpdated` fires
+        // continuously while hovering. Use it to keep the BoardView watchdog
+        // fresh so a slow drag (user reading a card before deciding) doesn't
+        // trigger a mid-drag rollback.
+        onDragTick()
+        return DropProposal(operation: .move)
     }
 
     func dropEntered(info: DropInfo) {

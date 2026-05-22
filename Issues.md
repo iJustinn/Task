@@ -1,6 +1,6 @@
 # Task — Issues Report
 
-Audit of branch `task-v0.4.5` on 2026-05-21. Read-only review; no code was
+Audit of branch `task-v0.4.6` on 2026-05-22. Read-only review; no code was
 modified.
 
 Severity legend: Critical (data loss / crash / store-blocking), High
@@ -12,947 +12,967 @@ or maintainability delta).
 
 ## 1. Project review summary
 
-Task v0.4.5 (build 1) is healthy overall. Most of the prior audit's
-findings (N1, N2, N3, N4, N5, N7, N8, N12, N13, N14, N15 from
-`docs/IssuesArchive-01.md`) are resolved. The 0.4.0 multi-board rewrite
-introduced clean per-board state and a new widget configuration intent.
-The biggest risks today are: (a) the **Default Status** picker regressed
-in 0.4.5 — `DefaultStatusPickerSheet` is defined but no view ever opens
-it, so users can no longer choose which group new tasks land in; (b) two
-settings views (`ManageGroupsView`, `ManageTagsView`) are orphaned for
-the same reason; (c) `HowToUseSheet` documents UI paths
-("Settings > Customization > Groups/Tags", "Settings > Default > Status")
-that no longer exist; (d) `Reset All Data` copy still references "six
-default groups" from v0.1.0 (current seed is five per board across three
-boards). Several Medium items are quality-of-life: date formatters
-ignore the user's chosen `AppLanguage`, the localization catalog is 58%
-unfilled for Simplified Chinese, the reset flow shows no progress
-overlay, and `BoardIconPickerSheet`'s `Cancel` button is a no-op since
-selection is auto-committed. Areas reviewed: models, services, view
-models, all views (board, board switcher, task detail, search, settings,
-customization, about, components), widget target, project configuration,
-entitlements, privacy info, and `Localizable.xcstrings` coverage. Not
-reviewed: live runtime behavior on device, on-device notification
-delivery, Instruments traces, asset catalog contents.
+Task v0.4.6 (build 4 in `project.pbxproj`, documented as build 3 in README
+and VersionHistory) is in good shape. Almost every item from
+`docs/IssuesArchive-02.md` — the Default Status entry point, Reset copy,
+HowToUseSheet paths, ManageGroupsView/ManageTagsView orphan files, locale
+propagation in `TaskDateFormat`, `DefaultStatusPickerSheet` reachability,
+`BoardIconPickerSheet` Cancel semantics, reset progress overlay, iCloud
+Sync row dimming, repeat reminder scheduling, the `mediumWithTime`/
+`isSameDay` dead code, the `TooMuchToDo`/`Work Harder Play Harder`
+defaults, the orphan-message pluralization, and the import-result counts —
+has been resolved. The remaining live issues are smaller. The highest-
+impact gaps are: (a) `settings.dateFormat` is honored only on board cards
+via `DateRow`/`DueDateRow`; `TaskDetailView`, `SearchView`, and
+`NotificationService` still use the un-styled `TaskDateFormat.format(_:)`
+medium overload, so a user who picks "Long Numeric" sees `2026.05.17` on
+cards but `May 17, 2026` everywhere else; (b) changing a board's Reminder
+Time does not re-schedule existing reminders, so already-set tasks keep
+firing at the old time; (c) repeat reminders schedule a batch of 16
+one-shots and have no re-batch trigger besides "user saves the task
+again", so a Daily reminder silently goes quiet after 16 days. Several
+Low items are quality-of-life: "Untitled" is a non-localized literal in
+four sites, new boards land with the "Choose a Title" placeholder until
+the user clears it by hand, the widget extension has no
+`PrivacyInfo.xcprivacy`, `DEVELOPMENT_TEAM` is still hardcoded in
+`project.pbxproj`, the README/VersionHistory `(build 3)` lags the
+project's `CURRENT_PROJECT_VERSION = 4`, the `HowToUseSheet` "folder
+button" copy disagrees with the `archivebox` SF Symbol, and 21
+`Localizable.xcstrings` keys are still missing zh-Hans (down from the
+prior audit's 118). Areas reviewed: models, services, view models, all
+views (board, board switcher, task detail, search, settings, components),
+widget target, project configuration, entitlements, privacy info, and
+`Localizable.xcstrings` coverage. Not reviewed: live runtime behavior on
+device, on-device notification delivery, Instruments traces, asset
+catalog contents, asset preview names, the `TestData/testdata.json`
+payload.
 
 ---
 
 ## 2. Issue list
 
-### N1. `DefaultStatusPickerSheet` is unreachable — Default Status feature is regressed
-
-- **Severity:** High
-- **Related files:** `Task/Views/Settings/DefaultStatusPickerSheet.swift:1-55`,
-  `Task/Views/Board/ProjectHeaderView.swift:44-51`,
-  `Task/Views/Settings/SettingsView.swift:138-205`,
-  `Task/Models/Board.swift:14,46-53`,
-  `Task/Views/RootView.swift:77-79`
-- **Description:** `DefaultStatusPickerSheet` is defined and writes
-  `board.defaultGroupID`, but no view in the app ever instantiates it.
-  `grep -rn 'DefaultStatusPickerSheet' --include='*.swift'` returns only
-  the file's own `struct` declaration. The `ProjectHeaderView` toolbar
-  exposes Sort (`CardOrderPickerSheet`) and Reminder Time
-  (`ReminderTimePickerSheet`) icons but no Default Status icon. The
-  Settings screen also has no Default Status row. `Board.defaultGroup`
-  therefore always falls back to `orderedGroups.first` (line 52). In
-  0.3.x there was a `Settings > Default > Status` row that opened this
-  picker — that row was removed in the 0.4.5 rewrite without a
-  replacement entry point.
-- **Why it matters:** Visible feature regression. Users who picked a
-  non-first default in 0.3.x lost the affordance to change it; new users
-  cannot configure it at all. New tasks always land in the first group
-  on the board.
-- **Suggested fix:** Either (a) add a third icon button in
-  `ProjectHeaderView` (next to Sort and Reminder Time) that opens
-  `DefaultStatusPickerSheet(board: board)`; or (b) restore the Settings
-  row that opens it. Option (a) is more consistent with where the other
-  per-board pickers live now.
-- **Risks / dependencies:** None. The sheet itself is correctly
-  implemented and the data path already works through the legacy
-  migration.
-
-### N2. `HowToUseSheet` documents UI paths that no longer exist
-
-- **Severity:** High
-- **Related files:** `Task/Views/Settings/AboutSheets.swift:115,144-146,174-177`
-- **Description:** Three sections of the How to Use sheet point users to
-  paths that the current Settings layout does not expose:
-  - Line 115: "New tasks open in the active board's default Status
-    (Settings > Default > Status)" — that row does not exist (see N1).
-  - Line 144: "Settings > Customization > Groups manages the active
-    board's groups…" — the Customization section was removed in 0.4.0;
-    `ManageGroupsView` is no longer reachable (see N3).
-  - Line 145: "Settings > Customization > Tags manages tags…" — same.
-  - Line 174-177: "Settings > Default is scoped to the active board —
-    each board remembers its own default Status, Card Order, and
-    Reminder Time." — Card Order and Reminder Time are reachable from
-    the board header (`ProjectHeaderView`), but the wording implies a
-    Settings location; Status is not reachable at all (N1).
-- **Why it matters:** First-run users follow these breadcrumbs, can't
-  find the paths, and conclude the docs are stale (or the feature is
-  broken). Compounds the regression in N1.
-- **Suggested fix:** Rewrite the affected `steps:` strings to describe
-  the actual gestures: long-press a group's `…` menu on the column for
-  group management; tap the trash zone in `TagPickerSheet` to delete a
-  tag; tap the Sort / Reminder icons in the board header for those
-  pickers. If N1 is fixed by adding a Default Status button, document
-  it in the same place.
-- **Risks / dependencies:** None. Docs change only.
-
-### N3. `ManageGroupsView` and `ManageTagsView` are orphan files
+### N1. `settings.dateFormat` is ignored by `TaskDetailView`, `SearchView`, and `NotificationService`
 
 - **Severity:** Medium
-- **Related files:** `Task/Views/Settings/ManageGroupsView.swift:1-213`,
-  `Task/Views/Settings/ManageTagsView.swift:1-321`
-- **Description:** Both views are defined with full implementations
-  (drag-reorder, edit sheets, add/delete flows) but no other file
-  references them. `grep -rn 'ManageGroupsView\|ManageTagsView'
-  --include='*.swift'` finds only the `struct` definitions and the
-  stale `HowToUseSheet` references (N2). The 0.4.0 multi-board work
-  moved group editing to the column header's `…` menu (`GroupMenuSheet`)
-  and tag editing into `TagPickerSheet`; the two `Manage*View`s were
-  left behind. Each is ~200 lines of dead code that has to be kept
-  compiling.
-- **Why it matters:** Maintenance burden, false discoverability for
-  contributors, drift risk between the live editing surfaces and the
-  unreachable ones.
-- **Suggested fix:** Pick one path:
-  - Delete both files (plus the `TagEditSheet` struct inside
-    `ManageTagsView.swift:233-320`) since their behavior is fully
-    covered by the live surfaces.
-  - Or restore Settings rows that present them as a power-user "manage
-    everything in this board" entry point (would also be a place to
-    expose Default Status; see N1).
-- **Risks / dependencies:** If deleting, double-check there are no
-  references in test plans or future planning docs (the live grep
-  showed none).
+- **Related files:** `Task/Views/Task/TaskDetailView.swift:253-254,263`,
+  `Task/Views/Search/SearchView.swift:75`,
+  `Task/Services/NotificationService.swift:131,134`,
+  `Task/Utils/DateFormatters.swift:14-20,49-58`,
+  `Task/Components/DateRow.swift:11,28`
+- **Description:** `DateRow` and `DueDateRow` pass
+  `style: settings.dateFormat` into `TaskDateFormat.format(_:style:)`, so
+  board cards honor the user's chosen Date Format. But three other date
+  surfaces use the bare `TaskDateFormat.format(_:)` / `formatRange(_:_:)`
+  overloads, which always read the `medium` formatter (`May 17, 2026`):
+  - `TaskDetailView.workingDateDisplay` (line 253-254) renders working
+    dates in the editor.
+  - `TaskDetailView`'s `dueDateRow` (line 263) renders due dates in the
+    editor.
+  - `SearchView.taskRow` (line 75) renders the due date column in search
+    results.
+  - `NotificationService.dateSummary` (line 131,134) composes the body
+    text of every fired notification.
 
-### N4. `Reset All Data` copy still says "six default groups" but the seed is five per board
+  So a user who picks "Short Numeric" / "Long Numeric" / "Long Text" in
+  Settings → Date Format sees the chosen format on board cards, but
+  reverts to medium (`May 17, 2026`) inside the editor, in the search
+  list, and on notifications.
+- **Why it matters:** Explicit user preference silently ignored on every
+  surface except the board card. Easy to notice when switching styles to
+  see the difference. Also a `LessonsLearned` violation: the
+  "TaskDateFormat is the one place dates flow through" idea relies on
+  callers passing the style.
+- **Suggested fix:**
+  - Update the three editor / search callsites to pass
+    `settings.dateFormat`.
+  - For nonisolated `NotificationService`, mirror the
+    `TaskDateFormat.locale` pattern: expose a top-level
+    `TaskDateFormatStyle` variable (or a `currentDateStyle` on
+    `TaskDateFormat`) that `SettingsViewModel.dateFormat.didSet` updates,
+    so the service can render notifications in the user-chosen style
+    without touching a `@MainActor` view model.
+- **Risks / dependencies:** None. The styled formatters are already
+  cached per style; the bare `format(_:)` overload can stay for
+  emergencies but should be removed once all callsites pass a style.
 
-- **Severity:** Medium
-- **Related files:** `Task/Views/Settings/ManualControlSheet.swift:62-65`,
-  `Task/Services/SwiftDataManager.swift:40-44,74-80`
-- **Description:** The confirmation sheet message reads "This will
-  delete every group, tag, and task, then restore the six default
-  groups. This can't be undone." Two problems with this copy in 0.4.5:
-  1. The default seed is **three boards** × **five groups** (Waiting,
-     Doing, Pending, Done, Archive), not six groups. The "six" comes
-     from v0.1.0's single-board seed (Daily, Weekly, Waiting, Doing,
-     Pending, Done).
-  2. The sentence omits that boards are also deleted/re-seeded — a
-     user might think only groups are restored, but `resetAll` deletes
-     every `Board` and then re-seeds the three defaults.
-- **Why it matters:** Users may be misled about what Reset does and
-  what they get back. Important when the action is destructive and
-  irreversible.
-- **Suggested fix:** Replace with: "This will delete every board,
-  group, tag, and task on this device, then restore the three default
-  boards (Personal, Study, Work) with five groups each. This can't be
-  undone."
-- **Risks / dependencies:** None. Copy only; if changed, also pass
-  through `Localizable.xcstrings`.
-
-### N5. `BoardIconPickerSheet` Cancel does nothing — selection auto-commits on tap
+### N2. Changing a board's Reminder Time does not re-schedule existing reminders
 
 - **Severity:** Medium
-- **Related files:** `Task/Views/Board/BoardIconPickerSheet.swift:27-50`,
-  `Task/Views/Board/ProjectHeaderView.swift:70-79`
-- **Description:** Tapping an emoji tile fires `onSelect(emoji)` and
-  immediately dismisses (lines 28-30); the caller writes `iconEmoji`,
-  saves, and updates the widget snapshot synchronously. The toolbar
-  then exposes both a leading `Cancel` and a trailing `Done` (lines
-  44-51) that just call `dismiss()`. By the time the user taps Cancel,
-  the change is already persisted. The Cancel button is misleading.
-- **Why it matters:** "Cancel" in iOS implies undo. A user who taps
-  the wrong emoji and reaches for Cancel will assume their prior icon
-  is restored — it isn't. The same anti-pattern existed in 0.2.0
-  picker sheets and was raised under prior N11.
-- **Suggested fix:** Two clean options:
-  - (a) Remove the auto-commit on tap; track a `pendingIcon` and only
-    call `onSelect` on `Done`. Make Cancel actually cancel.
-  - (b) Drop the Cancel button; keep only Done so the toolbar matches
-    the "tap-to-commit" semantics (same as ThemePickerSheet,
-    AccentPickerSheet, etc., which all commit on tile tap).
-- **Risks / dependencies:** Option (a) is the more surprising-but-
-  correct behavior. Option (b) is consistent with the rest of the
-  picker family and is the smaller patch.
+- **Related files:**
+  `Task/Views/Settings/AppearanceView.swift:461-467`
+  (`ReminderTimePickerSheet.applyAndDismiss`),
+  `Task/Services/NotificationService.swift:21-78`,
+  `Task/Models/Board.swift:17`
+- **Description:** `ReminderTimePickerSheet.applyAndDismiss` writes
+  `board.reminderMinutesOfDay` and saves the context. But existing
+  scheduled `UNCalendarNotificationTrigger`s for that board's tasks were
+  built from the old `reminderMinutesOfDay` value at scheduling time
+  (`NotificationService.schedule` line 27-31). Without a re-schedule
+  pass, those triggers stay anchored to the old hour/minute, so changing
+  the board from 9:00 to 10:00 leaves every already-set reminder firing
+  at 9:00.
+- **Why it matters:** The user's mental model is "I changed the Reminder
+  Time for this board, so my reminders will fire at the new time."
+  Reality is "new reminders fire at 10:00; everything that was already
+  scheduled is still at 9:00." Silent inconsistency that only surfaces
+  when the next reminder actually fires.
+- **Suggested fix:** After saving the new value, walk
+  `board.tasks?.filter(\.hasReminder)` and call
+  `NotificationService.schedule(for: task)` for each (which cancels and
+  re-schedules with the new time). For boards with many tasks this could
+  be expensive — yielding via `Task.yield()` per 50 schedules mirrors the
+  reset/import pattern.
+- **Risks / dependencies:** Need to verify that
+  `schedule(for:)` is safe to call without an active
+  `UNUserNotificationCenter` authorization check at the moment of
+  rescheduling (it already silently no-ops if the trigger date is past).
+  The watch must not iterate past `repeatBatchSize × tasks` — see N3.
 
-### N6. `DateFormatters` ignore `settings.language.locale`
-
-- **Severity:** Medium
-- **Related files:** `Task/Utils/DateFormatters.swift:4-16`,
-  `Task/TaskApp.swift:16`,
-  `Task/Models/TaskItem.swift`, `Task/Components/DateRow.swift`,
-  `Task/Views/Task/TaskDetailView.swift`
-- **Description:** `TaskDateFormat.medium` is a `DateFormatter`
-  singleton initialized without an explicit `locale`, so it uses
-  `Locale.autoupdatingCurrent` — i.e. the **device** locale. The app
-  separately injects `settings.language.locale` via
-  `.environment(\.locale, …)` (TaskApp.swift:16), but
-  `DateFormatter.string(from:)` doesn't read environment values. A
-  Chinese-device user who selects English in Settings sees English
-  labels but **Chinese dates** on cards, task detail, search results,
-  and notifications. Conversely, an English-device user who selects
-  Simplified Chinese keeps English dates.
-- **Why it matters:** Mismatched language between UI text and dates
-  is obvious to bilingual users and undermines the language picker.
-- **Suggested fix:** Either (a) compute formatters lazily per-render
-  using the current environment locale (e.g. a SwiftUI `EnvironmentKey`
-  injecting a configured formatter), or (b) expose a `setLocale(_:)` on
-  `TaskDateFormat` that `SettingsViewModel.language.didSet` calls so the
-  singleton re-anchors to the chosen locale.
-- **Risks / dependencies:** Singleton mutation needs a `@MainActor`
-  guard (or a per-call formatter); shouldn't affect notifications since
-  `NotificationService.dateSummary` runs in the same process.
-
-### N7. Reset All Data shows no progress overlay even though it's async
+### N3. Repeat reminders silently stop after 16 occurrences
 
 - **Severity:** Medium
-- **Related files:** `Task/Views/Settings/SettingsView.swift:434-438`,
-  `Task/Views/Settings/ManualControlSheet.swift:104-130`,
-  `Task/Services/DataImportExport.swift:432-448`
-- **Description:** `DataImportExport.resetAll` deletes every task
-  (each one cancelling its pending notification), then every board
-  (cascading to groups and tags), then re-seeds. It yields every 50
-  tasks to give the UI a chance to repaint, but the caller
-  (`performReset` → `dismissThenRun(onReset)`) does not toggle any
-  `isResetting` state, so the `ProgressOverlay` never appears. On a
-  board freshly imported from `TestData/testdata.json` (~375 tasks),
-  this can feel like a hang.
-- **Why it matters:** Apparent app freeze after a destructive
-  confirmation. The user just tapped "Reset All Data"; silence is the
-  worst response.
-- **Suggested fix:** Mirror the import flow: add an
-  `@State var isResetting = false`, flip it to `true` before awaiting
-  `resetAll`, render a `ProgressOverlay(title: "Resetting Data",
-  message: "Restoring default boards…")`, and flip it back when the
-  await returns. Reuse the same animation as `isImporting`.
-- **Risks / dependencies:** None. Cosmetic + a small state field.
+- **Related files:**
+  `Task/Services/NotificationService.swift:19,40-52`,
+  `Task/Models/RepeatRule.swift:21-30`,
+  `Task/Views/Task/TaskDetailView.swift:585-590`
+- **Description:** When a task has `repeatRule != .none`,
+  `NotificationService.schedule(for:)` batches `repeatBatchSize = 16`
+  one-shot `UNCalendarNotificationTrigger`s by advancing the rule. The
+  comment (line 36-39) notes "Subsequent occurrences are re-scheduled
+  the next time the task is saved." If the user never re-opens the task,
+  after the 16th occurrence the reminder simply stops — no UI signal,
+  no further notifications, no hint that the alarm "wore off." For a
+  Daily reminder, this is 16 days; for Weekly, 16 weeks. The card's
+  `arrow.clockwise` icon and the editor's "Repeat: Daily" pill both
+  still claim the task repeats forever.
+- **Why it matters:** Class of silent-failure — exactly the kind a task
+  app must not have. A Daily reminder used as a habit anchor degrades
+  into silence after two weeks.
+- **Suggested fix:** Two complementary moves:
+  - (a) On app launch / scene-active (`RootView.task`), walk all tasks
+    with `hasReminder && repeatRule != .none` whose last pending
+    notification (or last fired date) is within `repeatBatchSize / 2`
+    occurrences of running out, and re-schedule them.
+  - (b) Document the batch behavior in `LessonsLearned.md` so the next
+    contributor doesn't increase `repeatBatchSize` to 64 without
+    realizing iOS caps total pending notifications at 64 per app
+    (4 daily-repeat tasks would consume the entire budget).
+- **Risks / dependencies:** Plumbing `UNUserNotificationCenter.getPendingNotificationRequests`
+  is async; refresh should be a fire-and-forget background task so it
+  doesn't slow launch.
 
-### N8. `iCloud Sync` row still looks tappable but isn't
+### N4. Drag rollback watchdog may fire mid-drag if the user lingers on one target
 
-- **Severity:** Medium
-- **Related files:** `Task/Views/Settings/SettingsView.swift:217-222`
-- **Description:** The iCloud Sync row uses `SettingsRowLabel` with
-  `value: "Coming Soon"` and no `accessory:` (so no chevron and no
-  toggle). It sits between identically-styled `SettingsButtonRow`s in
-  the Data section. Same tile size, same icon, same row height — the
-  only signal that it's not interactive is the absent chevron, which is
-  easy to miss. Identical situation to N10 in the prior audit, still
-  unresolved.
-- **Why it matters:** Discoverability — users will tap it expecting a
-  "what's this" sheet or a sign-up flow and get nothing.
-- **Suggested fix:** Either (a) convert it to a `SettingsButtonRow`
-  that opens a small `ComingSoonSheet` explaining the roadmap (the
-  schema is already CloudKit-ready per LessonsLearned), or (b) dim
-  the title (`.foregroundColor(.secondary)`) so the disabled state is
-  obvious.
-- **Risks / dependencies:** None.
+- **Severity:** Low (`Needs verification` on device)
+- **Related files:** `Task/Views/Board/BoardView.swift:104-189`
+- **Description:** `armDragWatchdog` schedules a 5-second
+  `Task.sleep` and only re-arms when `placeTask(commit: false)` is
+  called again. `placeTask(commit: false)` is invoked from
+  `TaskRowDropDelegate.dropEntered`. Per Apple's drag-and-drop
+  documentation, `dropEntered` fires **once** when the drag enters a
+  target; `dropUpdated` is the one that fires continuously while
+  hovering. The comment at line 155-158 claims "SwiftUI fires
+  `dropEntered` continuously while the user moves over a target" — that
+  appears to be incorrect. If the user lingers on a single card for
+  more than 5 seconds, the watchdog elapses → `rollbackDragIfNeeded`
+  reverts every speculative move → preDragState is cleared. When the
+  user finally drops, `performDrop` calls
+  `applyTaskMove(_, commit: true)` and the move re-applies, so no data
+  is lost — but the user sees the card snap back to its original
+  column mid-drag and then snap to the destination only on release.
+- **Why it matters:** A surprising visual hiccup during slow drags
+  (reading a card name before choosing a column, dragging while paused
+  by a notification, etc.). The behavior is data-safe but the animation
+  looks broken.
+- **Suggested fix:** Re-arm the watchdog from `dropUpdated` rather than
+  only from `dropEntered`. Cheaper alternative: have the delegate write
+  to a shared `@State lastDragTick = Date()` on each `dropUpdated`, and
+  let the watchdog re-check against that timestamp instead of trusting
+  its own elapsed time.
+- **Risks / dependencies:** Cannot reproduce or refute the behavior
+  without on-device testing. Marked `Needs verification`. The fix
+  itself is one extra line in each `dropUpdated`.
 
-### N9. Sheet toolbar conventions are still inconsistent across the app
-
-- **Severity:** Medium
-- **Related files:** `Task/Views/Settings/SettingsView.swift:65-68`
-  (Done only), `Task/Views/Board/BoardSwitcherView.swift:79-84`
-  ("Close" + "Add"), `Task/Views/Settings/AboutSheets.swift:228-235`
-  (Cancel + Done that both `dismiss()`), `Task/Views/Settings/ManualControlSheet.swift:53-57`
-  (Done only), `Task/Views/Settings/AboutSheets.swift:273-278`
-  (Feedback: Done only), `Task/Views/Board/BoardIconPickerSheet.swift:44-51`
-  (Cancel + Done both `dismiss()` — see also N5)
-- **Description:** Per LessonsLearned the rule is supposed to be
-  `Cancel` (top-leading) + `Done` (top-trailing), with both calling
-  `dismiss()` for info sheets. Current state:
-  - SettingsView: Done only.
-  - BoardSwitcherView: "Close" + "Add" — uses "Close" instead of
-    "Cancel" and "Add" instead of "Done".
-  - HowToUseSheet, PrivacySheet, DisclaimerSheet, CopyrightSheet:
-    Cancel + Done (both `dismiss()`).
-  - FeedbackSheet, ManualControlSheet: Done only.
-  - BoardIconPickerSheet: Cancel + Done (both `dismiss()` — but
-    selection is already committed; see N5).
-  - GroupMenuSheet, TagEditSheet (orphan, see N3): Cancel + Save.
-  - StatusPickerSheet, TagPickerSheet, picker family in
-    AppearanceView.swift: Cancel + Done.
-  Several patterns coexist with no clear rule.
-- **Why it matters:** Cumulative inconsistency dents perceived
-  polish; users navigating from one sheet to the next see the
-  trailing button change role and label.
-- **Suggested fix:** Codify the rule:
-  - "Info-only" sheets (Privacy, Disclaimer, Copyright, HowToUse,
-    Feedback, ManualControl, Settings): trailing `Done` only — no
-    leading button (the sheet has nothing to cancel).
-  - "Edit" sheets (GroupMenu, TagEdit, etc.): `Cancel` + `Save`.
-  - "Picker" sheets (Status, Tag, Theme, etc.): `Cancel` + `Done`
-    where Cancel actually reverts (or single-tap-to-commit sheets:
-    `Done` only).
-  - BoardSwitcher: rename "Close" to "Done" and keep "Add" as a
-    separate trailing item.
-- **Risks / dependencies:** Touches many files but each change is
-  small.
-
-### N10. Localizable.xcstrings is 42% translated for Simplified Chinese
-
-- **Severity:** Medium
-- **Related files:** `Task/Localizable.xcstrings`
-- **Description:** `python3 json.load` reports 203 keys total with 85
-  in `state: "translated"` for `zh-Hans` — 118 keys (58%) are missing
-  zh-Hans translations and fall back to the English source string.
-  Many user-visible strings — `"Edit Task"`, `"Reset to next
-  occurrence"`, `"Order doesn't apply to Manual — drag a card to
-  reorder it inside its group."`, `"Drag here to delete"`, every
-  About-sheet `steps:` line, every alert title/body in
-  SettingsView.swift:103-131 — are unlocalized.
-- **Why it matters:** A user who picks 简体中文 in the language picker
-  still sees English mixed into the UI everywhere, which contradicts
-  the language picker and harms the perceived completeness of the
-  Chinese build.
-- **Suggested fix:** A focused translation pass before the next
-  Chinese-targeted release. The catalog is auto-extracted on build
-  (`LOCALIZATION_PREFERS_STRING_CATALOGS = YES`), so translators just
-  need to fill in the zh-Hans column.
-- **Risks / dependencies:** None for the translation itself. A
-  follow-up pass would be needed any time copy changes (e.g. the
-  rewrites called out in N2 and N4).
-
-### N11. Notifications scheduled without authorization fail silently
-
-- **Severity:** Medium
-- **Related files:** `Task/Services/NotificationService.swift:5-46`,
-  `Task/Views/RootView.swift:91-94`,
-  `Task/Views/Task/TaskDetailView.swift:481,487-491`
-- **Description:** `requestAuthorizationIfNeeded()` only prompts when
-  `authorizationStatus == .notDetermined`. If the user denies the
-  prompt (or later turns notifications off in iOS Settings), subsequent
-  calls to `schedule(for:)` happily build a `UNNotificationRequest` and
-  hand it to `UNUserNotificationCenter.add(...)` — which iOS silently
-  drops. The app shows the alarm icon on the card and the task is
-  saved with `hasReminder = true`, but no notification will fire. The
-  user has no signal.
-- **Why it matters:** A reminder the user believes is set is the worst
-  silent failure for a task app. Easy to reproduce on a fresh device
-  where the user dismisses the system permission alert.
-- **Suggested fix:** Cache the current `authorizationStatus` (in
-  `SharedDefaultsService` or in `SettingsViewModel`) and surface a
-  one-shot banner inside `TaskDetailView` when the user toggles
-  reminder on while authorization is `.denied`. Optionally a
-  Settings → Notifications row that deep-links to
-  `UIApplication.openSettingsURLString`.
-- **Risks / dependencies:** Async authorization checks need to fall
-  back gracefully if the system call fails. The schedule call should
-  remain non-blocking; the banner is the only synchronous UI change.
-
-### N12. `TaskDetailView.save` silently strips a reminder if the user removes all dates
-
-- **Severity:** Medium
-- **Related files:** `Task/Views/Task/TaskDetailView.swift:281-287,481`
-- **Description:** The reminder Toggle is `.disabled(workingStart == nil
-  && dueDate == nil)` so the user can't *enable* a reminder with no
-  dates. But the converse is unprotected: the user can turn reminder
-  on (with dates set), then clear all dates, then save. Line 481
-  resolves `task.hasReminder = hasReminder && (workingStart != nil ||
-  dueDate != nil)` — silently flipping the local `hasReminder` state
-  to `false` on disk while the user's last interaction was leaving it
-  on. No banner, no warning.
-- **Why it matters:** Same silent-failure class as N11. The user
-  meant to keep the reminder; removing the dates implicitly drops it.
-- **Suggested fix:** Mirror the disable rule in the editor: when the
-  user clears the last date with `hasReminder = true`, surface a
-  toast ("Reminder removed — no date set") or zero out
-  `hasReminder` immediately in the state so the Toggle visibly turns
-  off. The latter matches the disabled Toggle pattern and avoids the
-  surprise.
-- **Risks / dependencies:** None.
-
-### N13. `Board.defaultGroupID` is typed `String?` instead of `UUID?`
+### N5. "Untitled" placeholder is a non-localized String literal in four sites
 
 - **Severity:** Low
-- **Related files:** `Task/Models/Board.swift:14,46-53`,
-  `Task/Views/Settings/DefaultStatusPickerSheet.swift:22`,
-  `Task/Services/DataImportExport.swift:24,206,280,291`
-- **Description:** Every other entity ID on the model is `UUID`
-  (Board.id, Group.id, Task.id, Tag.id, task.tagIDs in TaskExport).
-  `defaultGroupID` is stored as a `String?` and compared via
-  `$0.id.uuidString == id`. This works but is inconsistent and means
-  the model accepts arbitrary strings that aren't valid UUIDs
-  (silently failing the lookup and falling back to
-  `orderedGroups.first`). A malformed JSON import that hand-edited
-  this field would not be detected.
-- **Why it matters:** Type consistency. Will become a question again
-  if the schema is migrated to add other "optional ID" fields.
-- **Suggested fix:** Change to `var defaultGroupID: UUID? = nil`,
-  rename the accessor to compare on `UUID` directly, and migrate
-  `BoardExport.defaultGroupID` from `String?` to `UUID?` (existing
-  exports decode fine because both serialize the same string form).
-- **Risks / dependencies:** SwiftData property-type changes require a
-  lightweight migration. Since the field already has a default
-  (`nil`), the migration is automatic but should be verified once.
+- **Related files:** `Task/Views/Board/BoardSwitcherView.swift:124`,
+  `Task/Views/Board/TaskCardView.swift:9`,
+  `Task/Views/Search/SearchView.swift:62`,
+  `Task/Services/UpcomingSnapshotBuilder.swift:31`
+- **Description:** Each of these uses the pattern
+  `Text(value.isEmpty ? "Untitled" : value)`. The ternary produces a
+  `String`, which `Text(_: String)` does NOT auto-localize (only the
+  `Text(_: LocalizedStringKey)` overload does — and the compiler picks
+  `String` when the expression's type is `String`). The widget snapshot
+  case (line 31) is worse: the literal is encoded into the App Group
+  JSON and rendered as-is by the widget, with no chance of
+  localization at all. Chinese users see "Untitled" in all four
+  places instead of "无标题" / similar.
+- **Why it matters:** Chinese builds are 91.5% translated overall; this
+  is one of the visible regressions.
+- **Suggested fix:** Use
+  `Text(value.isEmpty ? String(localized: "Untitled") : value)` in the
+  three view-layer sites. In the snapshot builder, prefer storing `""`
+  and letting `UpcomingTasksWidgetView` render its own localized
+  fallback (the widget runs in its own process and gets the user's
+  language preference via the system locale anyway).
+- **Risks / dependencies:** `Localizable.xcstrings` already has the key
+  in zh-Hans. The widget side requires a small `if title.isEmpty`
+  branch in `taskRow`.
 
-### N14. `RepeatRule` feature is half-implemented — repeats do not re-schedule
+### N6. New boards land with the placeholder "Choose a Title" / "Choose a Subtitle" instead of empty editable fields
 
 - **Severity:** Low
-- **Related files:** `Task/Models/RepeatRule.swift:21-30`,
-  `Task/Models/TaskItem.swift:15,57-60`,
-  `Task/Views/Task/TaskDetailView.swift:289-319,497-504`,
-  `Task/Views/Task/RepeatPickerSheet.swift:1-62`,
-  `Task/Views/Board/TaskCardView.swift:38-45`,
-  `Task/Services/NotificationService.swift:43`
-- **Description:** A user can set a task to repeat Daily / Weekly /
-  Monthly, which adds an `arrow.clockwise` icon on the card footer
-  and shows the repeat row in the editor. But:
-  - `NotificationService.schedule` builds
-    `UNCalendarNotificationTrigger(dateMatching:repeats: false)` —
-    repeats are always `false`, so the reminder fires once.
-  - There is no concept of "completing" a task that would advance
-    the repeat to the next occurrence.
-  - The only way to advance dates is the manual "→" button on the
-    repeat row, which the user must remember to tap.
-  Effectively the repeat is a card-decoration plus a manual date
-  shifter, not a recurring reminder.
-- **Why it matters:** Users see "Daily" and expect daily reminders.
-  When the second day passes without a notification, they conclude
-  the reminder didn't work.
+- **Related files:**
+  `Task/Views/Board/BoardSwitcherView.swift:181-188`,
+  `Task/Views/Board/ProjectHeaderView.swift:30-43,61-74`
+- **Description:** `addBoard` calls
+  `SwiftDataManager.createBoard(title: String(localized: "Choose a Title"),
+  subtitle: String(localized: "Choose a Subtitle"), …)`, which writes
+  those exact strings into `board.title` / `board.subtitle`. The board
+  switcher dismisses, the active board changes, and
+  `ProjectHeaderView.onAppear` mirrors them into `draftTitle` /
+  `draftSubtitle`. The user then has to manually clear the literal
+  "Choose a Title" before typing — and on Chinese builds, clear "选择标题".
+  The widget snapshot is also rewritten with the placeholder title, so
+  the new board appears in the widget edit picker as "Choose a Title"
+  until the user edits it.
+- **Why it matters:** Friction on a common first-use path. Worse on
+  Chinese where the placeholder is wider and harder to clear by tap.
 - **Suggested fix:** Two options:
-  - (a) Pass `repeats: true` to `UNCalendarNotificationTrigger` when
-    `repeatRule != .none`, with the components reduced appropriately
-    (e.g. `.daily` → keep `hour`/`minute`; `.weekly` → keep `weekday`/
-    `hour`/`minute`). Match the documented behavior.
-  - (b) Document the manual-advance behavior in HowToUseSheet, or
-    rename the icon "Manual Repeat" to reset expectations.
-  - (c) Skip the feature entirely until there's a "Done" concept that
-    would naturally trigger a repeat re-schedule.
-- **Risks / dependencies:** Option (a) needs care: `UNCalendarNotification
-  Trigger` repeating on day-only components fires at midnight unless
-  hour/minute are set. Pull the per-board reminder time logic out of
-  the current `schedule` and feed it back through.
+  - (a) Create the board with empty `title` / `subtitle` and rely on
+    `TextField(prompt:)` to show the hint without persisting it. The
+    header TextFields already pass placeholder text — extending them
+    to use `prompt:` keeps the underlying string empty.
+  - (b) On board create, autofocus the title field and select all
+    placeholder text so the first keystroke replaces it. Requires a
+    state hop after `dismiss()`.
+- **Risks / dependencies:** Option (a) is cleaner but requires a
+  re-check of every site that reads `board.title` / `board.subtitle`
+  (e.g., `BoardSwitcherView.boardRowContent:124`,
+  `UpcomingSnapshotBuilder.swift:39`) to handle empty strings.
 
-### N15. `DateFormatters.mediumWithTime` and `isSameDay` are unused
+### N7. `HowToUseSheet` "Boards" step 1 still says "folder button"; bottom nav uses `archivebox`
+
+- **Severity:** Low (carryover from prior archive's N16)
+- **Related files:**
+  `Task/Views/Settings/AboutSheets.swift:110`,
+  `Task/Components/BottomNavBar.swift:48,89`,
+  `README.md:26`
+- **Description:** `BottomNavBar` uses
+  `Image(systemName: "archivebox")`. The README's Highlights section
+  describes it as "the archive button in the bottom bar." The
+  HowToUseSheet's first Boards step still reads "Tap the folder button
+  in the bottom bar to open the board switcher." Three different names
+  for one icon. Each of the other How-to steps that reference the
+  board switcher (e.g., "Tap Add in the switcher") are correct;
+  only step 1 of Boards keeps the legacy "folder" copy.
+- **Why it matters:** First-time users follow the breadcrumb and look
+  for a folder SF Symbol that doesn't exist.
+- **Suggested fix:** Replace "folder button" with "archive button" (to
+  match README) or "archivebox icon" (most precise) in
+  `HowToUseSheet`'s Boards section.
+- **Risks / dependencies:** Pure copy change. Also flows through
+  `Localizable.xcstrings` if the steps key gets a new English value.
+
+### N8. "More +N" chip still reads as "remaining total", but the number is the next chunk size
+
+- **Severity:** Low (carryover from prior archive's note)
+- **Related files:** `Task/Views/Board/ColumnView.swift:161-184`
+- **Description:** `moreButton(hidden:)` renders `+\(min(pageSize, hidden))`
+  where `pageSize = 10`. So a 47-task column shows "More +10" three
+  times in a row, then "More +7" on the fourth tap. The label reads as
+  "10 more to see" but actually means "tapping adds 10 more." Users
+  often expect the number to shrink as they expand the column.
+- **Why it matters:** Mild discoverability issue. Mostly affects
+  test-data scale (~125 tasks/board); typical real users won't notice.
+- **Suggested fix:** Render "More +10 of 37 left" or "More (10 of 37)"
+  to make the next-chunk semantic explicit. Or drop the `+` and write
+  "Show 10 more · 37 left".
+- **Risks / dependencies:** None. Copy + a small math change.
+
+### N9. 21 `Localizable.xcstrings` keys still missing zh-Hans
+
+- **Severity:** Low (significant improvement from 118 missing)
+- **Related files:** `Task/Localizable.xcstrings`
+- **Description:** `python3 json.load` reports 248 total keys; 227
+  (91.5%) are `state: "translated"` in zh-Hans, 21 are not. Notable
+  visible-to-user gaps:
+  - Delete-mode bottom buttons: "Delete a Board", "Delete a Status",
+    "Delete a Tag", "Delete Status"
+  - Notes Preview picker: "1 Line", "2 Lines", "3 Lines", "Off",
+    "Hidden"
+  - Date Format picker descriptors: "Short Numeric", "Long Numeric",
+    "Short Text", "Long Text", "May 17", "May 17, 2026"
+  - Date Filter descriptors: "Matches due dates",
+    "Matches working days and ranges", "Filter tasks by this date",
+    "Show all tasks"
+  - TagPickerSheet empty state: "Tap Add to create your first tag."
+- **Why it matters:** The user-picked language is honored everywhere
+  except these 21 surfaces. Chinese builds therefore mix English into
+  the destructive-action buttons and most picker descriptors.
+- **Suggested fix:** Add the missing zh-Hans translations directly in
+  the catalog (Xcode's String Catalog editor surfaces these as
+  `New/Stale`). Spot-check the four key copy rewrites from prior
+  audits (Reset confirmation, HowToUseSheet steps, orphan messages,
+  How to Use → Defaults) for whether their English values changed
+  enough to require a re-translation.
+- **Risks / dependencies:** None for the translation. Future copy
+  changes should remain `String(localized:)` so the catalog keeps
+  auto-extracting.
+
+### N10. `PrivacyInfo.xcprivacy` is present on the Task target but missing on the widget extension
 
 - **Severity:** Low
-- **Related files:** `Task/Utils/DateFormatters.swift:11-16,29-31`
-- **Description:** `grep -rn 'mediumWithTime\|isSameDay' --include='*.swift'`
-  returns only the definitions. Both are dead.
-- **Why it matters:** Slow accretion of dead code.
-- **Suggested fix:** Remove them. If a future feature needs
-  `mediumWithTime`, add it back at that point.
-- **Risks / dependencies:** None.
-
-### N16. README "folder button" vs implementation's `archivebox` icon
-
-- **Severity:** Low
-- **Related files:** `README.md:26`, `VersionHistory.md:11,42`,
-  `Task/Components/BottomNavBar.swift:48,89`
-- **Description:** README and VersionHistory both describe the
-  board-switcher control as a "folder button (`folder.fill`)", but
-  `BottomNavBar` uses `systemName: "archivebox"` on both the
-  liquid-glass and legacy variants. The HowToUseSheet line 101 uses
-  `"archivebox.fill"` which at least matches the in-app icon shape.
-- **Why it matters:** Docs vs. code drift. Minor on its own; can
-  confuse new contributors trying to find the button by SF Symbol
-  name.
-- **Suggested fix:** Either change the symbol to `"folder.fill"` in
-  `BottomNavBar` so it matches the docs, or update README and
-  VersionHistory to say "archivebox" (or "archive box"). The
-  archivebox icon may actually be the better visual for "board
-  switcher".
-- **Risks / dependencies:** None.
-
-### N17. `Board` model has unused default `"TooMuchToDo"` / `"Work Harder Play Harder"`
-
-- **Severity:** Low
-- **Related files:** `Task/Models/Board.swift:7-8,28-31`,
-  `Task/Services/SwiftDataManager.swift:40-44,60-70`,
-  `Task/Views/Board/BoardSwitcherView.swift:183-191`
-- **Description:** `Board.title` defaults to `"TooMuchToDo"` and
-  `Board.subtitle` defaults to `"Work Harder Play Harder"`. Neither
-  string is ever actually persisted in user data, because every
-  Board-creating code path supplies values:
-  - `defaultSeedBoards` uses "Personal" / "Study" / "Work".
-  - `BoardSwitcherView.addBoard` uses "Choose a Title" / "Choose a
-    Subtitle".
-  - `DataImportExport.mergeBoard` uses the imported `BoardExport`
-    values.
-  The defaults are placeholders left over from early development
-  that never reach the user — but they'd surface if someone called
-  `Board()` with no arguments.
-- **Why it matters:** Quiet trap: a future `Board()` call would
-  inherit these strings. Also reads like a personal note.
-- **Suggested fix:** Change defaults to neutral, localizable strings
-  (`String(localized: "New Board")` / `""`) or to required init
-  parameters with no defaults.
-- **Risks / dependencies:** SwiftData requires every `@Model`
-  property to have a default — so the simplest move is to set them
-  to empty strings (`""`) and let callers always supply values.
-
-### N18. Import success pluralization is built by string concatenation, not localized plural rules
-
-- **Severity:** Low
-- **Related files:** `Task/Views/Settings/SettingsView.swift:425-432`
-- **Description:** `orphanMessage(for:)` constructs:
-  ```swift
-  String(localized: "\(outcome.orphanTasks) task(s) moved to the first group …")
+- **Related files:** `Task/PrivacyInfo.xcprivacy` (exists),
+  `TaskWidgetExtension/` (no privacy manifest),
+  `TaskWidgetExtension/WidgetSnapshot.swift:62-76`
+- **Description:** The widget extension calls
+  `UserDefaults(suiteName: "group.com.ijustin.task")` in
+  `WidgetSharedDefaults.read` / `readBoardList`. Apple's privacy
+  manifest guidance requires each binary (app + each extension) that
+  uses one of the declared API categories to ship its own
+  `PrivacyInfo.xcprivacy`. The Task app declares
+  `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1`; the
+  widget extension uses the same API but has no manifest. App Store
+  Connect's automated check has flagged similar setups during
+  submission.
+- **Why it matters:** Potential App Store submission rejection or
+  warning during binary upload. Cosmetic until the next App Store
+  push.
+- **Suggested fix:** Add `TaskWidgetExtension/PrivacyInfo.xcprivacy`
+  mirroring the app's manifest:
+  ```xml
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array><string>CA92.1</string></array>
+    </dict>
+  </array>
   ```
-  The literal "(s)" is a hack — `Localizable.xcstrings` supports
-  `.stringsdict`-style pluralization (`zero`, `one`, `other`) for
-  English and Chinese, but this string forces one form for all
-  counts. With a count of 1 the message reads "1 task(s) moved",
-  which is jarring.
-- **Why it matters:** Visible only when import surfaces orphan
-  counts, but every appearance is awkward.
-- **Suggested fix:** Convert to a String Catalog plural variation
-  (the `.xcstrings` UI in Xcode supports this directly), with at
-  least `one` and `other` for both en and zh-Hans.
-- **Risks / dependencies:** Adds two new entries to the catalog;
-  remove the old `(s)` ones.
+  Synchronized folders pick it up automatically; no pbxproj edit
+  needed.
+- **Risks / dependencies:** None.
 
-### N19. The image-import path doesn't show how many entities were updated vs inserted
+### N11. `DEVELOPMENT_TEAM = U6KN3BQL72` hardcoded across all four target configs
+
+- **Severity:** Low (carryover from prior archive's N7)
+- **Related files:**
+  `task.xcodeproj/project.pbxproj:451,488,523,552`
+- **Description:** Every Debug and Release configuration for the Task
+  and TaskWidgetExtension targets hardcodes the development team
+  string. Tests targets don't, but the app/widget pair does. A
+  contributor cloning the repo has to either edit the pbxproj or
+  override the team in Xcode's signing UI before an Archive succeeds.
+- **Why it matters:** Friction for collaborators and open-source
+  evaluators (README explicitly says "source-available" for personal
+  non-commercial evaluation).
+- **Suggested fix:** Move signing into a `.xcconfig` file
+  (`Config/Signing.xcconfig`) and reference it from
+  `XCConfigurationList`. Each contributor keeps their own (gitignored)
+  config locally.
+- **Risks / dependencies:** Touches build settings; should be tested
+  with a clean Archive before checking in.
+
+### N12. README and VersionHistory say "0.4.6 (build 3)" but `CURRENT_PROJECT_VERSION = 4`
 
 - **Severity:** Low
-- **Related files:** `Task/Services/DataImportExport.swift:147-153,245-267,425-432`,
-  `Task/Views/Settings/SettingsView.swift:103-131`
-- **Description:** `ImportResult` carries `orphanTasks` and
-  `orphanTagRefs` but not the number of new boards inserted, the
-  number of existing boards updated, or the count of merged
-  groups/tags. The user sees "Import Successful" plus the orphan
-  string (when nonzero), but no positive number — they can't tell
-  whether the import actually did anything when both orphan counts
-  are zero. This particularly matters when reimporting an unchanged
-  backup: the result looks identical to importing an empty file.
-- **Why it matters:** Trust signal. Users want to know "the file
-  was understood and N tasks were touched".
-- **Suggested fix:** Extend `ImportResult` with `boardCount`,
-  `taskCount`, and (optionally) `inserted`/`updated` counts; render
-  them in the alert message ("Imported 3 boards, 412 tasks (12 new,
-  400 updated).").
-- **Risks / dependencies:** Touches the public shape of the result
-  struct and the alert copy (which would then need translation
-  again).
+- **Related files:** `README.md:9`, `VersionHistory.md:3`,
+  `task.xcodeproj/project.pbxproj:450,487,522,551,602`
+- **Description:** README's banner reads
+  `Current app version: **0.4.6 (build 3)**`. VersionHistory's most
+  recent entry is `## 0.4.6 (build 3) — 2026-05-22`. Both targets in
+  the pbxproj have `CURRENT_PROJECT_VERSION = 4` and
+  `MARKETING_VERSION = 0.4.6`. Recent commits include `51f9601 Bump
+  app version to 0.4.6` and `29d1d5a Polish Task app board and
+  settings UI` — so a build 4 was prepared after the build 3 docs
+  were written.
+- **Why it matters:** Minor docs drift. The app shows
+  `AppInfo.versionAndBuild = "0.4.6 (4)"` in Settings → About →
+  Version, which contradicts the README.
+- **Suggested fix:** Either bump README and VersionHistory to build 4
+  (and add a one-line "build 4 — polish" entry under 0.4.6), or rev
+  `CURRENT_PROJECT_VERSION` back to `3` if the build was bumped
+  prematurely. The commit log suggests the bump was intentional, so
+  the docs are stale.
+- **Risks / dependencies:** None.
+
+### N13. `primaryReminderDate` fires on `workingEnd` when only a working range is set
+
+- **Severity:** Low
+- **Related files:** `Task/Models/TaskItem.swift:67-72`,
+  `Task/Views/Task/TaskDetailView.swift:53-61`
+- **Description:** When `workingStart != nil` and `dueDate == nil`,
+  `primaryReminderDate` returns `dueDate ?? workingEnd ?? workingStart`
+  = `workingEnd ?? workingStart`. For a working range like May 10 →
+  May 12 with no due date and reminder on, the notification fires on
+  May 12 (the end of the range), not May 10 (the start). The
+  editor's `reminderAnchor` puts the alarm badge on the Working row,
+  which displays the entire range "May 10 → May 12" — the user can't
+  tell from the badge which day will fire.
+- **Why it matters:** Subtle expectation gap. The user set "Working
+  May 10 → May 12, remind me" — most users probably think "remind me
+  when this starts" (May 10), but the app fires at the end. The
+  archive comment ("falls back to the obvious choice") suggests this
+  was a deliberate choice, but it isn't documented for users.
+- **Suggested fix:** Pick a side and document it:
+  - (a) Change `primaryReminderDate` to fall back to `workingStart`
+    rather than `workingEnd` when only working is set. Matches "remind
+    me when this starts."
+  - (b) Keep `workingEnd` and add a one-liner to the Reminder Time
+    section of `HowToUseSheet`: "For working ranges, the reminder
+    fires on the last day of the range."
+  - (c) Add a per-task "Remind at start / Remind at end" toggle when
+    the working date is a range.
+- **Risks / dependencies:** Option (a) is the smallest change but
+  also retroactively shifts when existing range-only reminders fire
+  for users on this build.
+
+### N14. Three reorder `DropDelegate` types are nearly identical across `BoardSwitcherView`, `StatusPickerSheet`, and `TagPickerSheet`
+
+- **Severity:** Low
+- **Related files:**
+  `Task/Views/Board/BoardSwitcherView.swift:207-252`
+  (`BoardReorderDropDelegate`),
+  `Task/Views/Task/StatusPickerSheet.swift:264-305`
+  (`StatusPickerReorderDropDelegate`),
+  `Task/Views/Task/TagPickerSheet.swift:256-301`
+  (`TagPickerReorderDropDelegate`)
+- **Description:** Each is ~50 lines with the same shape: `dropUpdated`
+  returns `.move`; `dropEntered` calls `applyMove(draggedID:)`;
+  `performDrop` calls `applyMove`, saves the context, clears the
+  `draggingID` binding, and arms a 0.5 s `dragSessionEnded` debounce;
+  `applyMove` looks up source + target indices, mutates the ordered
+  array via `withAnimation`, and renumbers `sortIndex`. The only
+  differences are the model type (`Board` / `BoardGroup` / `TaskTag`)
+  and the source list (`boards` / `board.orderedGroups` /
+  `board.orderedTags`).
+- **Why it matters:** Code that has to change in lockstep three times
+  is the change-friction cost. The N12 fix in the prior archive
+  (snapshot save bookkeeping) only resolved one of three sites for
+  this same reason.
+- **Suggested fix:** A small generic helper:
+  ```swift
+  struct ReorderDropDelegate<Item: Identifiable>: DropDelegate {
+      let target: Item
+      let ordered: () -> [Item]
+      let setSortIndex: (Item, Int) -> Void
+      let onSave: () -> Void
+      @Binding var draggingID: Item.ID?
+      @Binding var dragSessionEnded: Bool
+      // ...generic dropUpdated/Entered/performDrop bodies
+  }
+  ```
+  Each callsite passes its `board.orderedGroups` / `board.orderedTags`
+  / `boards` closure and the `\.sortIndex` setter. Three files lose
+  ~120 lines combined.
+- **Risks / dependencies:** None functional. Generic constraints
+  (`Item: Identifiable` with `ID == UUID`) need a quick check against
+  every callsite.
 
 ---
 
 ## 3. Code quality findings
 
 - **Duplicated code:**
-  - Drag-to-delete trash zone is implemented three times nearly
-    identically in `BoardSwitcherView.swift:148-181`,
-    `TagPickerSheet.swift:151-184`, and
-    `StatusPickerSheet.swift:149-181`. Same RoundedRectangle, same
-    `hovered ? .85 : .45` opacity, same hide-debounce in
-    `onChange(of: dragOverScreen)`. A shared `DeleteDropZone(hovered:
-    onDrop:)` view would collapse three copies of ~30 lines each.
-  - Drag-and-drop state machine (`@State draggingID`, `dragSessionEnded`,
-    `dragOverScreen`, `showDeleteZone`, `hideDeleteZoneTask`) is
-    reproduced in the three pickers above plus `ManageGroupsView` and
-    `ManageTagsView`. The orphans (N3) duplicate the live ones.
-  - Snapshot/save bookkeeping (`try? context.save()` + `UpcomingSnapshot
-    Builder.writeSnapshot(from: context)`) appears in 9 sites
-    (BoardView.swift:88-89, GroupMenuSheet.swift:98-99,115,
-    ProjectHeaderView.swift:74-75,124,
-    StatusPickerSheet.swift:262-263, TaskDetailView.swift:485,510-511,
-    DataImportExport.swift:264-265,444-447, SwiftDataManager.swift:87-88).
-    A `Repository.save(context:)` helper would centralize the
-    invariants.
-  - `BoardReorderDropDelegate`, `StatusPickerReorderDropDelegate`,
-    `TagPickerReorderDropDelegate`, `GroupReorderDropDelegate`, and
-    `TagReorderDropDelegate` all share the same shape (`applyMove`
-    + sortIndex renumber + save) over different model types. A
-    generic `ReorderDropDelegate<Item>` would unify them.
+  - Drag-reorder DropDelegate triplet (see N14):
+    `BoardSwitcherView.swift:207-252`,
+    `StatusPickerSheet.swift:264-305`,
+    `TagPickerSheet.swift:256-301`.
+  - Snapshot save bookkeeping (`try? context.save()` +
+    `UpcomingSnapshotBuilder.writeSnapshot(from: context)`) appears in
+    13 sites:
+    `BoardView.swift:140-141`,
+    `BoardSwitcherView.swift:199-200`,
+    `ProjectHeaderView.swift:79-80,123-125`,
+    `GroupMenuSheet.swift:111-112,139-140`,
+    `StatusPickerSheet.swift:259-260`,
+    `TaskDetailView.swift:533+540,596-597`,
+    `DataImportExport.swift:274+281,498+518`,
+    `SwiftDataManager.swift:120-121`,
+    `RootView.swift:104`. Most callers also call
+    `WidgetCenter.shared.reloadAllTimelines()` indirectly via the
+    builder, which is good — but the duo would still benefit from a
+    single `BoardWriter.save(_:context:)` helper that touches
+    `updatedAt`, saves, writes the snapshot, and is the single place
+    to add a future invariant (e.g., debounce widget reloads to once
+    per 0.5 s under heavy import churn).
+  - "Untitled" non-localized placeholder appears in four sites
+    (`BoardSwitcherView.swift:124`, `TaskCardView.swift:9`,
+    `SearchView.swift:62`,
+    `UpcomingSnapshotBuilder.swift:31`). See N5.
+  - Group deletion fallback-reassignment logic appears in two sites
+    (`GroupMenuSheet.swift:115-141`,
+    `StatusPickerSheet.swift:237-261`) with identical
+    `var base = (fallback.orderedTasks.last?.sortIndex ?? -1)` snapshot
+    trick. Both sites correctly handle the inverse-relationship
+    read-staleness bug per the comments. Could share a helper but the
+    duplication is small (~15 lines each).
 
 - **Unused or outdated files / symbols:**
-  - `Task/Views/Settings/DefaultStatusPickerSheet.swift` —
-    instantiated nowhere (N1).
-  - `Task/Views/Settings/ManageGroupsView.swift` — instantiated
-    nowhere (N3).
-  - `Task/Views/Settings/ManageTagsView.swift` (including
-    `TagEditSheet`) — instantiated nowhere (N3).
-  - `Task/Utils/DateFormatters.swift:11-16` — `mediumWithTime`
-    unused (N15).
-  - `Task/Utils/DateFormatters.swift:29-31` — `isSameDay` unused
-    (N15).
-  - `Task/Models/Board.swift:7-8` — defaults `"TooMuchToDo"` /
-    `"Work Harder Play Harder"` never reach the user (N17).
+  - No fully orphaned files this pass. The orphan trio from prior
+    audits (`ManageGroupsView`, `ManageTagsView`,
+    `DefaultStatusPickerSheet`) is fully wired or removed.
+  - `Issues-gg.md` and `Issues-cx.md` exist at the repo root (27.1 KB
+    + 16.9 KB). They are not referenced by any internal markdown
+    link, README, or skill. Possibly review artifacts from external
+    tools. Out of scope for this skill — flagging only so a future
+    pass can decide whether to archive them under `docs/` like the
+    main Issues archive.
 
 - **Overly complex files or functions:**
-  - `Task/Views/Task/TaskDetailView.swift` (515 lines) — title +
+  - `Task/Views/Task/TaskDetailView.swift` (~600 lines now) — title +
     six property rows + two date sub-sheets + repeat picker + delete
-    confirmation + save/load/delete. Splitting `workingDateSheet`,
-    `dueDateSheet`, and `propertyRow` into their own files would
-    halve this.
-  - `Task/Views/Settings/AboutSheets.swift` (478 lines) — eight
-    sheet types plus shared cards. Each `*Sheet` could move to its
-    own file.
-  - `Task/Services/DataImportExport.swift:269-430` —
-    `mergeBoard(_:into:)` is ~160 lines covering board / groups /
-    tags / tasks merge. Extracting `mergeGroups`, `mergeTags`,
-    `mergeTasks` would keep N1's fix small.
-  - `Task/Views/Board/BoardSwitcherView.swift` (298 lines) — the
-    drag-to-delete drop zone (N3 duplication) and the two
-    DropDelegate helpers could be lifted.
+    confirmation + load/save/delete + advance + candidateFireDate +
+    reminderAnchor. Splitting `workingDateSheet`, `dueDateSheet`, and
+    `propertyRow` into their own files would halve this.
+  - `Task/Views/Settings/AppearanceView.swift` (~470 lines) — eight
+    `*PickerSheet` wrappers + the shared `FlatSettingsChoicePicker` +
+    the entire `ReminderTimePickerSheet` (lines 245-468). The keypad
+    picker is unrelated to the appearance flat-pickers and would read
+    cleaner in its own file
+    (`Task/Views/Settings/ReminderTimePickerSheet.swift`).
+  - `Task/Services/DataImportExport.swift:312-482`
+    (`mergeBoard(_:into:plan:)`) is 170 lines. Extracting
+    `mergeGroups`, `mergeTags`, `mergeTasks` would mirror the natural
+    shape and keep the notification-plan accounting in one focused
+    place.
 
 - **Naming inconsistencies:**
-  - `BoardSwitcherView` uses `"Close"` for the dismiss button;
-    every other sheet uses `"Cancel"` or `"Done"` (N9).
-  - `ColumnView`'s drag payload prefix `"group:"` (line 21,
-    `groupDragPrefix`) is also referenced as a literal string in
-    `ColumnView.swift:222-223`. The constant and the literal can
-    diverge.
+  - `ColumnView.groupDragPrefix = "group:"` (line 24) and a literal
+    `"group:"` at line 252-253. The constant and the literal can
+    diverge; either drop the constant or use it at the parse site.
   - `Board.cardSortFieldRaw` is `String` while
     `Board.defaultGroupID` is `String?` — both are "stringly-typed
-    SwiftData fields", same backing pattern, but neither is
-    documented as such (N13).
+    SwiftData fields, exposed as type-safe accessors." Documented in
+    the `defaultGroupUUID` doc comment (line 50-52); the cardSortField
+    pair doesn't have the same comment. Minor.
+  - "Untitled" literal vs `String(localized: "Untitled")` (see N5).
 
 - **Structural improvements:**
   - Funnel every snapshot write + widget reload through a single
-    `BoardWriter` actor. Today every save site has to remember to
-    call `UpcomingSnapshotBuilder.writeSnapshot`. A
-    `BoardWriter.save(board:context:)` that bundles all three
-    (`board.updatedAt = Date(); context.save(); writeSnapshot`) would
-    make it harder to drop the snapshot update again (as happened
-    pre-0.4.5 with N3 in the archive).
-  - Move per-target color palette duplication
-    (`ColorKey` ↔ `WidgetColorKey`) behind a tiny shared package or
-    file the build copies into both targets; the two enums must agree
-    by hand today.
+    `BoardWriter.save(board:context:)` actor / helper. Today every
+    save site has to remember to call
+    `UpcomingSnapshotBuilder.writeSnapshot` and most do; a few
+    (`TagPickerSheet.addTag` / `deleteTag`) skip it because tag
+    data doesn't surface in the widget — codifying the rule and
+    centralizing the choice would make it explicit instead of
+    implicit.
+  - Cross-target color palette is duplicated between `ColorKey`
+    (Task) and `WidgetColorKey` (TaskWidgetExtension), both
+    re-declaring the same RGB tuples. Same cross-target drift risk as
+    the snapshot Codable structs. Could live in a small shared
+    source-only file the synchronized folder pulls into both targets
+    via `membershipExceptions` inversions.
 
 ---
 
 ## 4. Functional issues
 
-- **Boards** — Default seed (Personal / Study / Work) is verified by
-  `testSeedCreatesThreeDefaultBoards`. Switcher reorder, add, and
-  drag-to-delete all behave as documented. Active-board fallback on
-  delete works because the `boards` snapshot is captured before the
-  delete commits.
+- **Boards** — Default seed (Personal / Study / Work) covered by
+  `testSeedCreatesThreeDefaultBoards`. Add board through the switcher
+  works and immediately becomes active. Board reorder via long-press
+  drag works. Delete board via expanded sheet → delete-mode → tap row
+  → confirmation works; cascade-deletes tasks and cancels their
+  notifications. Active-board fallback on delete uses the next
+  remaining board.
 - **Board / columns / cards** — Pagination, `.id()` re-render on sort
   change, and pull-to-refresh all work. Card drag-reorder correctly
-  no-ops in non-Manual sort modes (per the archive's N2 resolution).
-- **Drag and drop** — Cross-column drops save once (placed via
-  `placeTask` with `commit: true`); within-column live drag yields
-  smoothly. Trash zone behaviour is identical across the three
-  pickers but the implementations are duplicated (see §3).
-- **Calendar picker** — Today button (added in 0.3.0) jumps + selects
-  correctly. Range mode after both endpoints are set resets to a new
-  single-day selection on any non-endpoint tap; the docs (LessonsLearned)
-  mention this; users may still find it surprising.
-- **Search** — Cross-board search works and the active board surfaces
-  first. `filteredTasks` recomputes every body update — fine at
-  current expected scale, but a noticeable perf cost as boards grow.
-- **Default Status picker** — **regressed** (N1); user cannot change
-  which group new tasks default to.
-- **Manage Groups / Manage Tags screens** — orphaned (N3); group/tag
-  editing is done in-flow through the column `…` menu, in-task
-  pickers, and the trash drop zones.
-- **Import / Export / Reset** — Round-trips correctly for self-exported
-  data. Orphan counts are surfaced in the success alert; the surface
-  copy is a partial fix (N18, N19). Reset feels like a hang on large
-  data (N7).
-- **Notifications** — Past-date guard is in place. Authorization-
-  denied is not surfaced (N11). Reminder silently dropped when dates
-  are cleared after toggling reminder on (N12). RepeatRule is
-  half-wired (N14).
-- **Widget snapshot** — `UpcomingSnapshotBuilder.writeSnapshot` now
-  calls `WidgetCenter.shared.reloadAllTimelines()` from every save
-  site. Snapshot date encoding is `.iso8601` on both sides
-  (matches widget decoder). Board list is rewritten on every
-  snapshot write so the configuration intent's `BoardEntityQuery`
-  always sees current boards.
-- **Localization** — Catalog covers many strings but 58% of zh-Hans
-  entries are missing (N10). Dates render in device locale rather
-  than `settings.language.locale` (N6).
+  no-ops in non-Manual sort modes for same-column moves and routes
+  cross-column drops to end-of-list. Watchdog rollback (5 s) catches
+  releases outside any drop target — but may misfire mid-drag (N4).
+- **Drag and drop** — Cross-column drops save once via
+  `placeTask(commit: true)`. Within-column live drag yields smoothly.
+  Drop proposal `.move` everywhere — no green `+` badge.
+- **Calendar picker** — Today button jumps + selects correctly. Range
+  mode after both endpoints are set: tapping start swaps end into
+  start and clears end; tapping a third date starts a fresh
+  selection. Documented in `LessonsLearned`.
+- **Search** — Cross-board search works; active board surfaces first.
+  `groupedResults` recomputes every body update — fine at current
+  expected scale, but a debounce would help at thousands of tasks.
+- **Default Status picker** — Reachable via the flag icon in
+  `ProjectHeaderView`; writes `board.defaultGroupUUID`; the new-task
+  sheet uses `board.defaultGroup` which falls back to
+  `orderedGroups.first` when the stored ID is missing.
+- **Manage Groups / Manage Tags screens** — Done via in-flow surfaces
+  (`GroupMenuSheet`, `StatusPickerSheet`, `TagPickerSheet`). The
+  delete-mode toggle is consistent across all three.
+- **Import / Export / Reset** — Round-trips correctly for self-
+  exported data. Orphan counts and inserted/updated counts surface
+  in the success alert with plural rules. Reset shows a
+  `ProgressOverlay` and yields every 50 tasks during the cancellation
+  loop. Reset returns `false` and the UI shows a `resetFailure` alert
+  if the destructive save fails.
+- **Notifications** — Past-date guard skips occurrences before now.
+  Authorization-denied state surfaces a banner inside `TaskDetailView`
+  when `hasReminder` is enabled (line 288-299). Reminder is
+  auto-disabled when the user removes all dates
+  (`disableReminderIfNoDates`). Repeat is batched as 16 one-shots —
+  silent failure after 16 occurrences (N3). Time-of-day is read from
+  the per-board `reminderMinutesOfDay` at schedule time — changing
+  the board setting does NOT re-schedule existing reminders (N2).
+- **Widget snapshot** — `UpcomingSnapshotBuilder.writeSnapshot` calls
+  `WidgetCenter.shared.reloadAllTimelines()` at the end of every
+  rebuild. Snapshot date encoding is `.iso8601` on both sides. Board
+  list is rewritten on every snapshot write so the configuration
+  intent's `BoardEntityQuery` sees current boards. The widget's
+  `primaryDate` (min of all three dates) diverges intentionally from
+  `TaskItem.primaryReminderDate` to surface tasks that "start before
+  they're due" — the divergence is documented in
+  `UpcomingSnapshotBuilder.swift:16-21`.
+- **Localization** — Catalog covers 91.5% of keys in zh-Hans, up from
+  42% in the prior audit. 21 visible-to-user keys still untranslated
+  (N9). `TaskDateFormat.locale` is updated from
+  `SettingsViewModel.language.didSet` so dates render in the chosen
+  locale.
 
 ---
 
 ## 5. UI/UX issues
 
-- **N1 (Default Status unreachable)** — feature regression visible to
-  every multi-board user creating a new task.
-- **N2 (HowToUseSheet stale paths)** — user-visible misdirection.
-- **N4 (Reset copy says "six groups")** — pre-confirmation copy
-  drift; mildly misleading for a destructive action.
-- **N5 (BoardIconPickerSheet Cancel does nothing)** — undermines
-  Cancel semantics.
-- **N7 (Reset shows no progress)** — apparent hang.
-- **N8 (iCloud Sync looks tappable)** — discoverability hiccup, same
-  shape as the archive's N10.
-- **N9 (sheet toolbar inconsistency)** — polish.
-- **N12 (silent reminder drop on date clear)** — surprise.
-- **N16 (folder vs archivebox)** — docs vs code drift.
-- **Drag preview shapes** — all use `.contentShape(.dragPreview,
-  RoundedRectangle(cornerRadius: 22, …))` for grids and
-  `cornerRadius: 10` for cards. No green `+` badge anywhere. Matches
+- **N1 (dateFormat ignored in editor/search/notifications)** —
+  user-visible inconsistency between board cards and every other
+  date surface.
+- **N2 (Reminder Time change doesn't reschedule)** — silent failure.
+- **N3 (Repeat reminders silently stop)** — silent failure.
+- **N4 (Drag watchdog may rollback mid-drag)** — animation flicker;
+  needs device verification.
+- **N5 ("Untitled" non-localized)** — Chinese build regression.
+- **N6 (New board placeholder titles persist)** — first-use friction.
+- **N7 (HowToUseSheet says "folder")** — docs vs code drift.
+- **N8 ("More +N" chip ambiguity)** — minor copy.
+- **N13 (Reminder fires on workingEnd for ranges)** — subtle
+  expectation gap.
+- **Drag preview shapes** — all card surfaces use
+  `.contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8 or 10
+  or 22, style: .continuous))`. No green `+` badge anywhere. Matches
   LessonsLearned guidance.
-- **"More +N" button** — `+N = min(pageSize, hidden)`, so a 47-task
-  column shows "More +10" three times then "More +7". Reads fine,
-  but the chip means "next chunk size", not "remaining total" — a
-  one-line clarification ("More +10 (37 left)") would set the
-  expectation right.
 - **iOS 26 fallback parity** — `BottomNavBar` forks via
   `#available(iOS 26.0, *)`; the iOS 18-25 fallback uses
   `.thinMaterial` + `secondarySystemBackground` circles with the same
-  control set. No regressions vs the Glass variant. Verified via
-  code read; not verified on-device.
+  control set. No regressions vs the Glass variant in the code; not
+  verified on-device.
 - **MarkdownNotesEditor** — Markdown preview is clean; tapping any
   rendered line jumps back into edit mode. The blank-line handler
   (line 75-79) renders a clear 8 pt area whose `onTapGesture`
   triggers `beginEditing()` — works but is a narrow hit target.
+- **ProjectHeaderView icon buttons** — Sort / Date Filter / Default
+  Status icons are visually identical except for system symbol. Only
+  the Date Filter icon tints when active (`tint: isDateFilterActive
+  ? .accentColor : .primary`). Sort icon stays neutral even when sort
+  is not Manual; Default Status icon stays neutral even when a
+  non-first default is set. Asymmetric affordance.
 
 ---
 
 ## 6. Data and persistence issues
 
-- **N13 (defaultGroupID typed as String)** — invariant drift risk.
-- **N17 (Board default placeholders)** — silent trap if a future
-  call site calls `Board()` without arguments.
-- **In-memory fallback signal** — RootView surfaces the alert
-  exactly once per launch via
-  `surfaceInMemoryWarningIfNeeded`. The `inMemoryFallbackKey` is
-  flipped to `false` on the next successful container open. Good.
-- **Cascade deletes** — `Board.groups`/`tags`/`tasks` all set
+- **Cascade deletes** — `Board.groups` / `tags` / `tasks` all set
   `deleteRule: .cascade`. `BoardGroup.tasks` uses `.nullify` — so
   deleting a group through SwiftData alone would orphan its tasks.
-  Live delete paths (GroupMenuSheet.deleteAndDismiss,
-  StatusPickerSheet.deleteGroup) reassign tasks to the fallback
-  group before deleting; the cascade-from-Board path (in
-  `resetAll`) deletes everything anyway, so no orphan.
-- **CloudKit-readiness invariants hold**: every `@Model` property in
-  `Board.swift`, `BoardGroup.swift`, `TaskTag.swift`,
-  `TaskItem.swift` has a default value, no `@Attribute(.unique)`,
-  optional inverse relationships.
+  Live delete paths (`GroupMenuSheet.deleteAndDismiss`,
+  `StatusPickerSheet.deleteGroup`) reassign tasks to the fallback
+  group before deleting; the cascade-from-Board path (in `resetAll`
+  and `BoardSwitcherView.deleteBoard`) deletes everything anyway, so
+  no orphan. Good.
+- **CloudKit-readiness invariants** hold: every `@Model` property in
+  `Board`, `BoardGroup`, `TaskTag`, `TaskItem` has a default value,
+  no `@Attribute(.unique)`, optional inverse relationships.
+- **In-memory fallback signal** — `RootView` surfaces the alert
+  exactly once per launch via `surfaceInMemoryWarningIfNeeded`. The
+  `inMemoryFallbackKey` is flipped to `false` on the next successful
+  container open. `resetAll` also calls `purgePersistentStoreFiles`
+  when the app is running in the in-memory fallback so the corrupt
+  on-disk SQLite gets cleared before re-seeding.
 - **Snapshot encoding** — both write paths use `.iso8601`; widget
-  decoder matches. Archive's N15 resolved.
-- **Board list write** — `UpcomingSnapshotBuilder.writeSnapshot`
-  writes both the snapshot and the board list via
-  `SharedDefaultsService.writeBoardList(...)` on every save site.
-  The widget's `BoardEntityQuery` therefore reflects current
-  boards.
+  decoder matches. `WidgetUpcomingEntry.primaryDate` deliberately
+  diverges from `TaskItem.primaryReminderDate` — documented but
+  surprising (see N13's neighbor).
 - **`writeBoardList` uses default `JSONEncoder()`** —
   `SharedDefaultsService.swift:53-58` doesn't set
-  `dateEncodingStrategy`, but `BoardListEntry` has no `Date` fields,
-  so it's a non-issue today. If a `Date` is ever added,
-  remember to mirror the `.iso8601` rule.
+  `dateEncodingStrategy`. `BoardListEntry` currently has no `Date`
+  fields so this is benign; if a `Date` is ever added, remember to
+  mirror the `.iso8601` rule.
 - **Export ordering** — `BoardExportEntry.tasks` are written in
   whatever order `(board.tasks ?? [])` returns; round-trip still
-  works since `sortIndex` is persisted, but the exports are not
-  byte-identical across runs. Carry-over from prior audit.
-- **`task.boardDefaultsMigrated` after reset** — `resetAll` does not
-  clear this flag. Correct today (migration is one-shot), but if a
-  future build wants a second one-shot migration with the same key,
-  resets prior to that build would silently skip it. Easy to avoid
-  by namespacing future migration keys by version.
+  works because `sortIndex` is persisted, but the exports are not
+  byte-identical across runs. Same as prior audit.
+- **N2 (Reminder Time change doesn't reschedule)** — the change is
+  saved to the model immediately, but pending
+  `UNCalendarNotificationTrigger`s are not refreshed.
+- **N3 (Repeat batch exhaustion)** — pending notifications quietly
+  run out after 16 occurrences.
 
 ---
 
 ## 7. Configuration and platform issues
 
-- **DEVELOPMENT_TEAM is still hardcoded** to `U6KN3BQL72` in
-  `task.xcodeproj/project.pbxproj` (lines 451, 488, etc.). Same as
-  prior audit; blocks contributors from a clean Archive without
-  edits. Move to `.xcconfig` for collaboration-readiness.
-- **iOS deployment target 18.0** in all four targets — matches
-  README requirements.
+- **N10 (Missing widget privacy manifest)** — see issue list.
+- **N11 (Hardcoded DEVELOPMENT_TEAM)** — see issue list.
+- **N12 (README build number lags pbxproj)** — see issue list.
+- **iOS deployment target 18.0** in all four targets — matches README
+  requirements. `#available(iOS 26.0, *)` paths in `BottomNavBar` are
+  the only forks.
 - **App Group `group.com.ijustin.task`** is correctly configured on
   both `Task.entitlements` and `TaskWidgetExtension.entitlements`.
 - **Synchronized folder exceptions** — `TaskWidgetExtension/Info.plist`
   remains excluded via `PBXFileSystemSynchronizedBuildFileExceptionSet`
-  (lines 56-62 in pbxproj). Same as prior audit. Task target uses
-  `GENERATE_INFOPLIST_FILE = YES` with the
-  `INFOPLIST_KEY_*` settings — no checked-in Task/Info.plist needed.
+  (lines 56-62 in pbxproj). Task target uses
+  `GENERATE_INFOPLIST_FILE = YES` with the `INFOPLIST_KEY_*` settings —
+  no checked-in `Task/Info.plist` needed.
 - **`ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "Rose Violet
-  Midnight Neutral Light"`** (line 444) matches `AppIconOption.alternateName`
-  (Classic / Rose / Violet / Midnight / Neutral / Light, where
-  Classic is the primary). Not verified against the asset catalog
-  contents.
-- **PrivacyInfo.xcprivacy** declares `NSPrivacyAccessedAPICategoryUserDefaults`
-  with reason `CA92.1` (App Group sharing). Correct.
+  Midnight Neutral Light"`** (line 444) matches
+  `AppIconOption.alternateName` (Classic / Rose / Violet / Midnight /
+  Neutral / Light, where Classic is the primary). Not verified
+  against the asset catalog contents.
+- **`PrivacyInfo.xcprivacy`** on the Task target declares
+  `NSPrivacyAccessedAPICategoryUserDefaults` with reason `CA92.1`.
+  Widget extension still lacks one — see N10.
 - **Portrait-only orientation** in
-  `INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait`
-  for both Task release & debug configurations. Matches the
-  UI which has not been laid out for landscape.
+  `INFOPLIST_KEY_UISupportedInterfaceOrientations =
+  UIInterfaceOrientationPortrait` for both Task release & debug
+  configurations. Matches the UI.
 - **`LSApplicationCategoryType = public.app-category.productivity`**
   set — App Store category-ready.
 - **`TARGETED_DEVICE_FAMILY = 1`** (iPhone only). Matches design.
 - **`LOCALIZATION_PREFERS_STRING_CATALOGS = YES`** — set on both
   targets; new strings auto-extract on build.
+- **`Swift 5.0`** — the project still pins `SWIFT_VERSION = 5.0`. iOS
+  18 / Xcode 16 default to Swift 6 by default; staying on 5 keeps the
+  actor-isolation churn out of the way. Worth a deliberate decision
+  before any 0.5.x feature work.
 
 ---
 
 ## 8. Testing gaps
 
 - **Highest-risk uncovered features:**
-  - Default Status picker entry point + persistence (the regressed
-    feature in N1, once restored).
-  - Multi-board import / export round-trip integrity at v2 wire
-    format, plus the legacy v1 fall-back path
-    (`DataImportExport.decodePayload`).
-  - Cross-board task isolation: a task added to board A must not
-    appear in board B's search results (`SearchView.groupedResults`)
-    or column rendering.
-  - Drag-reorder math in all five drop delegates
-    (`BoardReorderDropDelegate`, `StatusPickerReorderDropDelegate`,
-    `TagPickerReorderDropDelegate`, `GroupReorderDropDelegate`,
-    `TagReorderDropDelegate`).
+  - `NotificationService.schedule` for repeat rules: assert
+    `repeatBatchSize` triggers are added, identifiers follow
+    `task.id@offset` shape, and cancel removes all of them.
+  - `disableReminderIfNoDates` in `TaskDetailView`: the @State flip
+    when the user clears the last date with reminder on. Hard to
+    unit-test without a SwiftUI host; can be re-shaped into a static
+    pure helper for testability.
+  - `DataImportExport.importData` round-trip integrity at the v2 wire
+    format and the v1 legacy fall-back (`LegacySingleBoardPayload`).
+  - `DataImportExport.mergeBoard` orphan paths:
+    - missing groupID → fallback to first group, increment
+      `orphanTasks`.
+    - missing tagID in `tagIDs` → drop the tag, increment
+      `orphanTagRefs`.
+    - name-conflict for groups/tags inside the same board (case
+      differences, duplicate names).
+  - `DataImportExport.resetAll`: cancellation runs for every prior
+    task before the seed runs; `task.activeBoardID` is cleared.
   - Group delete reassignment (`GroupMenuSheet.deleteAndDismiss`,
-    `StatusPickerSheet.deleteGroup`).
-  - `migrateLegacyBoardDefaultsIfNeeded` one-shot path: prove a
-    legacy install with `task.cardSortField = "workingDate"` ends
-    up with `cardSortFieldRaw = "date"` on the first board.
-  - `primaryReminderDate` returns `min(workingStart, dueDate)` and
-    `NotificationService.schedule` past-date skip.
-  - Snapshot encoding round-trip between
-    `SharedDefaultsService.UpcomingSnapshot` and
-    `WidgetUpcomingSnapshot`, both directions.
+    `StatusPickerSheet.deleteGroup`): five tasks in group A,
+    delete A, assert all five land at the tail of the first remaining
+    group with monotonically increasing `sortIndex`.
+  - Cross-board task isolation: a task added to board A must not
+    surface in board B's `SearchView.groupedResults` or column
+    rendering.
+  - Drag-reorder math: same-column reorder when in non-Manual sort
+    should leave `sortIndex` unchanged (per the `applyTaskMove`
+    branches). Cross-column drop in non-Manual sort should land at
+    end-of-column.
+  - `primaryReminderDate` semantics across:
+    - both `workingStart` and `dueDate` set (min of the two).
+    - only `workingStart` set.
+    - only `dueDate` set.
+    - `workingStart` + `workingEnd` (range) only — see N13.
+  - `migrateLegacyBoardDefaultsIfNeeded` one-shot: preload
+    UserDefaults legacy keys, run `ensureSeed`, assert the first
+    board picks up the migrated values and
+    `task.boardDefaultsMigrated` is set; confirm idempotent on second
+    run.
+  - Snapshot encode → widget decode round-trip with all optional
+    fields populated (`boardID`, `boardEmoji`, `boardTitle`).
+
 - **Suggested tests:**
-  - `testDefaultStatusFallsBackToFirstGroupWhenIDInvalid()` — set
-    `board.defaultGroupID = "not-a-uuid"`, assert `board.defaultGroup
-    == board.orderedGroups.first`.
-  - `testImportThenExportThenImportProducesEqualBoards()` — import
-    a payload, export, re-import, compare board / group / tag /
-    task counts and IDs.
-  - `testImportV1LegacyPayloadDecodes()` — feed
-    `LegacySingleBoardPayload`-shaped JSON, assert it lands as a
-    single-entry MultiBoard payload.
-  - `testImportOrphanTaskLandsInFallbackGroup()` — import a task
-    whose `groupID` is absent from the file, assert it ends up in
+  - `testRepeatBatchSchedulesSixteenTriggers()` — set a `.daily`
+    repeat with reminder on; assert pending request count is 16
+    after a `Task.sleep(100ms)` to let `add(_:withCompletionHandler:)`
+    flush. Requires test-host entitlements.
+  - `testDateFormatStyleAppliesAcrossFormatRange()` — assert that
+    `TaskDateFormat.formatRange(start, end, style: .longNumeric)`
+    yields `2026.05.17 → 2026.05.20`, not the medium pattern.
+  - `testImportV1LegacyPayloadWrapsIntoSingleEntry()` — feed
+    `LegacySingleBoardPayload`-shaped JSON, assert `payload.boards.count
+    == 1` and fields match.
+  - `testImportOrphanTaskLandsInFirstGroup()` — import a task with a
+    non-existent `groupID`, assert task is placed in
     `board.orderedGroups.first` and `outcome.orphanTasks == 1`.
-  - `testGroupDeleteReassignsTasks()` — set up 5 tasks in group A,
-    delete A via `deleteAndDismiss`, assert all 5 tasks now belong
-    to the remaining first group.
-  - `testReorderWithinColumnRenumbers()` — set 5 tasks with
-    sortIndex 0..4, call `BoardView.placeTask(task: tasks[4],
-    in: group, atIndex: 0)`, assert new sortIndex order.
-  - `testReorderNoOpInNonManualSort()` — in title sort, drag the
-    third title to position 0; assert sortIndex was unchanged.
-  - `testNotificationPastDateSkips()` — set a past due date, call
-    `NotificationService.schedule`, assert
-    `UNUserNotificationCenter.current().getPendingNotificationRequests`
-    has no entry for this task id. Requires test-host entitlements.
-  - `testSnapshotEncodingMatchesWidgetDecoder()` — encode an
-    `UpcomingSnapshotEntry`, decode as `WidgetUpcomingEntry`,
-    assert field-by-field equality including the new `boardID` /
-    `boardEmoji` / `boardTitle`.
-  - `testMigrateLegacyBoardDefaults()` — preload UserDefaults
-    legacy keys, run `ensureSeed`, assert the first board picks up
-    the migrated values and `task.boardDefaultsMigrated` is set.
+  - `testImportOrphanTagRefDropsButPreservesTask()` — import a task
+    with an unknown UUID in `tagIDs`, assert `outcome.orphanTagRefs ==
+    1` and the task is created with the remaining valid tags.
+  - `testGroupDeleteReassignsTasksAndRenumbers()` — five tasks in
+    group A; delete A via `StatusPickerSheet.deleteGroup`; assert all
+    five live in the first remaining group with `sortIndex` 0..4
+    appended after the fallback's existing tail.
+  - `testReorderDoesNothingWhenTargetIsSelf()` —
+    `ReorderDropDelegate.dropEntered` early-returns when draggedID ==
+    target.id; assert no `sortIndex` changes.
+  - `testWatchdogRollbackOnlyReplacesChangedTasks()` — pre-record
+    `preDragState`, mutate two tasks' groupID/sortIndex via
+    `placeTask(commit: false)`, fire `rollbackDragIfNeeded()`,
+    assert only those two tasks are touched.
+  - `testNotificationPastDateSkips()` — set a past dueDate, call
+    `NotificationService.schedule`, assert no pending request for
+    `task.id.uuidString`. Test-host entitlements required.
+  - `testReminderTimeChangeReschedulesPendingNotifications()` —
+    create task with reminder, schedule, change
+    `board.reminderMinutesOfDay`, assert the pending trigger's
+    `dateComponents` reflect the new hour/minute. Test-host
+    entitlements required.
+
 - **Manual / device-only:**
   - Verify widget refreshes promptly after task edits in a real
-    widget install across all three families.
-  - Verify the alternate-icon picker actually swaps icons on iOS 18
-    and iOS 26 (requires runtime `setAlternateIconName`).
-  - VoiceOver pass over `BottomNavBar`, `BoardSwitcherView` (drag-to-
-    delete), `BoardView`, `TaskDetailView`.
+    widget install across all three families (small / medium /
+    large).
+  - Confirm `setAlternateIconName` actually swaps app icons on iOS 18
+    and iOS 26.
+  - VoiceOver pass over `BottomNavBar`, `BoardSwitcherView`
+    (delete-mode rows), `BoardView`, `TaskDetailView`,
+    `MarkdownNotesEditor`.
+  - Reproduce N4: start a drag, hover one card for >5 seconds without
+    moving, watch for a card snap-back to original column mid-drag.
 
 ---
 
 ## 9. Priority recommendations
 
 - **Fix first:**
-  - **N1** — Restore the Default Status entry point (add the icon
-    button in `ProjectHeaderView`). One-screen change with high
-    user impact.
-  - **N2** — Rewrite the three stale `HowToUseSheet` steps so docs
-    match the live UI. Trivial but visible; pairs with N1's fix.
-  - **N4** — Fix the Reset confirmation copy. Three-word change in
-    one file; reduces user confusion before a destructive action.
-  - **N3** — Decide to delete or revive the orphan files; remove
-    the dead code if no Settings re-entry is planned.
+  - **N1** — Plumb `settings.dateFormat` through `TaskDetailView`,
+    `SearchView`, and `NotificationService`. One-day change; removes
+    a visible drift across every date surface.
+  - **N2** — On `board.reminderMinutesOfDay` change, walk pending
+    reminders and re-schedule. Removes a silent inconsistency users
+    would only catch after a missed reminder.
+  - **N3** — Refresh repeat-reminder batches on app launch /
+    scene-active so a Daily reminder doesn't go quiet after 16 days.
+    Same silent-failure class as N2; both are user-trust issues.
 - **Fix next:**
-  - **N5** — Either remove `BoardIconPickerSheet`'s Cancel button
-    or make it actually cancel.
-  - **N7** — Show a `ProgressOverlay` during Reset.
-  - **N6** — Have `TaskDateFormat` honor the user-selected locale.
-  - **N8** — Convert the iCloud Sync row to a proper "coming soon"
-    button or dim its title.
-  - **N9** — Codify the sheet toolbar rule and apply across the
-    app.
-  - **N11** — Surface a banner when the user enables a reminder
-    with notification authorization denied.
-  - **N12** — Don't silently strip a reminder when the user
-    removes the last date; either zero the toggle visibly or
-    show a hint.
-  - **N10** — A focused zh-Hans translation pass before the next
-    Chinese-targeted release.
+  - **N4** — Re-arm the drag rollback watchdog from `dropUpdated`,
+    not just `dropEntered`. Verify on device first.
+  - **N5** — Wrap the four "Untitled" sites in
+    `String(localized: "Untitled")` (and store "" in the snapshot so
+    the widget can render its own localized placeholder).
+  - **N6** — New board create should start with empty title/
+    subtitle and rely on `TextField(prompt:)` for the hint instead
+    of pre-filling "Choose a Title".
+  - **N7** — Update HowToUseSheet's "folder button" copy to match
+    the archivebox icon.
+  - **N9** — Translate the remaining 21 zh-Hans keys before the
+    next Chinese-targeted release.
+  - **N13** — Pick a side on workingEnd vs workingStart for range-
+    only reminders, then document it in `HowToUseSheet`'s Reminders
+    section.
 - **Optional cleanup:**
-  - **N13** — Migrate `Board.defaultGroupID` from `String?` to
-    `UUID?`.
-  - **N14** — Either wire `repeats: true` through
-    `UNCalendarNotificationTrigger` or document the manual-advance
-    pattern.
-  - **N15** — Remove `mediumWithTime` and `isSameDay`.
-  - **N16** — Reconcile README's "folder button" with the
-    archivebox SF Symbol.
-  - **N17** — Replace `Board`'s placeholder defaults with empty
-    strings or required parameters.
-  - **N18** — Convert the import success pluralization to proper
-    String Catalog plural variations.
-  - **N19** — Extend `ImportResult` with positive counts so the
-    success alert reports what was actually imported.
+  - **N8** — Rephrase the "More +N" chip ("Show 10 more · 37 left").
+  - **N10** — Add `TaskWidgetExtension/PrivacyInfo.xcprivacy`.
+  - **N11** — Move `DEVELOPMENT_TEAM` into `.xcconfig`.
+  - **N12** — Reconcile README's "build 3" with pbxproj's
+    `CURRENT_PROJECT_VERSION = 4` (likely by bumping README +
+    VersionHistory).
+  - **N14** — Consolidate the three reorder DropDelegates into a
+    generic helper.
 
 ---
 
 ## What was checked
 
 - `README.md`, `VersionHistory.md`, `LessonsLearned.md` end-to-end.
-- `docs/IssuesArchive-01.md` cross-referenced against current code
-  for every prior issue (N1-N15 in that archive).
+- `docs/IssuesArchive-01.md` and `docs/IssuesArchive-02.md`
+  cross-referenced against current code for every prior issue. N1–N5,
+  N7–N8, N10–N15, N17–N19 from archive 02 are resolved or replaced by
+  better implementations; N6 is partially resolved (DateFormatter
+  locale honors the user's setting now); N9 is partially resolved
+  (toolbar conventions are still mixed but acceptable); N10 (zh-Hans
+  coverage) is significantly improved (42% → 91.5%, 21 keys
+  remaining); N13 (defaultGroupID type) is structurally addressed via
+  `defaultGroupUUID` accessor; N16 (folder vs archivebox naming)
+  partially survives in HowToUseSheet copy.
 - All Swift sources under `Task/`:
-  - Models (`Board`, `BoardGroup`, `TaskTag`, `TaskItem`,
-    `ColorKey`, `RepeatRule`).
+  - Models (`Board`, `BoardGroup`, `TaskTag`, `TaskItem`, `ColorKey`,
+    `RepeatRule`).
   - Services (`SwiftDataManager`, `NotificationService`,
     `SharedDefaultsService`, `UpcomingSnapshotBuilder`,
     `DataImportExport`).
   - Utils (`AppInfo`, `DateFormatters`).
   - ViewModels (`SettingsViewModel`).
-  - Views (`RootView`, board / board switcher / task detail /
-    search / settings, including each picker sheet).
+  - Views: `RootView`, board (`BoardView`, `BoardSwitcherView`,
+    `ColumnView`, `GroupMenuSheet`, `ProjectHeaderView`, `TaskCardView`,
+    `BoardIconPickerSheet`), task (`TaskDetailView`,
+    `MarkdownNotesEditor`, `RepeatPickerSheet`, `StatusPickerSheet`,
+    `TagPickerSheet`), search (`SearchView`), settings (`SettingsView`,
+    `AppearanceView`, `CardOrderPickerSheet`, `DefaultStatusPickerSheet`,
+    `IconPickerSheet`, `ManualControlSheet`, `AboutSheets`).
   - Components (`BottomNavBar`, `CalendarPicker`, `CardBackground`,
-    `ColorSwatchPicker`, `ConfirmationSheet`, `DateRow`,
-    `FlowLayout`, `GridTile`, `GroupHeaderPill`, `ProgressOverlay`,
-    `SettingsCard`, `StringMoveDropDelegate`, `TagChip`).
-- All Swift sources under `TaskWidgetExtension/`
-  (`TaskWidgetBundle`, `UpcomingTasksProvider`,
-  `UpcomingTasksWidget`, `WidgetSnapshot`, `BoardConfigurationIntent`).
+    `ColorSwatchPicker`, `ConfirmationSheet`, `DateRow`, `FlowLayout`,
+    `GridTile`, `GroupHeaderPill`, `ProgressOverlay`, `SettingsCard`,
+    `StringMoveDropDelegate`, `TagChip`).
+- All Swift sources under `TaskWidgetExtension/` (`TaskWidgetBundle`,
+  `UpcomingTasksProvider`, `UpcomingTasksWidget`, `WidgetSnapshot`,
+  `BoardConfigurationIntent`).
 - `Task/Task.entitlements`, `TaskWidgetExtension.entitlements`,
   `Task/PrivacyInfo.xcprivacy`, `TaskWidgetExtension/Info.plist`.
 - `task.xcodeproj/project.pbxproj` — build settings, synchronized
   folder exceptions, code signing, marketing/current version,
   INFOPLIST keys, bundle IDs, asset catalog config.
 - `Task/Localizable.xcstrings` — programmatic count of total keys
-  vs zh-Hans `state: "translated"`, plus spot checks for unlocalized
-  literals via `grep -rn 'Text(\"'`.
+  (248) vs zh-Hans `state: "translated"` (227, 91.5%), with the 21
+  missing keys enumerated.
 - `TaskTests/TaskTests.swift`.
-- Grep queries:
-  - `DefaultStatusPickerSheet`, `ManageGroupsView`, `ManageTagsView`
-    (to confirm orphans).
-  - `RepeatRule\|repeatRule\|repeatRuleRaw` (to map the half-wired
-    repeat feature).
-  - `WidgetCenter`, `reloadAllTimelines` (archive N1 verification).
-  - `\.swipeActions` (archive N6 verification — no live matches).
-  - `task.*Key` UserDefaults keys (consistency between
-    `SharedDefaultsService`, `SwiftDataManager`, and
-    `WidgetSharedDefaults`).
-  - `mediumWithTime|isSameDay` (dead code).
-  - `folder.fill\|archivebox` (doc vs code drift).
+- Grep queries (all via `rtk proxy grep`):
+  - `DefaultStatusPickerSheet`, `ManageGroupsView`, `ManageTagsView`,
+    `ReminderTimePickerSheet` (to confirm orphan files of the prior
+    audit are removed or rewired).
+  - `UpcomingSnapshotBuilder.writeSnapshot`,
+    `WidgetCenter.reloadAllTimelines` (snapshot/widget reload trace).
+  - `TODO|FIXME|XXX` (no matches).
+  - `repeats: true|repeats: false` (verify N14-archive resolution).
+  - `Untitled|String(localized` (N5 trace + localization audit).
+  - `TooMuchToDo|Work Harder` (verify N17-archive resolution).
+  - `Add\"|Done\"|Cancel\"|Save\"` (toolbar audit).
+  - `settings.dateFormat|TaskDateFormat.format` (N1 trace).
+  - `primaryReminderDate|workingEnd ?? workingStart`,
+    `primaryDate` (N13 + widget divergence).
 
 ## Not checked (worth a follow-up)
 
-- Actual runtime behavior on iOS 18.x vs iOS 26 devices /
-  simulators (Liquid Glass parity, alternate icon transitions,
-  drag previews, ProgressOverlay animation while @MainActor work
-  runs, widget reload cadence).
-- On-device notification delivery, authorization-denied paths,
-  notification body composition in different locales.
-- Instruments / memory profile (board with thousands of tasks;
-  SearchView at scale).
+- Actual runtime behavior on iOS 18.x vs iOS 26 devices / simulators
+  (Liquid Glass parity, alternate icon transitions, drag previews,
+  the ProgressOverlay animation while a `@MainActor` reset runs to
+  completion, widget reload cadence under heavy edit churn).
+- On-device notification delivery, authorization-denied paths, and
+  notification body composition in different locales — particularly
+  the N1 fix and any regression in `NotificationService.dateSummary`.
+- Instruments / memory profile for a board with thousands of tasks;
+  `SearchView` at scale; `UpcomingSnapshotBuilder` cost when called
+  rapid-fire during a large import.
 - Widget rendering under each `WidgetFamily` on a real device, and
-  the configuration intent picker after a board rename.
-- Asset catalog contents
-  (`Rose/Violet/Midnight/Neutral/Light` and the corresponding
+  the configuration intent picker after a board rename / icon change.
+- Asset catalog contents: that
+  `Rose/Violet/Midnight/Neutral/Light` and the corresponding
   `*Preview` previews actually exist;
-  `INCLUDE_ALL_APPICON_ASSETS = YES` is set but the catalog itself
-  is not part of this audit).
-- Full pass of `Localizable.xcstrings` for missing `zh-Hans`
-  translations against every emitted key (counted, not enumerated).
-- Accessibility audit (Dynamic Type, VoiceOver labels, hit
+  `INCLUDE_ALL_APPICON_ASSETS = YES` is set but the catalog itself is
+  not part of this audit. `IconPickerSheet` references
+  `option.previewAssetName` directly — a missing asset would render
+  a blank tile.
+- The 21 remaining zh-Hans translations themselves — only their
+  English keys were enumerated, not proposed Chinese values.
+- Accessibility audit (Dynamic Type extremes, VoiceOver labels, hit
   targets, drag-and-drop accessibility).
-- Verifying that `task.boardDefaultsMigrated` actually fires for a
-  legacy upgrade user (would require launching the app with the
-  legacy UserDefaults pre-populated).
+- N3 / N4 device behavior: the watchdog mid-drag rollback claim and
+  the repeat-reminder exhaustion claim both want a real device run
+  to confirm.
+- `Issues-cx.md` and `Issues-gg.md` at the repo root — present but
+  not referenced anywhere; not part of this audit's input.
+- `TestData/testdata.json` integrity — 211 KB JSON file, not
+  diff-walked here.

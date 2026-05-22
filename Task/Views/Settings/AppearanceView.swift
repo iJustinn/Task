@@ -460,9 +460,23 @@ struct ReminderTimePickerSheet: View {
 
     private func applyAndDismiss() {
         guard let components = parsedComponents else { return }
-        board.reminderMinutesOfDay = components.hour * 60 + components.minute
+        let newMinutes = components.hour * 60 + components.minute
+        let changed = board.reminderMinutesOfDay != newMinutes
+        board.reminderMinutesOfDay = newMinutes
         board.updatedAt = Date()
         try? context.save()
+        if changed {
+            // Existing UNCalendarNotificationTriggers were anchored to the old hour/
+            // minute at scheduling time. Re-schedule every active reminder on this
+            // board so they pick up the new time of day.
+            rescheduleReminders()
+        }
         dismiss()
+    }
+
+    private func rescheduleReminders() {
+        for task in (board.tasks ?? []) where task.hasReminder {
+            NotificationService.schedule(for: task)
+        }
     }
 }

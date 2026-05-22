@@ -11,6 +11,11 @@ enum TaskDateFormat {
         }
     }
 
+    /// The user's chosen Date Format. Mirrored from `SettingsViewModel.dateFormat`
+    /// so nonisolated contexts (e.g. `NotificationService`) can render dates in the
+    /// same style as the rest of the app without crossing the `@MainActor` boundary.
+    nonisolated(unsafe) static var currentStyle: AppDateFormat = .shortText
+
     static let medium: DateFormatter = {
         let f = DateFormatter()
         f.locale = locale

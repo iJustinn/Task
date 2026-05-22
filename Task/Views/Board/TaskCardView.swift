@@ -6,7 +6,7 @@ struct TaskCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(task.title.isEmpty ? "Untitled" : task.title)
+            Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.leading)

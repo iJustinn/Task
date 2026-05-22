@@ -15,6 +15,11 @@ struct BoardSwitcherView: View {
     @State private var dragSessionEnded: Bool = false
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
+    /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
+    /// user cancels the drag (releases outside any row, dismisses the sheet, or
+    /// goes idle for 5 s) so dirty model mutations don't leak into the next save.
+    @State private var preDragSortIndex: [UUID: Int] = [:]
+    @State private var reorderWatchdog: Task<Void, Never>?
 
     private var canDelete: Bool { boards.count > 1 }
     private var isExpanded: Bool { selectedDetent == .large }
@@ -79,6 +84,60 @@ struct BoardSwitcherView: View {
         .dynamicTypeSize(settings.textSize.dynamicType)
         .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
         .presentationDragIndicator(.visible)
+        .onDisappear {
+            // Sheet dismissed mid-drag: roll back any uncommitted reorder so the
+            // dirty `sortIndex` doesn't ride along with the next unrelated save.
+            if !preDragSortIndex.isEmpty {
+                rollbackReorderIfPending()
+            }
+            reorderWatchdog?.cancel()
+            reorderWatchdog = nil
+        }
+    }
+
+    // MARK: - Reorder rollback
+
+    private func captureReorderSnapshotIfNeeded() {
+        guard preDragSortIndex.isEmpty else { return }
+        var snap: [UUID: Int] = [:]
+        for board in boards { snap[board.id] = board.sortIndex }
+        preDragSortIndex = snap
+        armReorderWatchdog()
+    }
+
+    private func rearmReorderWatchdogIfDragging() {
+        guard !preDragSortIndex.isEmpty else { return }
+        armReorderWatchdog()
+    }
+
+    private func armReorderWatchdog() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { return }
+            rollbackReorderIfPending()
+        }
+    }
+
+    private func completeReorder() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
+        preDragSortIndex.removeAll()
+    }
+
+    private func rollbackReorderIfPending() {
+        guard !preDragSortIndex.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.22)) {
+            for board in boards {
+                if let original = preDragSortIndex[board.id], board.sortIndex != original {
+                    board.sortIndex = original
+                }
+            }
+        }
+        try? context.save()
+        preDragSortIndex.removeAll()
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
     }
 
     private func boardRow(_ board: Board) -> some View {
@@ -102,11 +161,14 @@ struct BoardSwitcherView: View {
             }
             .onDrop(
                 of: StringMoveDropDelegate.acceptedTypes,
-                delegate: BoardReorderDropDelegate(
+                delegate: ReorderDropDelegate<Board>(
                     target: board,
-                    boards: boards,
-                    context: context,
-                    draggingBoardID: $draggingBoardID,
+                    ordered: { boards },
+                    onCommit: { try? context.save() },
+                    onBeginDrag: { captureReorderSnapshotIfNeeded() },
+                    onTick: { rearmReorderWatchdogIfDragging() },
+                    onCompleteDrag: { completeReorder() },
+                    draggingID: $draggingBoardID,
                     dragSessionEnded: $dragSessionEnded
                 )
             )
@@ -121,7 +183,7 @@ struct BoardSwitcherView: View {
                 .frame(width: 34)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text(board.title.isEmpty ? "Untitled" : board.title)
+                Text(board.title.isEmpty ? String(localized: "Untitled") : board.title)
                     .font(.body.weight(.semibold))
                     .foregroundStyle(deleteMode ? .red : .primary)
 
@@ -178,9 +240,11 @@ struct BoardSwitcherView: View {
     }
 
     private func addBoard() {
+        // Empty title/subtitle so the board header's TextField shows its prompt
+        // hint instead of pre-filling text the user has to delete by hand.
         let newBoard = SwiftDataManager.createBoard(
-            title: String(localized: "Choose a Title"),
-            subtitle: String(localized: "Choose a Subtitle"),
+            title: "",
+            subtitle: "",
             into: context
         )
         onPickBoard(newBoard.id)
@@ -204,49 +268,3 @@ struct BoardSwitcherView: View {
     }
 }
 
-private struct BoardReorderDropDelegate: DropDelegate {
-    let target: Board
-    let boards: [Board]
-    let context: ModelContext
-    @Binding var draggingBoardID: UUID?
-    @Binding var dragSessionEnded: Bool
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let id = draggingBoardID, id != target.id else { return }
-        applyMove(draggedID: id)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        if let id = draggingBoardID {
-            applyMove(draggedID: id)
-            try? context.save()
-        }
-        draggingBoardID = nil
-        dragSessionEnded = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            dragSessionEnded = false
-        }
-        return true
-    }
-
-    private func applyMove(draggedID: UUID) {
-        guard draggedID != target.id else { return }
-        var ordered = boards
-        guard let from = ordered.firstIndex(where: { $0.id == draggedID }),
-              let to = ordered.firstIndex(where: { $0.id == target.id }),
-              from != to else { return }
-        withAnimation(.easeInOut(duration: 0.22)) {
-            let item = ordered.remove(at: from)
-            ordered.insert(item, at: to)
-            for (i, b) in ordered.enumerated() {
-                if b.sortIndex != i {
-                    b.sortIndex = i
-                }
-            }
-        }
-    }
-}

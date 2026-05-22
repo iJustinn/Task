@@ -110,7 +110,7 @@ struct ProjectHeaderView: View {
         let title = draftTitle.trimmingCharacters(in: .whitespaces)
         let subtitle = draftSubtitle.trimmingCharacters(in: .whitespaces)
         var changed = false
-        if !title.isEmpty, board.title != title {
+        if board.title != title {
             board.title = title
             board.updatedAt = Date()
             changed = true

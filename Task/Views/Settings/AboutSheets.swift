@@ -107,7 +107,7 @@ struct HowToUseSheet: View {
             systemImage: "archivebox.fill",
             tintColor: .accentColor,
             steps: [
-                "Tap the folder button in the bottom bar to open the board switcher. Fresh installs ship with three boards — Personal, Study, and Work — each with their own groups, tags, and tasks.",
+                "Tap the archive button in the bottom bar to open the board switcher. Fresh installs ship with three boards — Personal, Study, and Work — each with their own groups, tags, and tasks.",
                 "Tap Add in the switcher to create a new board with placeholder text — then tap the title, subtitle, or icon on the board header to edit them in place.",
                 "Long-press a board row to drag-reorder it. Expand the switcher and tap Delete a Board to choose a board for deletion with a confirmation popup. Disabled when only one board remains."
             ]
@@ -159,7 +159,8 @@ struct HowToUseSheet: View {
             steps: [
                 "Tap a day on the calendar to set the date; tap it again to clear.",
                 "Enable End Date in the Working date sheet to select a range — the strip between the two days highlights blue.",
-                "Dates show blue on cards when the date is still in the future, and red once it has arrived or passed. Reminders fire at the time you set per-board — tap the bell icon on the board header to change it."
+                "Dates show blue on cards when the date is still in the future, and red once it has arrived or passed. Reminders fire at the time you set per-board — open Settings > Board > Reminder Time to change it.",
+                "When a task has both a working date and a due date, the reminder fires on whichever comes first. For a working range with no due date, the reminder fires on the first day of the range."
             ]
         ),
         AboutGuideSection(

@@ -62,13 +62,14 @@ final class TaskItem {
 
     /// When both a working start and a due date exist we don't know which the user
     /// considers "the" deadline — fire (and badge) the earlier one so the reminder
-    /// arrives in time for whichever comes first. Falls back to the obvious choice
-    /// when only one side is set.
+    /// arrives in time for whichever comes first. When only working is set (single
+    /// day or range), fire on `workingStart` — the start of the work — so the
+    /// reminder arrives when the user needs to begin, not when the window closes.
     var primaryReminderDate: Date? {
         if let w = workingStart, let d = dueDate {
             return min(w, d)
         }
-        return dueDate ?? workingEnd ?? workingStart
+        return dueDate ?? workingStart ?? workingEnd
     }
 
     var repeatRule: RepeatRule {

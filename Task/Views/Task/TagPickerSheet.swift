@@ -17,6 +17,11 @@ struct TagPickerSheet: View {
     @State private var pendingDelete: TaskTag?
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
+    /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
+    /// user cancels the drag (releases outside any row, dismisses the sheet, or
+    /// goes idle for 5 s) so dirty model mutations don't leak into the next save.
+    @State private var preDragSortIndex: [UUID: Int] = [:]
+    @State private var reorderWatchdog: Task<Void, Never>?
 
     private var canDelete: Bool { !board.orderedTags.isEmpty }
     private var isExpanded: Bool { selectedDetent == .large }
@@ -96,6 +101,58 @@ struct TagPickerSheet: View {
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }
+        .onDisappear {
+            if !preDragSortIndex.isEmpty {
+                rollbackReorderIfPending()
+            }
+            reorderWatchdog?.cancel()
+            reorderWatchdog = nil
+        }
+    }
+
+    // MARK: - Reorder rollback
+
+    private func captureReorderSnapshotIfNeeded() {
+        guard preDragSortIndex.isEmpty else { return }
+        var snap: [UUID: Int] = [:]
+        for tag in board.orderedTags { snap[tag.id] = tag.sortIndex }
+        preDragSortIndex = snap
+        armReorderWatchdog()
+    }
+
+    private func rearmReorderWatchdogIfDragging() {
+        guard !preDragSortIndex.isEmpty else { return }
+        armReorderWatchdog()
+    }
+
+    private func armReorderWatchdog() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { return }
+            rollbackReorderIfPending()
+        }
+    }
+
+    private func completeReorder() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
+        preDragSortIndex.removeAll()
+    }
+
+    private func rollbackReorderIfPending() {
+        guard !preDragSortIndex.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.22)) {
+            for tag in board.orderedTags {
+                if let original = preDragSortIndex[tag.id], tag.sortIndex != original {
+                    tag.sortIndex = original
+                }
+            }
+        }
+        try? context.save()
+        preDragSortIndex.removeAll()
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
     }
 
     private func tagRow(_ tag: TaskTag) -> some View {
@@ -116,11 +173,14 @@ struct TagPickerSheet: View {
             }
             .onDrop(
                 of: StringMoveDropDelegate.acceptedTypes,
-                delegate: TagPickerReorderDropDelegate(
+                delegate: ReorderDropDelegate<TaskTag>(
                     target: tag,
-                    board: board,
-                    context: context,
-                    draggingTagID: $draggingTagID,
+                    ordered: { board.orderedTags },
+                    onCommit: { try? context.save() },
+                    onBeginDrag: { captureReorderSnapshotIfNeeded() },
+                    onTick: { rearmReorderWatchdogIfDragging() },
+                    onCompleteDrag: { completeReorder() },
+                    draggingID: $draggingTagID,
                     dragSessionEnded: $dragSessionEnded
                 )
             )
@@ -253,49 +313,3 @@ struct TagPickerSheet: View {
     }
 }
 
-private struct TagPickerReorderDropDelegate: DropDelegate {
-    let target: TaskTag
-    let board: Board
-    let context: ModelContext
-    @Binding var draggingTagID: UUID?
-    @Binding var dragSessionEnded: Bool
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let id = draggingTagID, id != target.id else { return }
-        applyMove(draggedID: id)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        if let id = draggingTagID {
-            applyMove(draggedID: id)
-            try? context.save()
-        }
-        draggingTagID = nil
-        dragSessionEnded = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            dragSessionEnded = false
-        }
-        return true
-    }
-
-    private func applyMove(draggedID: UUID) {
-        guard draggedID != target.id else { return }
-        var ordered = board.orderedTags
-        guard let from = ordered.firstIndex(where: { $0.id == draggedID }),
-              let to = ordered.firstIndex(where: { $0.id == target.id }),
-              from != to else { return }
-        withAnimation(.easeInOut(duration: 0.18)) {
-            let item = ordered.remove(at: from)
-            ordered.insert(item, at: to)
-            for (i, t) in ordered.enumerated() {
-                if t.sortIndex != i {
-                    t.sortIndex = i
-                }
-            }
-        }
-    }
-}

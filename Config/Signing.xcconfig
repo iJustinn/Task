@@ -1,0 +1,10 @@
+// Code signing team for the Task and TaskWidgetExtension targets.
+//
+// Contributors building their own copy should either edit this file with their
+// Apple Developer Team ID or override locally by creating Config/Signing.local.xcconfig
+// (gitignored) with `DEVELOPMENT_TEAM = ABC1234567` — the `#include?` below picks
+// it up automatically if present.
+
+DEVELOPMENT_TEAM = U6KN3BQL72
+
+#include? "Signing.local.xcconfig"

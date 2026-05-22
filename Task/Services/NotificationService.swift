@@ -35,15 +35,25 @@ enum NotificationService {
 
         // Build the list of upcoming fire dates. `UNCalendarNotificationTrigger` with
         // `repeats: true` can't express "fire daily *starting* on date X", so we
-        // schedule a batch of one-shots instead. When the user saves the task again
-        // (manual advance, edit, import), the batch is refreshed.
+        // schedule a batch of one-shots instead. The batch is refreshed on app
+        // launch / scene-active (see RootView.refreshRepeatReminders) so a task
+        // whose original anchor is far in the past still gets future occurrences.
         let fireDates: [Date]
         if rule == .none {
             fireDates = [resolvedAnchor]
         } else {
+            // Advance the cursor past now first, so a stale anchor (Daily reminder
+            // set last month, never re-saved) starts scheduling from the next live
+            // occurrence instead of producing 16 past dates that all get skipped.
+            let now = Date()
+            var cursor = resolvedAnchor
+            while cursor <= now {
+                let next = rule.advance(cursor)
+                if next <= cursor { break } // safety: never loop on a no-op advance
+                cursor = next
+            }
             var dates: [Date] = []
             dates.reserveCapacity(Self.repeatBatchSize)
-            var cursor = resolvedAnchor
             for _ in 0..<Self.repeatBatchSize {
                 dates.append(cursor)
                 cursor = rule.advance(cursor)
@@ -127,11 +137,12 @@ enum NotificationService {
     }
 
     private static func dateSummary(for task: TaskItem) -> String? {
+        let style = TaskDateFormat.currentStyle
         if let due = task.dueDate {
-            return String(localized: "Due \(TaskDateFormat.format(due))")
+            return String(localized: "Due \(TaskDateFormat.format(due, style: style))")
         }
         if let start = task.workingStart {
-            return String(localized: "Working \(TaskDateFormat.formatRange(start, task.workingEnd))")
+            return String(localized: "Working \(TaskDateFormat.formatRange(start, task.workingEnd, style: style))")
         }
         return nil
     }

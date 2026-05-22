@@ -6,6 +6,7 @@ struct SearchView: View {
     let activeBoardID: UUID?
     let queryText: String
     var onSelectTask: (TaskItem) -> Void
+    @EnvironmentObject private var settings: SettingsViewModel
 
     var body: some View {
         // Compute once per render — `groupedResults` filters and sorts across every
@@ -59,7 +60,7 @@ struct SearchView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    Text(task.title.isEmpty ? "Untitled" : task.title)
+                    Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                 }
@@ -72,7 +73,7 @@ struct SearchView: View {
                     }
                     Spacer()
                     if let due = task.dueDate {
-                        Text(TaskDateFormat.format(due))
+                        Text(TaskDateFormat.format(due, style: settings.dateFormat))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

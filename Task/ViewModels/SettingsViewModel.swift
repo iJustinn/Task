@@ -660,7 +660,10 @@ final class SettingsViewModel: ObservableObject {
     }
 
     @Published var dateFormat: AppDateFormat {
-        didSet { UserDefaults.standard.set(dateFormat.rawValue, forKey: SettingsViewModel.dateFormatKey) }
+        didSet {
+            UserDefaults.standard.set(dateFormat.rawValue, forKey: SettingsViewModel.dateFormatKey)
+            TaskDateFormat.currentStyle = dateFormat
+        }
     }
 
     @Published var notesPreview: AppNotesPreview {
@@ -701,10 +704,12 @@ final class SettingsViewModel: ObservableObject {
         self.appIcon = AppIconOption(rawValue: d.string(forKey: SettingsViewModel.appIconKey) ?? "") ?? .classic
         self.textSize = AppTextSize(rawValue: d.string(forKey: SettingsViewModel.textSizeKey) ?? "") ?? .medium
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium
-        self.dateFormat = AppDateFormat(rawValue: d.string(forKey: SettingsViewModel.dateFormatKey) ?? "") ?? .shortText
+        let resolvedDateFormat = AppDateFormat(rawValue: d.string(forKey: SettingsViewModel.dateFormatKey) ?? "") ?? .shortText
+        self.dateFormat = resolvedDateFormat
         self.notesPreview = AppNotesPreview(rawValue: d.string(forKey: SettingsViewModel.notesPreviewKey) ?? "") ?? .none
         self.dateFilterTarget = AppDateFilterTarget(rawValue: d.string(forKey: SettingsViewModel.dateFilterTargetKey) ?? "") ?? .workingDate
         TaskDateFormat.locale = resolvedLanguage.locale
+        TaskDateFormat.currentStyle = resolvedDateFormat
     }
 
     private func applyAppIcon() {

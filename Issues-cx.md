@@ -1,89 +1,80 @@
 # Issues-cx Review
 
-Review target: current working tree on `task-v0.4.5`.
+Review target: current working tree on branch `task-v0.4.6`.
 
 Validation run during review:
 
-- `rtk xcodebuild -project task.xcodeproj -scheme Task -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /private/tmp/task-review-derived CODE_SIGNING_ALLOWED=NO build` exited 0.
-- `rtk xcodebuild -project task.xcodeproj -scheme Task -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /private/tmp/task-review-test-derived CODE_SIGNING_ALLOWED=NO test` exited 0.
+- `test_sim` through XcodeBuildMCP succeeded: 7 passed, 0 failed.
 
-This is a SwiftUI/SwiftData iOS task manager. I did not find data-science/model-training code in this project, so the data science categories below are marked not applicable rather than inventing model findings.
+This repository is a SwiftUI/SwiftData iOS task manager with a WidgetKit extension. I did not find data-science feature engineering, model training, evaluation, or prediction code; those categories are marked not applicable instead of inventing model-specific findings.
 
 ## Critical Bugs
 
-### Repeating reminders do not actually keep repeating after a future first occurrence
+### Task save/delete can change notifications and widget state even if persistence fails
 
 - **Severity:** High
-- **Location:** `Task/Services/NotificationService.swift`, `NotificationService.schedule(for:)`, lines 50-64
-- **Problem:** For a repeating task whose reminder anchor is in the future, the code deliberately schedules a non-repeating `UNCalendarNotificationTrigger` and relies on "the next time they open the app (or manual advance + save)" for subsequent occurrences.
-- **Why it matters:** The UI exposes Daily / Weekly / Monthly repeat rules, so a user expects the system to continue delivering notifications. A future daily task scheduled for next week will fire once and then stop unless the user returns and manually advances/saves. That is a broken reminder feature, not just a limitation.
-- **Suggested fix:** Treat repeating reminders as first-class recurrence. Options: maintain rolling one-shot notifications and reschedule on notification response/app launch/background refresh, schedule multiple upcoming one-shot requests under deterministic identifiers, or redesign the UI to clearly say that repeat only advances dates manually. Add tests around future daily/weekly/monthly reminders.
+- **Location:** `Task/Views/Task/TaskDetailView.swift`, `save()` and `delete()`
+- **Problem:** `save()` mutates or inserts a `TaskItem`, calls `try? context.save()`, then schedules/cancels notifications and writes the widget snapshot regardless of whether the save succeeded. `delete()` cancels notifications before `context.delete(task)` and also ignores `context.save()` failure.
+- **Why it matters:** A failed save can leave the UI dismissed while the task was not durably saved, or can schedule/cancel notifications and update the widget for state that did not commit. Delete failure is worse: the reminder can be cancelled even though the task remains in storage.
+- **Suggested fix:** Use `do/catch` around `context.save()`. Only schedule/cancel notifications, update snapshots, and dismiss after a successful save. For delete, save the deletion first, then cancel notifications, or keep a recovery path that reschedules if save fails.
 
-### Imported data can mutate the in-memory store and notifications before a failed save
-
-- **Severity:** High
-- **Location:** `Task/Services/DataImportExport.swift`, `importData(_:context:)` and `mergeBoard(_:into:)`, lines 257-275 and 404-438
-- **Problem:** `mergeBoard` mutates SwiftData objects, cancels existing notifications, and schedules imported reminders before the final `context.save()`. If the save throws, `importData` returns `.failure`, but the context has already been changed and notification side effects have already happened.
-- **Why it matters:** A failed import can leave the UI showing partially imported data, cancel valid existing reminders, or schedule reminders for data that was not durably saved.
-- **Suggested fix:** Make import transactional. Build a side-effect plan while merging, call `context.rollback()` or rebuild from a scratch context on save failure, and only cancel/schedule notifications after a successful save.
-
-### Reset All Data ignores save failures and continues with destructive side effects
+### Import failure leaves mutated SwiftData objects in the live context
 
 - **Severity:** High
-- **Location:** `Task/Services/DataImportExport.swift`, `resetAll(context:)`, lines 449-471; `Task/Views/Settings/SettingsView.swift`, `performReset()`, lines 449-455
-- **Problem:** Reset cancels notifications, deletes boards, calls `try? context.save()`, clears `task.activeBoardID`, possibly purges persistent files, then reseeds. There is no result or error path if the save fails.
-- **Why it matters:** A reset failure can leave partial data loss, stale snapshots, cleared active-board state, or reseeded data mixed with old data, while the UI only shows a progress overlay.
-- **Suggested fix:** Return a `Result` from reset, handle `context.save()` errors explicitly, delay irreversible side effects until the delete save succeeds, and show a failure alert when reset cannot complete.
+- **Location:** `Task/Services/DataImportExport.swift`, `importData(_:context:)` and `mergeBoard(_:into:plan:)`
+- **Problem:** Import mutates existing boards, groups, tags, and tasks before the final `context.save()`. If `context.save()` throws, the method returns `.failure`, but it does not roll back the already-mutated `ModelContext`.
+- **Why it matters:** A user can see partial imported state after an "Import Failed" alert, and a later unrelated save can persist those partial mutations. The notification plan is correctly delayed, but the data mutations are still live.
+- **Suggested fix:** Validate and stage imports in a scratch/in-memory context, then apply to the real context only after validation succeeds. At minimum, call `context.rollback()` on save failure and add tests that force save failure or invalid payload recovery.
 
-### Import can crash on duplicate group or tag names
+### Drag reorder mutates persistent models before the user drops
 
 - **Severity:** High
-- **Location:** `Task/Services/DataImportExport.swift`, `mergeBoard(_:into:)`, lines 321-323 and 353-355
-- **Problem:** `Dictionary(uniqueKeysWithValues:)` is built from existing group/tag names lowercased. Swift traps if duplicate keys exist.
-- **Why it matters:** Duplicate names can be introduced by old data, manually edited JSON, case-only differences, or a previous import. A user importing a backup should not be able to crash the app with recoverable data quality issues.
-- **Suggested fix:** Build dictionaries with an explicit loop that keeps the first match, records duplicates as warnings, and avoids trapping. Normalize and trim names consistently.
+- **Location:** `Task/Views/Board/BoardView.swift`, `placeTask(_:in:atIndex:commit:)`; `Task/Components/ReorderDropDelegate.swift`, `dropEntered(info:)`
+- **Problem:** Task, board, status, and tag reordering mutates real `sortIndex` / relationship state during hover. Task-card dragging has a five-second rollback watchdog; board/status/tag `ReorderDropDelegate` has no rollback at all if the drag is cancelled outside a valid drop target.
+- **Why it matters:** SwiftData objects are dirty before the gesture commits. Autosave, backgrounding, another explicit save, or a missed cleanup path can persist a reorder the user never dropped.
+- **Suggested fix:** Keep speculative drag order in view state and write SwiftData only in `performDrop`. If live model mutation is kept, add explicit rollback on cancel/background for all reorderable types and automated tests around cancelled drags.
+
+### Repeating reminders still have a finite delivery window
+
+- **Severity:** High
+- **Location:** `Task/Services/NotificationService.swift`, `repeatBatchSize` and `schedule(for:)`; `Task/Views/RootView.swift`, `refreshRepeatReminders()`
+- **Problem:** A repeating reminder schedules 16 one-shot notifications. The batch is refreshed on app launch / scene active, but if the user does not open the app before the batch runs out, daily/weekly/monthly reminders stop.
+- **Why it matters:** The UI exposes repeat rules as ongoing behavior. A daily reminder that silently stops after 16 days without app activation is a broken expectation for reminders.
+- **Suggested fix:** Either document this limitation clearly, or implement rolling rescheduling via notification response handling, background refresh where available, and/or scheduling the maximum allowed future occurrences across active repeating tasks with deterministic refresh logic.
 
 ## Data Processing Issues
 
-### Date-only fields are stored and exported as full instants
+### Date-only task fields are stored and exported as absolute instants
 
 - **Severity:** Medium
-- **Location:** `Task/Models/TaskItem.swift`, date fields at lines 10-12; `Task/Components/CalendarPicker.swift`, day selection at lines 269-279; `Task/Services/DataImportExport.swift`, ISO encoding at lines 158-168
-- **Problem:** Working and due dates are conceptually date-only, but the model stores `Date` and export uses ISO8601 instants. A local midnight date can shift when exported/imported across time zones or interpreted under a different calendar/time zone.
-- **Why it matters:** A task due on May 21 can become May 20 or May 22 for users who travel, change time zones, or import on another device.
-- **Suggested fix:** Store date-only values as `DateComponents` or canonical `yyyy-MM-dd` strings in exports, and convert to local display dates at the UI boundary. Add round-trip tests across time zones.
+- **Location:** `Task/Models/TaskItem.swift`, `workingStart`, `workingEnd`, `dueDate`; `Task/Services/DataImportExport.swift`, JSON encoder/decoder date strategy
+- **Problem:** Working and due dates are date-only concepts in the UI, but the app stores them as `Date` and exports them as ISO8601 instants.
+- **Why it matters:** Midnight-local `Date` values can shift calendar days when a user changes time zone, travels, or imports/export data on another device with a different time zone.
+- **Suggested fix:** Store/export date-only values as `yyyy-MM-dd` or a small `DateComponents` payload. Convert to local `Date` only at UI/scheduling boundaries. Add round-trip tests across time zones.
 
-### Tasks imported without a group can become invisible on the board
-
-- **Severity:** Medium
-- **Location:** `Task/Services/DataImportExport.swift`, `mergeBoard(_:into:)`, lines 392-402 and 421-432
-- **Problem:** When an imported task has `groupID == nil`, `resolvedGroup` is set to nil. New tasks with nil groups are inserted without a group, but `BoardView` renders tasks through each group's `orderedTasks`, so these tasks do not appear in any column.
-- **Why it matters:** Importing imperfect or older JSON can create hidden tasks that still exist in storage and search/export, but are not visible in the main workflow.
-- **Suggested fix:** Treat missing `groupID` like an orphan and assign the board's fallback group, or surface a clear import warning and provide an "Ungrouped" recovery path.
-
-### Duplicate sort indexes can produce unstable board, group, and task ordering
+### Import can still crash if duplicate task IDs exist in a board
 
 - **Severity:** Medium
-- **Location:** `Task/Models/Board.swift`, `orderedGroups`, lines 33-35; `Task/Models/BoardGroup.swift`, `orderedTasks`, lines 28-29; `Task/Services/DataImportExport.swift`, imported sort indexes at lines 295, 328, 360, 414
-- **Problem:** Boards/groups/tasks sort only by `sortIndex`; only tags have a secondary tiebreaker. Import and deletion paths can preserve or create duplicate sort indexes.
-- **Why it matters:** Equal sort indexes can make ordering appear unstable across launches, saves, imports, or SwiftData fetch order changes.
-- **Suggested fix:** Add deterministic tiebreakers such as `createdAt`/`id`, and normalize sort indexes after import, delete, and reorder operations.
+- **Location:** `Task/Services/DataImportExport.swift`, `mergeBoard(_:into:plan:)`, `tasksByID`
+- **Problem:** `Dictionary(uniqueKeysWithValues: existingTasks.map { ($0.id, $0) })` traps if a board already contains duplicate `TaskItem.id` values. The model does not enforce unique IDs with SwiftData attributes.
+- **Why it matters:** A malformed backup, old migration bug, or manual JSON edit can turn import into a crash instead of a recoverable data-quality warning.
+- **Suggested fix:** Build the dictionary with a first-wins loop, count duplicates as import warnings, and consider a repair pass that regenerates duplicate IDs before merge.
 
-### Deleting a status can assign duplicate sort indexes to moved tasks
+### Reset reports success even if reseeding fails
 
 - **Severity:** Medium
-- **Location:** `Task/Views/Task/StatusPickerSheet.swift`, `deleteGroup(_:)`, lines 247-264; `Task/Views/Board/GroupMenuSheet.swift`, `deleteAndDismiss()`, lines 102-117
-- **Problem:** Each moved task gets `sortIndex = (fallback.orderedTasks.last?.sortIndex ?? -1) + 1` inside the loop. Depending on when SwiftData relationship updates are reflected, multiple moved tasks can receive the same next index.
-- **Why it matters:** Manual ordering in the fallback column can become nondeterministic after deleting a status with multiple tasks.
-- **Suggested fix:** Capture the fallback's current max once, then assign `base + offset + 1` while enumerating moved tasks.
+- **Location:** `Task/Services/DataImportExport.swift`, `resetAll(context:)`; `Task/Services/SwiftDataManager.swift`, `ensureSeed(context:)`
+- **Problem:** `resetAll` returns `true` after calling `SwiftDataManager.ensureSeed`, but `ensureSeed` swallows its seed `context.save()` error with `try?`.
+- **Why it matters:** Reset can delete existing data successfully, fail to create/save the default boards, and still report success to the UI.
+- **Suggested fix:** Make `ensureSeed` return a success/failure result or throw. Have `resetAll` surface reseed failure and avoid writing a success snapshot when defaults did not commit.
 
-### Board default status can point to a deleted group forever
+### `workingRange` handles reversed imported ranges differently from other date logic
 
 - **Severity:** Low
-- **Location:** `Task/Models/Board.swift`, `defaultGroup` fallback at lines 54-61; `Task/Views/Task/StatusPickerSheet.swift`, `deleteGroup(_:)`, lines 247-264; `Task/Views/Board/GroupMenuSheet.swift`, `deleteAndDismiss()`, lines 102-117
-- **Problem:** If the deleted group is the board's `defaultGroupID`, deletion relies on computed fallback behavior but does not update or clear the stored ID.
-- **Why it matters:** The app works by falling back, but exports preserve a stale default group ID and the setting is internally inconsistent.
-- **Suggested fix:** When deleting a group, if `board.defaultGroupUUID == group.id`, set it to the chosen fallback group's ID before saving.
+- **Location:** `Task/Models/TaskItem.swift`, `workingRange`
+- **Problem:** `workingRange` returns `start...max(end, start)`, collapsing a reversed imported range to a single-day range. Other logic, such as `matchesDateFilter`, normalizes reversed bounds with `min`/`max`.
+- **Why it matters:** The property is currently unused, but if future code relies on it, imported or malformed reversed ranges will behave inconsistently across features.
+- **Suggested fix:** Either delete the unused property or normalize both lower and upper bounds with `min(start, end)` and `max(start, end)`, matching `matchesDateFilter`.
 
 ## Model / Data Science Issues
 
@@ -91,218 +82,196 @@ This is a SwiftUI/SwiftData iOS task manager. I did not find data-science/model-
 
 - **Severity:** Low
 - **Location:** Project-wide
-- **Problem:** The requested review categories include model training, feature engineering, prediction, and evaluation, but this repository contains a local-first iOS app with no ML/data-science pipeline.
-- **Why it matters:** There is no model reproducibility, training-data leakage, or evaluation logic to review. Treating the app as a modeling project would create false findings.
-- **Suggested fix:** No implementation change needed. If ML features are added later, introduce separate modules for data collection consent, feature extraction, model versioning, evaluation, and deterministic tests.
+- **Problem:** The requested review scope includes model training, feature engineering, prediction, and evaluation code, but this repository does not contain an ML or data-science pipeline.
+- **Why it matters:** There are no model reproducibility, train/test leakage, evaluation, or feature-engineering concerns to audit.
+- **Suggested fix:** No app change required. If ML features are added later, introduce explicit modules for data consent, feature extraction, model versioning, evaluation, and deterministic tests.
 
 ## UI / Dashboard Issues
 
-### App asks for notification permission on launch instead of when the user opts into reminders
-
-- **Severity:** High
-- **Location:** `Task/Views/RootView.swift`, `content(board:)`, lines 99-101; `Task/Views/Settings/AboutSheets.swift`, privacy copy at lines 337-343
-- **Problem:** `RootView` calls `NotificationService.requestAuthorizationIfNeeded()` in `.task` as soon as the main content appears. The privacy copy says permission is requested only to deliver reminders the user opts into.
-- **Why it matters:** Early permission prompts reduce opt-in rates and contradict the app's stated privacy behavior. A user can be asked for notifications before creating any task or enabling any reminder.
-- **Suggested fix:** Request permission the first time the user enables Reminder or saves a task with reminders on. Keep the launch-time status refresh, but remove the launch-time permission request.
-
-### Past one-shot reminders can display as enabled even though no notification is scheduled
+### Widget copy says reminders, but widget data includes all dated tasks
 
 - **Severity:** Medium
-- **Location:** `Task/Services/NotificationService.swift`, past-date guard at lines 30-33; `Task/Views/Task/TaskDetailView.swift`, save path at lines 498-508; `Task/Views/Board/TaskCardView.swift`, alarm footer at lines 51-55
-- **Problem:** For non-repeating reminders whose resolved fire date is in the past, `NotificationService.schedule` returns without scheduling. The saved task still has `hasReminder == true`, so the editor/card show an alarm.
-- **Why it matters:** The UI says a reminder exists when there is no pending notification.
-- **Suggested fix:** Disable reminders for past non-repeating dates, clear `hasReminder` on save when scheduling is skipped, or show an explicit "date is in the past" warning before saving.
+- **Location:** `TaskWidgetExtension/UpcomingTasksWidget.swift`, widget description; `Task/Services/UpcomingSnapshotBuilder.swift`, `writeSnapshot(from:)`
+- **Problem:** The widget description says "See your next tasks with reminders set", but the snapshot builder includes any task with a working or due date, regardless of `hasReminder`.
+- **Why it matters:** Users may expect the widget to be a reminder dashboard, while the implementation is an upcoming-date dashboard. This mismatch causes confusion and makes future behavior ambiguous.
+- **Suggested fix:** Decide whether the widget is for dated tasks or reminders. If it is dated tasks, update widget copy. If it is reminders, filter `allTasks` by `hasReminder`.
 
-### Working-range reminders use the end date, while the UI implies the working row as a whole
-
-- **Severity:** Medium
-- **Location:** `Task/Models/TaskItem.swift`, `primaryReminderDate`, lines 50-55; `Task/Views/Task/TaskDetailView.swift`, `reminderAnchor`, lines 47-57
-- **Problem:** If a task has only a working range and no due date, `primaryReminderDate` returns `workingEnd ?? workingStart`, so reminders fire at the end of the range. The editor only marks the Working row, not the specific end date.
-- **Why it matters:** Users commonly expect a "working" reminder to fire when work starts. For a week-long working range, the notification may arrive at the end of the week.
-- **Suggested fix:** Decide and document the intended anchor. If it should be start-of-work, change `primaryReminderDate` to prefer `workingStart`. If end-of-work is intended, label the UI accordingly and add a test.
-
-### Upcoming widget ignores near-term working starts when a later due date exists
+### Widget excludes active working ranges that started before today
 
 - **Severity:** Medium
-- **Location:** `Task/Services/UpcomingSnapshotBuilder.swift`, snapshot date choice at lines 15-17; `TaskWidgetExtension/WidgetSnapshot.swift`, `primaryDate`, lines 34-36
-- **Problem:** The widget chooses `dueDate ?? workingEnd ?? workingStart`. A task with `workingStart` tomorrow and `dueDate` next month is excluded from the seven-day widget because the later due date wins.
-- **Why it matters:** The widget can miss tasks that are upcoming from a work-start perspective.
-- **Suggested fix:** Use the earliest relevant date for inclusion/sorting, or include both working and due dates and render the nearest one. Align this with `TaskItem.primaryReminderDate` semantics.
+- **Location:** `Task/Services/UpcomingSnapshotBuilder.swift`, `earliestDate(_:)` and window filter
+- **Problem:** The snapshot uses the earliest of `workingStart`, `workingEnd`, and `dueDate` for inclusion. A task with `workingStart` yesterday and `workingEnd` tomorrow gets excluded because the earliest date is before `windowStart`, even though the task is active today and still inside the next seven days.
+- **Why it matters:** Ongoing work ranges can disappear from the widget during the period when the user most needs them visible.
+- **Suggested fix:** For working ranges, include the task if the range overlaps the widget window. Use the nearest relevant date for sorting/rendering, not simply the earliest stored date.
 
-### Repeat row has a smaller tap target than the other property rows
+### Confirmation sheets can clip at larger text sizes or longer localizations
+
+- **Severity:** Medium
+- **Location:** `Task/Components/ConfirmationSheet.swift`, `confirmationSheetPresentationStyle()`
+- **Problem:** All confirmation sheets use a fixed `.height(360)` detent while the content uses dynamic type and localized strings. Longer board/tag/status names and larger text settings can exceed the fixed sheet height.
+- **Why it matters:** Destructive confirmations must remain readable and tappable. Clipped copy or buttons can make delete flows unsafe or unusable.
+- **Suggested fix:** Use adaptive content height when possible, add a scroll container inside the confirmation sheet, or provide multiple detents such as `.height(360), .medium` with enough vertical flexibility for large text.
+
+### Task editor still uses fixed numeric font sizes for key fields
+
+- **Severity:** Medium
+- **Location:** `Task/Views/Task/TaskDetailView.swift`, `taskTitleFontSize`, `propertyFontSize`, `chipFontSize`, `titleField`, `propertyRow`, `taskDetailChip`
+- **Problem:** The editor hard-codes font sizes with `.system(size:)` for title, property labels, and chips. The view applies `.dynamicTypeSize(settings.textSize.dynamicType)`, but fixed-size fonts do not scale like semantic text styles.
+- **Why it matters:** The app has a Text Size setting, but parts of the most important editor screen can remain visually out of sync or inaccessible at larger sizes.
+- **Suggested fix:** Use semantic fonts (`.title2`, `.body`, `.headline`) with weights/designs, or wrap fixed sizes in `@ScaledMetric(relativeTo:)` and audit every fixed-size text surface.
+
+### Board title cannot be cleared once it has a non-empty value
 
 - **Severity:** Low
-- **Location:** `Task/Views/Task/TaskDetailView.swift`, `repeatRow`, lines 306-335
-- **Problem:** Status, Tags, Working, and Due rows are full-row buttons. Repeat only wraps the value chip/empty label in a button; tapping the icon/label area does nothing.
-- **Why it matters:** This is inconsistent with the editor's property-list interaction pattern and makes Repeat harder to discover.
-- **Suggested fix:** Make the whole Repeat property row open `RepeatPickerSheet`, with the advance button kept as a separate trailing control.
-
-### Search behavior and documentation disagree about search scope
-
-- **Severity:** Low
-- **Location:** `Task/Views/Search/SearchView.swift`, all-board search at lines 90-117; `README.md`, Highlights section; `Task/Views/Search/SearchView.swift`, empty-state copy at lines 16-21
-- **Problem:** The implementation and empty state say search runs across all boards. The README says search finds tasks "across the active board."
-- **Why it matters:** Users and future maintainers will not know whether cross-board search is intentional.
-- **Suggested fix:** Pick one behavior and align README, in-app copy, and tests.
+- **Location:** `Task/Views/Board/ProjectHeaderView.swift`, `commit()`
+- **Problem:** The commit path only writes the title when the trimmed title is non-empty. If a user deletes a board title and leaves the field, the old title remains.
+- **Why it matters:** New boards are allowed to start with an empty title, so existing boards should either support clearing or the UI should prevent clearing consistently.
+- **Suggested fix:** Decide whether empty board titles are allowed. If yes, save empty titles and rely on "Untitled" display fallback. If no, disable empty titles in the editor and restore draft text visibly.
 
 ## Code Quality Issues
 
-### Many persistence operations silently discard errors
+### Persistence errors are broadly swallowed with `try?`
 
 - **Severity:** Medium
-- **Location:** Examples include `SwiftDataManager.ensureSeed` line 84, `SwiftDataManager.createBoard` line 120, `TaskDetailView.save` line 502, `TaskDetailView.delete` line 535, `ProjectHeaderView.commit` line 131, `BoardSwitcherView.deleteBoard` line 202, `StatusPickerSheet.addGroup/deleteGroup` lines 241 and 262, `TagPickerSheet.addTag/deleteTag` lines 250 and 259
-- **Problem:** The app uses `try? context.save()` broadly. Failed saves generally leave no user-visible error and can still trigger snapshots or notification changes.
-- **Why it matters:** Local persistence is the app's core promise. Silent failure risks data loss or UI/snapshot drift that users cannot understand or recover from.
-- **Suggested fix:** Centralize saves in a small helper that logs errors and returns a user-facing result for destructive or user-initiated actions. Only write snapshots/notifications after confirmed saves.
+- **Location:** Project-wide examples: `SwiftDataManager.ensureSeed`, `SwiftDataManager.createBoard`, `ProjectHeaderView.commit`, `BoardSwitcherView.deleteBoard`, `GroupMenuSheet.save/deleteAndDismiss`, `StatusPickerSheet.addGroup/deleteGroup`, `TagPickerSheet.addTag/deleteTag`, `TaskDetailView.save/delete`
+- **Problem:** User-initiated writes commonly call `try? context.save()` and then proceed as if the operation succeeded.
+- **Why it matters:** SwiftData persistence is the app's core data layer. Silent save failure can cause data loss, stale UI, incorrect widget snapshots, or notification drift without any user-visible recovery path.
+- **Suggested fix:** Introduce a small `PersistenceController.save(context:operation:)` helper that logs and returns a result. Use explicit error handling for destructive writes and any write followed by notifications or widget updates.
 
-### SwiftData fallback still has a force-try crash path
-
-- **Severity:** Medium
-- **Location:** `Task/Services/SwiftDataManager.swift`, `makeModelContainer()`, lines 20-35
-- **Problem:** If the persistent container fails, the app falls back to an in-memory container using `try!`.
-- **Why it matters:** If in-memory container creation also fails, the app crashes before showing any recovery UI. This is rare, but it is the worst moment to crash because the persistent store is already unhealthy.
-- **Suggested fix:** Handle the second failure explicitly. Show a minimal fatal recovery screen or log/report the failure with actionable instructions instead of `try!`.
-
-### Date formatting uses a global mutable `DateFormatter`
+### SwiftData fallback has a force-try crash path
 
 - **Severity:** Medium
-- **Location:** `Task/Utils/DateFormatters.swift`, `TaskDateFormat.locale` and `medium`, lines 3-22; `Task/ViewModels/SettingsViewModel.swift`, language didSet at lines 484-488
-- **Problem:** `TaskDateFormat` mutates a static `DateFormatter` through `nonisolated(unsafe)`. `DateFormatter` is not designed for unsynchronized cross-thread mutation/use.
-- **Why it matters:** Most calls are currently UI/main-actor, but services also call date formatting. Future background use can introduce racey or inconsistent formatting.
-- **Suggested fix:** Make formatting main-actor isolated, create formatters per locale through a locked/cache helper, or use value-style `Date.FormatStyle` with explicit locale.
+- **Location:** `Task/Services/SwiftDataManager.swift`, `makeModelContainer()`
+- **Problem:** If opening the persistent store fails, the app falls back to an in-memory store with `try! ModelContainer(...)`.
+- **Why it matters:** The persistent store is already in a failure state at this point. If in-memory container creation also fails, the app crashes before presenting any recovery UI.
+- **Suggested fix:** Handle the second failure explicitly. Show a minimal fatal recovery state, log the error, and avoid `try!` in launch-critical code.
 
-### Drag-and-drop live reordering mutates SwiftData before a committed drop
+### Global mutable `DateFormatter` state is marked `nonisolated(unsafe)`
 
 - **Severity:** Medium
-- **Location:** `Task/Views/Board/ColumnView.swift`, `dropEntered(info:)`, lines 219-229; `Task/Views/Board/BoardView.swift`, `placeTask(_:in:atIndex:commit:)`, lines 69-107 and rollback lines 110-154
-- **Problem:** Hovering during drag mutates real `TaskItem` relationships/sort indexes with `commit: false`; rollback depends on a watchdog that fires after five seconds of no drag events.
-- **Why it matters:** During those five seconds, the model is dirty. Autosave, backgrounding, an unrelated save, or a missed watchdog can persist a move the user did not drop.
-- **Suggested fix:** Keep live drag ordering in view state and mutate SwiftData only on `performDrop`, or add an explicit immediate rollback path for background/drop-cancel events and disable autosave for these speculative mutations.
+- **Location:** `Task/Utils/DateFormatters.swift`, `TaskDateFormat.locale`, `currentStyle`, `medium`, `styledFormatters`
+- **Problem:** Locale and date-format style are stored in global mutable static state, including mutable `DateFormatter` instances. The code marks this state `nonisolated(unsafe)`.
+- **Why it matters:** `DateFormatter` is not safe to mutate/read concurrently. The current app is mostly main-actor, but services and notifications already use formatting outside view code, and future background work can produce racey or inconsistent dates.
+- **Suggested fix:** Move date formatting behind a main-actor service, use value-style `Date.FormatStyle`, or protect formatter caching with a lock/actor.
 
-### Group/tag/board drag-delete implementations are duplicated
+### Notification scheduling ignores system-level add failures
+
+- **Severity:** Medium
+- **Location:** `Task/Services/NotificationService.swift`, `schedule(for:)`
+- **Problem:** `UNUserNotificationCenter.add(_:withCompletionHandler:)` is called with `nil`, so failures from denied authorization, too many pending notifications, invalid triggers, or system errors are discarded.
+- **Why it matters:** The task can show `hasReminder == true` even when no notification was actually scheduled.
+- **Suggested fix:** Use the completion handler or async notification APIs, return a schedule result, and surface failures in the task editor. Add tests around pending request identifiers where possible.
+
+### App Group read/write failures are silent
 
 - **Severity:** Low
-- **Location:** `Task/Views/Board/BoardSwitcherView.swift`, `Task/Views/Task/StatusPickerSheet.swift`, `Task/Views/Task/TagPickerSheet.swift`
-- **Problem:** The drag-to-delete zone, hover debouncing, haptics, and drop cleanup are implemented three times with similar but separate code.
-- **Why it matters:** Bugs and fixes can drift between boards, statuses, and tags. The current code already has separate delete/reorder delegates with subtle differences.
-- **Suggested fix:** Extract a generic reusable drag-delete zone/delegate helper once the behavior stabilizes.
+- **Location:** `Task/Services/SharedDefaultsService.swift`; `TaskWidgetExtension/WidgetSnapshot.swift`
+- **Problem:** Shared defaults reads and writes return empty/default values on any error. Encoding and decoding failures are ignored.
+- **Why it matters:** Widget configuration and upcoming snapshots can silently disappear if App Group setup, encoding, or decoding breaks.
+- **Suggested fix:** Log failures with `Logger`, include snapshot schema/version fields, and consider a lightweight debug indicator for missing App Group data during development.
 
 ## Performance Issues
 
-### Search performs full in-memory filtering and sorting on every keystroke
+### Search scans and lowercases every task on every keystroke
 
 - **Severity:** Medium
-- **Location:** `Task/Views/Search/SearchView.swift`, `groupedResults`, lines 90-103
-- **Problem:** Each render trims/lowercases the query, scans every task in every board, lowercases multiple fields, scans tags, and sorts each matching board's tasks on the main thread.
-- **Why it matters:** This will become typing lag as task count grows, especially because search is driven directly by a focused text field.
-- **Suggested fix:** Debounce search input, maintain normalized searchable text on each task, move filtering into a view model, and consider a SwiftData predicate/fetch for large datasets.
+- **Location:** `Task/Views/Search/SearchView.swift`, `groupedResults`
+- **Problem:** Each render trims/lowercases the query, scans every task in every board, lowercases title/notes/group/tag fields, and sorts matches on the main thread.
+- **Why it matters:** This will become typing lag as task count grows, especially while the search text field is focused and updating continuously.
+- **Suggested fix:** Debounce search input, move filtering into a view model, cache normalized searchable text per task, and consider SwiftData predicates for large datasets.
 
-### Board columns sort and allocate repeatedly during render and drag
+### Date slider materializes every day between earliest and latest task date
 
 - **Severity:** Medium
-- **Location:** `Task/Views/Board/ColumnView.swift`, `currentTasks`, lines 24-26; body usage at lines 39-64; drop delegate index helpers at lines 203-213
-- **Problem:** `currentTasks` sorts every time it is read, then the body creates arrays from prefixes and the drop delegate repeatedly calls `targetGroup.orderedTasks` during drag.
-- **Why it matters:** Drag and scroll performance will degrade with large columns because sorting/allocation happens on the main thread during high-frequency UI updates.
-- **Suggested fix:** Compute sorted visible tasks once per render, pass the ordered list to delegates where possible, and cache/manual-normalize order at the model/view-model level for large boards.
+- **Location:** `Task/Views/Board/BoardView.swift`, `BoardDateSliderDayWindow.dates(for:target:fallback:calendar:)`
+- **Problem:** The slider now correctly derives its bounds from task dates, but it creates an array and tile identity for every day between the minimum and maximum dates.
+- **Why it matters:** One old task and one far-future task can create thousands of dates, increasing memory, diffing work, and horizontal scroll cost.
+- **Suggested fix:** Keep min/max as logical bounds but page/virtualize dates around the visible region. Alternatively, generate months/days lazily or warn/repair unusually large date spans.
 
-### Widget reloads are triggered broadly and synchronously after many saves
+### Board columns repeatedly sort and allocate during rendering and drag
+
+- **Severity:** Medium
+- **Location:** `Task/Views/Board/ColumnView.swift`, `currentTasks`, body, and `TaskRowDropDelegate` index helpers; `Task/Models/BoardGroup.swift`, `sortedTasks`
+- **Problem:** Columns sort tasks whenever `currentTasks` is read, allocate `Array(ordered.prefix(...))`, and drop delegates repeatedly call `targetGroup.orderedTasks` during drag.
+- **Why it matters:** Sorting and allocation on the main thread during drag/scroll can cause jank on large boards.
+- **Suggested fix:** Compute ordered/filtered tasks once per render, pass the ordered list into delegates, and normalize manual order in the model after mutations so sorting work is minimized.
+
+### Widget snapshots fetch all tasks and reload every timeline after many saves
 
 - **Severity:** Low
-- **Location:** `Task/Services/UpcomingSnapshotBuilder.swift`, `writeSnapshot(from:)`, lines 7-48; callers throughout task, board, import, reset, and settings flows
-- **Problem:** Snapshot writing fetches all tasks and boards, encodes JSON, writes shared defaults, and calls `WidgetCenter.shared.reloadAllTimelines()` every time.
-- **Why it matters:** Frequent small edits can repeatedly reload widget timelines and do full scans, which is unnecessary for changes that do not affect upcoming widget content.
-- **Suggested fix:** Debounce snapshot writes, skip reloads for changes that cannot affect the widget, and consider a narrower fetch/predicate for the next seven days.
+- **Location:** `Task/Services/UpcomingSnapshotBuilder.swift`, `writeSnapshot(from:)`
+- **Problem:** Snapshot writing fetches every task and board, encodes JSON, writes shared defaults, and calls `WidgetCenter.shared.reloadAllTimelines()` after many ordinary save operations.
+- **Why it matters:** Frequent edits can cause unnecessary main-thread work and widget reload churn, even for changes that do not affect upcoming widget content.
+- **Suggested fix:** Debounce snapshot writes, skip reloads when a change cannot affect the widget, and use narrower fetch predicates for the next seven days.
 
 ## Missing Tests
 
-### Test suite is too small for the app's core behavior
+### Core persistence and side-effect flows are not tested
 
 - **Severity:** High
-- **Location:** `TaskTests/TaskTests.swift`, lines 13-41
-- **Problem:** The test target has only three tests: seed creation, working range detection, and color key round-trip.
-- **Why it matters:** The highest-risk features have no automated coverage: import/export merge, reset, notifications, repeat rules, board defaults, widget snapshot encoding, localization, and drag ordering.
-- **Suggested fix:** Add focused unit tests for import/export round trips, legacy import, orphan handling, reset behavior, notification trigger decisions, repeat advancement, widget snapshot date selection, and group/tag deletion sorting.
+- **Location:** `TaskTests/TaskTests.swift`
+- **Problem:** The test suite has seven tests covering seed defaults, date filtering, color keys, and text-size defaults. It does not cover task save/delete, failed saves, notification scheduling/cancellation, widget snapshot content, board/status/tag delete, reset, or import/export merge behavior.
+- **Why it matters:** The riskiest flows combine SwiftData mutations with notifications and widget side effects. Regressions in these flows can pass the current suite.
+- **Suggested fix:** Add in-memory SwiftData tests for save/delete/reset/import, inject notification and widget writer protocols for side-effect assertions, and add tests for save-failure paths.
 
-### No tests cover notification scheduling decisions
-
-- **Severity:** High
-- **Location:** `Task/Services/NotificationService.swift`; no corresponding tests in `TaskTests/TaskTests.swift`
-- **Problem:** Reminder behavior includes date anchoring, past-date skipping, repeat rules, board reminder times, authorization status, and cancellation, but no tests exercise these branches.
-- **Why it matters:** Notification bugs are hard to catch manually and have high user impact.
-- **Suggested fix:** Extract pure scheduling-decision logic into a testable helper that returns trigger components/repeat flags, then test none/daily/weekly/monthly, past/today/future anchors, working ranges, and board reminder times.
-
-### No tests cover import failure rollback or notification side effects
+### Drag reorder behavior has no automated coverage
 
 - **Severity:** Medium
-- **Location:** `Task/Services/DataImportExport.swift`; no corresponding tests in `TaskTests/TaskTests.swift`
-- **Problem:** Import mutates data and notifications in multiple steps, but tests only cover initial seed data.
-- **Why it matters:** Import is a recovery/backup path. Bugs here can lose data or reminders.
-- **Suggested fix:** Add import tests for invalid JSON, duplicate group/tag names, missing groups/tags, failed save rollback, legacy v1 payloads, and notification cancellation/scheduling after successful imports.
+- **Location:** `Task/Views/Board/BoardView.swift`, `Task/Components/ReorderDropDelegate.swift`, picker sheets
+- **Problem:** Reorder behavior is implemented through SwiftUI drag/drop delegates, but there are no tests for committed moves, cancelled moves, cross-column moves, or non-manual sort behavior.
+- **Why it matters:** Drag reorder has already been a source of freezes and state bugs. It also mutates persistent model state, making regressions high impact.
+- **Suggested fix:** Extract reorder calculations into pure functions and unit test them. Add UI tests or simulator-driven regression checks for drag cancellation and successful drops.
 
-## Documentation Issues
-
-### Several Simplified Chinese localizations are missing for new strings
+### Widget logic is not covered by tests
 
 - **Severity:** Medium
-- **Location:** `Task/Localizable.xcstrings`, examples at lines 408, 632, 1070, 1611, 1694, 1744, 1977, 2426; source references in `Task/Views/Board/ColumnView.swift`, lines 146-151 and `Task/ViewModels/SettingsViewModel.swift`, lines 310 and 319
-- **Problem:** Eight source strings have no `zh-Hans` localization, including column empty states and the new Extra Large/Spacious text-size labels.
-- **Why it matters:** Users who select Simplified Chinese will see mixed English/Chinese UI in common empty states and settings.
-- **Suggested fix:** Add `zh-Hans` translations for all eight missing entries and run localization extraction/validation.
-
-### String catalog contains many stale entries
-
-- **Severity:** Low
-- **Location:** `Task/Localizable.xcstrings`, examples include stale `Customization` at lines 672-681, `Date range` at lines 717-726, `Due` at lines 946-956, `No tags yet` at lines 1588-1597, `Reminder` at lines 1808-1818
-- **Problem:** The string catalog has about 60 entries marked `extractionState: "stale"`.
-- **Why it matters:** Stale strings increase translator workload and make it harder to spot missing active translations.
-- **Suggested fix:** Prune stale entries after confirming they are no longer referenced, or keep them with a documented reason if they are intentionally retained.
-
-### Version history references deleted settings files and older behavior
-
-- **Severity:** Low
-- **Location:** `VersionHistory.md`, toolbar section around line 83 and tag sort section around line 141
-- **Problem:** The docs still mention `ManageGroupsView` and `ManageTagsView`, but those files are deleted in the current working tree. The same history also describes older settings organization that has since moved into task/status/tag picker flows.
-- **Why it matters:** Maintainers reading release notes will look for files and flows that no longer exist.
-- **Suggested fix:** Update the 0.4.5 history to describe the current files and flows, or keep older notes under their original version without implying they are current.
-
-### README screenshots and some copy lag behind the current version
-
-- **Severity:** Low
-- **Location:** `README.md`, screenshots at lines 14-21; search and board-switcher copy in Highlights
-- **Problem:** The README says the app version is 0.4.5 but still links v0.4.0 screenshots. It also says search is across the active board while current implementation searches all boards.
-- **Why it matters:** Screenshots and feature descriptions are part of release confidence. Outdated docs can lead to incorrect QA expectations.
-- **Suggested fix:** Refresh screenshots for v0.4.5 and align the search/board-switcher wording with the current UI.
-
-### Privacy copy conflicts with actual notification-permission timing
-
-- **Severity:** Medium
-- **Location:** `Task/Views/Settings/AboutSheets.swift`, privacy notification copy at lines 337-343; `Task/Views/RootView.swift`, launch prompt at lines 99-101
-- **Problem:** Privacy text says notification permission is requested only for reminders the user opts into, but the app requests permission on main content launch.
-- **Why it matters:** Privacy wording must match behavior.
-- **Suggested fix:** Prefer fixing the behavior by moving the permission request to the reminder opt-in flow; otherwise update the privacy copy.
+- **Location:** `Task/Services/UpcomingSnapshotBuilder.swift`, `TaskWidgetExtension/*`
+- **Problem:** There are no tests that verify which tasks enter the widget snapshot, how board filtering behaves, or how date ranges are rendered.
+- **Why it matters:** Widget behavior can drift from app behavior without being caught, especially because the widget has duplicate Codable structs.
+- **Suggested fix:** Move snapshot selection into a pure helper shared by app tests, and add tests for due dates, working ranges, active ranges, board filtering, and empty snapshots.
 
 ## Configuration / Dependency Issues
 
-### No CI workflow is present for build and test verification
+### Project is Xcode-only with no CI or reproducible command documented
 
 - **Severity:** Low
-- **Location:** Project root; no `.github/workflows` directory found
-- **Problem:** Build and test are manual only.
-- **Why it matters:** The project can regress buildability, tests, asset catalogs, localization, or privacy manifests without automated checks on push/PR.
-- **Suggested fix:** Add a GitHub Actions workflow that runs `xcodebuild test` on an available simulator and lints the project file/string catalog JSON.
+- **Location:** Project root / repository configuration
+- **Problem:** The README tells contributors to open Xcode, but there is no CI workflow or documented command-line test/build invocation.
+- **Why it matters:** Whole-project regressions depend on manual local testing. This is easy to skip and makes release readiness less reproducible.
+- **Suggested fix:** Add a minimal GitHub Actions workflow or documented `xcodebuild` command for simulator build/test, including the intended simulator/device target.
 
-### Swift strict concurrency checking is not enabled
+### Default signing team is committed in tracked config
 
 - **Severity:** Low
-- **Location:** `task.xcodeproj/project.pbxproj`, build settings around lines 473, 510, 539, 568, 591, 615
-- **Problem:** The project uses Swift 5 mode and does not set stricter concurrency checking, while code has global mutable state (`TaskDateFormat`) and async/main-actor boundaries.
-- **Why it matters:** Concurrency issues can hide until a future Swift language mode or deployment target change.
-- **Suggested fix:** Gradually enable `SWIFT_STRICT_CONCURRENCY` warnings in Debug and address surfaced issues before moving to Swift 6 language mode.
+- **Location:** `Config/Signing.xcconfig`
+- **Problem:** The tracked config includes a concrete `DEVELOPMENT_TEAM` value.
+- **Why it matters:** This is not a secret, but it makes contributor builds target the maintainer's team by default and can be surprising in a public/source-available repo.
+- **Suggested fix:** Leave `DEVELOPMENT_TEAM` empty in the tracked file and rely on `Signing.local.xcconfig` for local team IDs, or clearly document that the tracked value is intentional for maintainer builds.
 
-## Summary / Fix Priority
+## Documentation Issues
 
-1. **Fix reminder correctness first:** repeating reminders, past one-shot reminders, notification permission timing, and the working-range anchor are user-visible trust issues.
-2. **Make import/reset transactional:** defer notification side effects until save success, rollback on failure, avoid duplicate-name crashes, and surface reset errors.
-3. **Stabilize date and ordering models:** use date-only persistence for date-only fields and normalize/tie-break sort indexes.
-4. **Improve coverage:** add tests for notifications, import/export/reset, widget snapshot dates, and deletion/reorder edge cases.
-5. **Clean user-facing polish:** fill missing Chinese translations, update stale docs/screenshots, and align privacy/search copy with behavior.
+### README points to an old Settings section name
+
+- **Severity:** Low
+- **Location:** `README.md`, Highlights -> Local reminders
+- **Problem:** The README says reminder time is under `Settings -> Default -> Reminder Time`, but the app now places it under `Settings -> Board -> Reminder Time`.
+- **Why it matters:** New users and maintainers following the README will look in the wrong place.
+- **Suggested fix:** Update the README path to match the current Settings layout.
+
+### Lessons learned still references older Settings card patterns
+
+- **Severity:** Low
+- **Location:** `LessonsLearned.md`, "Settings card UI" and older UI notes
+- **Problem:** Several lessons describe prior card-heavy patterns that have since been redesigned into flat picker rows and full-screen/sheet surfaces.
+- **Why it matters:** Future implementation work may follow stale internal guidance and reintroduce old UI structure.
+- **Suggested fix:** Add a short current-state note for the flat row picker pattern and mark old card-heavy guidance as historical where it no longer applies.
+
+## Priority Summary
+
+Fix these first:
+
+1. **Make persistence and side effects transactional** for task save/delete, board delete, import failure, and reset reseed failure. This is the biggest data-integrity risk.
+2. **Stop mutating SwiftData during speculative drag hover** or add reliable rollback for every reorder surface. This is the biggest interaction-state risk.
+3. **Clarify and harden reminder scheduling**, especially finite repeat batches and ignored notification scheduling errors.
+4. **Fix widget selection semantics** for active working ranges and align widget copy with actual data.
+5. **Expand tests around persistence, import/export, widget snapshots, reminders, and drag reorder** so the high-risk flows are covered before more UI redesign work.

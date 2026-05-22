@@ -17,6 +17,11 @@ struct StatusPickerSheet: View {
     @State private var pendingDelete: BoardGroup?
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
+    /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
+    /// user cancels the drag (releases outside any row, dismisses the sheet, or
+    /// goes idle for 5 s) so dirty model mutations don't leak into the next save.
+    @State private var preDragSortIndex: [UUID: Int] = [:]
+    @State private var reorderWatchdog: Task<Void, Never>?
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
     private var isExpanded: Bool { selectedDetent == .large }
@@ -88,6 +93,58 @@ struct StatusPickerSheet: View {
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }
+        .onDisappear {
+            if !preDragSortIndex.isEmpty {
+                rollbackReorderIfPending()
+            }
+            reorderWatchdog?.cancel()
+            reorderWatchdog = nil
+        }
+    }
+
+    // MARK: - Reorder rollback
+
+    private func captureReorderSnapshotIfNeeded() {
+        guard preDragSortIndex.isEmpty else { return }
+        var snap: [UUID: Int] = [:]
+        for group in board.orderedGroups { snap[group.id] = group.sortIndex }
+        preDragSortIndex = snap
+        armReorderWatchdog()
+    }
+
+    private func rearmReorderWatchdogIfDragging() {
+        guard !preDragSortIndex.isEmpty else { return }
+        armReorderWatchdog()
+    }
+
+    private func armReorderWatchdog() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            if Task.isCancelled { return }
+            rollbackReorderIfPending()
+        }
+    }
+
+    private func completeReorder() {
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
+        preDragSortIndex.removeAll()
+    }
+
+    private func rollbackReorderIfPending() {
+        guard !preDragSortIndex.isEmpty else { return }
+        withAnimation(.easeInOut(duration: 0.22)) {
+            for group in board.orderedGroups {
+                if let original = preDragSortIndex[group.id], group.sortIndex != original {
+                    group.sortIndex = original
+                }
+            }
+        }
+        try? context.save()
+        preDragSortIndex.removeAll()
+        reorderWatchdog?.cancel()
+        reorderWatchdog = nil
     }
 
     private func groupRow(_ group: BoardGroup) -> some View {
@@ -111,11 +168,14 @@ struct StatusPickerSheet: View {
             }
             .onDrop(
                 of: StringMoveDropDelegate.acceptedTypes,
-                delegate: StatusPickerReorderDropDelegate(
+                delegate: ReorderDropDelegate<BoardGroup>(
                     target: group,
-                    board: board,
-                    context: context,
-                    draggingGroupID: $draggingGroupID,
+                    ordered: { board.orderedGroups },
+                    onCommit: { try? context.save() },
+                    onBeginDrag: { captureReorderSnapshotIfNeeded() },
+                    onTick: { rearmReorderWatchdogIfDragging() },
+                    onCompleteDrag: { completeReorder() },
+                    draggingID: $draggingGroupID,
                     dragSessionEnded: $dragSessionEnded
                 )
             )
@@ -261,45 +321,3 @@ struct StatusPickerSheet: View {
     }
 }
 
-private struct StatusPickerReorderDropDelegate: DropDelegate {
-    let target: BoardGroup
-    let board: Board
-    let context: ModelContext
-    @Binding var draggingGroupID: UUID?
-    @Binding var dragSessionEnded: Bool
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard let id = draggingGroupID, id != target.id else { return }
-        applyMove(draggedID: id)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        if let id = draggingGroupID {
-            applyMove(draggedID: id)
-            try? context.save()
-        }
-        draggingGroupID = nil
-        dragSessionEnded = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            dragSessionEnded = false
-        }
-        return true
-    }
-
-    private func applyMove(draggedID: UUID) {
-        guard draggedID != target.id else { return }
-        var ordered = board.orderedGroups
-        guard let from = ordered.firstIndex(where: { $0.id == draggedID }),
-              let to = ordered.firstIndex(where: { $0.id == target.id }),
-              from != to else { return }
-        withAnimation(.easeInOut(duration: 0.22)) {
-            let item = ordered.remove(at: from)
-            ordered.insert(item, at: to)
-            for (i, g) in ordered.enumerated() { g.sortIndex = i }
-        }
-    }
-}

@@ -50,7 +50,8 @@ struct BoardView: View {
                                 onTapTask: { task in editingTask = task },
                                 onMenuTap: { editingGroup = group },
                                 onPlaceTask: { task, index, commit in placeTask(task, in: group, atIndex: index, commit: commit) },
-                                onGroupReorder: { dragged in reorderGroup(dragged, toPositionOf: group) }
+                                onGroupReorder: { dragged in reorderGroup(dragged, toPositionOf: group) },
+                                onDragTick: { rearmDragWatchdogIfDragging() }
                             )
                         }
                     }
@@ -152,10 +153,11 @@ struct BoardView: View {
         preDragState = snap
     }
 
-    /// Cancel + re-arm a 5-second watchdog. SwiftUI fires `dropEntered` continuously
-    /// while the user moves over a target, so an active drag keeps resetting the
-    /// timer. Only a stationary stretch with no further drag events (or a release
-    /// outside any drop target) lets it elapse and trigger a rollback.
+    /// Cancel + re-arm a 5-second watchdog. `dropEntered` only fires once per
+    /// target entry, so the row delegate also re-arms from `dropUpdated` via
+    /// `onDragTick` — that's what keeps the timer fresh during a slow hover and
+    /// stops the watchdog from rolling back mid-drag. Only a stationary stretch
+    /// with no drag events (or a release outside any drop target) lets it elapse.
     private func armDragWatchdog() {
         dragWatchdog?.cancel()
         dragWatchdog = Task { @MainActor in
@@ -163,6 +165,13 @@ struct BoardView: View {
             if Task.isCancelled { return }
             rollbackDragIfNeeded()
         }
+    }
+
+    /// Re-arm the watchdog only when a drag is actually in flight (preDragState
+    /// captured). Cheap to call from `dropUpdated`'s continuous tick.
+    private func rearmDragWatchdogIfDragging() {
+        guard !preDragState.isEmpty else { return }
+        armDragWatchdog()
     }
 
     private func rollbackDragIfNeeded() {

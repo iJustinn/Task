@@ -273,8 +273,11 @@ enum DataImportExport {
         do {
             try context.save()
         } catch {
-            // Surface the failure instead of returning success with unsaved state. The
-            // caller's failure alert is more useful than a misleading "imported".
+            // Discard every mutation `mergeBoard` accumulated. Without this, the
+            // failed import leaves the in-memory context dirty — a later unrelated
+            // save (e.g. the user editing a task) would persist the partial import
+            // we just told the user we rejected.
+            context.rollback()
             return .failure
         }
         plan.apply()
@@ -418,7 +421,13 @@ enum DataImportExport {
 
         let fallbackGroup = board.orderedGroups.first
         let existingTasks = (board.tasks ?? [])
-        var tasksByID: [UUID: TaskItem] = Dictionary(uniqueKeysWithValues: existingTasks.map { ($0.id, $0) })
+        // First-wins to tolerate a board that already contains duplicate task UUIDs
+        // (a malformed backup or migration bug should turn into a recoverable
+        // warning, not a `Dictionary(uniqueKeysWithValues:)` precondition trap).
+        var tasksByID: [UUID: TaskItem] = [:]
+        for task in existingTasks where tasksByID[task.id] == nil {
+            tasksByID[task.id] = task
+        }
         var orphanTasks = 0
         var orphanTagRefs = 0
         for (idx, t) in entry.tasks.enumerated() {
@@ -514,7 +523,12 @@ enum DataImportExport {
             SwiftDataManager.purgePersistentStoreFiles()
         }
 
-        SwiftDataManager.ensureSeed(context: context)
+        guard SwiftDataManager.ensureSeed(context: context) else {
+            // Defaults never committed. Don't tell the UI everything's fine; the
+            // ProgressOverlay will dismiss and ManualControlSheet's caller will show
+            // the reset-failure alert.
+            return false
+        }
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
         return true
     }

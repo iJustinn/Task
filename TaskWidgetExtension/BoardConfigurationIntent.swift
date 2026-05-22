@@ -11,7 +11,8 @@ struct BoardEntity: AppEntity {
     var iconEmoji: String
 
     var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: "\(iconEmoji) \(title)")
+        let resolvedTitle = title.isEmpty ? String(localized: "Untitled") : title
+        return DisplayRepresentation(title: "\(iconEmoji) \(resolvedTitle)")
     }
 }
 
