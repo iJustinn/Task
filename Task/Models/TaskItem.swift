@@ -43,6 +43,23 @@ final class TaskItem {
         return Calendar.current.startOfDay(for: start) != Calendar.current.startOfDay(for: end)
     }
 
+    func matchesDateFilter(_ date: Date, target: AppDateFilterTarget, calendar: Calendar = .current) -> Bool {
+        let day = calendar.startOfDay(for: date)
+
+        switch target {
+        case .workingDate:
+            guard let workingStart else { return false }
+            let startDay = calendar.startOfDay(for: workingStart)
+            let endDay = calendar.startOfDay(for: workingEnd ?? workingStart)
+            let lowerBound = min(startDay, endDay)
+            let upperBound = max(startDay, endDay)
+            return day >= lowerBound && day <= upperBound
+        case .dueDate:
+            guard let dueDate else { return false }
+            return calendar.isDate(dueDate, inSameDayAs: day)
+        }
+    }
+
     /// When both a working start and a due date exist we don't know which the user
     /// considers "the" deadline — fire (and badge) the earlier one so the reminder
     /// arrives in time for whichever comes first. Falls back to the obvious choice

@@ -8,6 +8,8 @@ struct BoardView: View {
 
     @State private var editingGroup: BoardGroup?
     @State private var editingTask: TaskItem?
+    @State private var showingDateFilter: Bool = false
+    @State private var selectedDateFilter: Date?
     @State private var draggingTaskID: UUID?
     @State private var dragSessionEnded: Bool = false
     @State private var refreshToken: Int = 0
@@ -20,8 +22,17 @@ struct BoardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ProjectHeaderView(board: board)
+            ProjectHeaderView(
+                board: board,
+                isDateFilterActive: selectedDateFilter != nil,
+                onDateFilterTap: toggleDateFilter
+            )
             Divider().opacity(0.4)
+            if showingDateFilter {
+                dateFilterSlider
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                Divider().opacity(0.4)
+            }
             GeometryReader { geo in
                 ScrollView([.horizontal, .vertical], showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
@@ -31,6 +42,8 @@ struct BoardView: View {
                                 width: settings.columnWidth.width,
                                 sortField: board.cardSortField,
                                 sortDirection: board.cardSortDirection,
+                                dateFilter: selectedDateFilter,
+                                dateFilterTarget: settings.dateFilterTarget,
                                 draggingTaskID: $draggingTaskID,
                                 dragSessionEnded: $dragSessionEnded,
                                 refreshToken: refreshToken,
@@ -58,6 +71,22 @@ struct BoardView: View {
         }
         .sheet(item: $editingTask) { task in
             TaskDetailView(board: board, mode: .edit(task))
+        }
+        .onChange(of: board.id) { _, _ in
+            selectedDateFilter = nil
+            showingDateFilter = false
+        }
+        .animation(.spring(response: 0.34, dampingFraction: 0.88), value: showingDateFilter)
+    }
+
+    private var dateFilterSlider: some View {
+        BoardDateSlider(selectedDate: $selectedDateFilter)
+            .background(Color(.systemBackground))
+    }
+
+    private func toggleDateFilter() {
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+            showingDateFilter.toggle()
         }
     }
 
@@ -164,5 +193,148 @@ struct BoardView: View {
             g.sortIndex = i
         }
         try? context.save()
+    }
+}
+
+struct BoardDateSliderDayWindow {
+    static func dates(
+        center: Date = Date(),
+        daysBefore: Int = 21,
+        daysAfter: Int = 21,
+        calendar: Calendar = .current
+    ) -> [Date] {
+        let centerDay = calendar.startOfDay(for: center)
+        let lower = -max(daysBefore, 0)
+        let upper = max(daysAfter, 0)
+
+        return (lower...upper).compactMap { offset in
+            calendar.date(byAdding: .day, value: offset, to: centerDay)
+        }
+    }
+}
+
+private struct BoardDateSlider: View {
+    @Binding var selectedDate: Date?
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var scrollPosition: Date?
+
+    @ScaledMetric(relativeTo: .title2) private var tileWidth: CGFloat = 62
+    @ScaledMetric(relativeTo: .title2) private var tileHeight: CGFloat = 78
+    @ScaledMetric(relativeTo: .title2) private var tileCornerRadius: CGFloat = 14
+
+    private let calendar: Calendar = .current
+
+    private var today: Date {
+        calendar.startOfDay(for: Date())
+    }
+
+    private var dates: [Date] {
+        BoardDateSliderDayWindow.dates(center: today, calendar: calendar)
+    }
+
+    var body: some View {
+        ZStack {
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 8) {
+                    ForEach(dates, id: \.self) { date in
+                        dateTile(for: date)
+                            .id(date)
+                    }
+                }
+                .scrollTargetLayout()
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+            }
+
+            edgeShade
+                .allowsHitTesting(false)
+        }
+        .scrollPosition(id: $scrollPosition, anchor: .center)
+        .onAppear {
+            scrollPosition = scrollTarget
+        }
+        .frame(height: tileHeight + 24)
+    }
+
+    private var scrollTarget: Date {
+        let target = selectedDate.map { calendar.startOfDay(for: $0) } ?? today
+        return dates.contains(where: { calendar.isDate($0, inSameDayAs: target) }) ? target : today
+    }
+
+    private func dateTile(for date: Date) -> some View {
+        let day = calendar.startOfDay(for: date)
+        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: day) } ?? false
+
+        return Button {
+            if isSelected {
+                selectedDate = nil
+            } else {
+                selectedDate = day
+            }
+        } label: {
+            VStack(spacing: 5) {
+                Text(day.formatted(.dateTime.month(.abbreviated)))
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Text(day.formatted(.dateTime.day()))
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundColor(foregroundColor(isSelected: isSelected))
+            .frame(width: tileWidth, height: tileHeight)
+            .background(
+                RoundedRectangle(cornerRadius: tileCornerRadius, style: .continuous)
+                    .fill(tileFill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: tileCornerRadius, style: .continuous)
+                    .stroke(
+                        isSelected ? Color.accentColor : tileStrokeColor,
+                        lineWidth: isSelected ? 2.5 : 1
+                    )
+            )
+            .contentShape(RoundedRectangle(cornerRadius: tileCornerRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+        .accessibilityHint(isSelected ? Text("Show all tasks") : Text("Filter tasks by this date"))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var tileFill: Color {
+        colorScheme == .dark
+            ? Color.white.opacity(0.055)
+            : Color.primary.opacity(0.035)
+    }
+
+    private func foregroundColor(isSelected: Bool) -> Color {
+        isSelected ? .primary : .primary.opacity(0.82)
+    }
+
+    private var tileStrokeColor: Color {
+        return Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.11)
+    }
+
+    private var edgeShade: some View {
+        HStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color(.systemBackground), Color(.systemBackground).opacity(0)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 22)
+
+            Spacer(minLength: 0)
+
+            LinearGradient(
+                colors: [Color(.systemBackground).opacity(0), Color(.systemBackground)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 22)
+        }
     }
 }

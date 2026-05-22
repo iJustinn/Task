@@ -4,7 +4,7 @@ struct ColorSwatchPicker: View {
     @Binding var selection: ColorKey
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 20) {
             ForEach(ColorKey.allCases) { key in
                 Button {
                     selection = key
@@ -27,5 +27,6 @@ struct ColorSwatchPicker: View {
                 .accessibilityLabel(key.rawValue)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }

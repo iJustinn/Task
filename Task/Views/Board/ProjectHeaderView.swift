@@ -3,6 +3,8 @@ import SwiftData
 
 struct ProjectHeaderView: View {
     let board: Board
+    let isDateFilterActive: Bool
+    let onDateFilterTap: () -> Void
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
 
@@ -10,7 +12,6 @@ struct ProjectHeaderView: View {
     @State private var draftSubtitle: String = ""
     @State private var showIconPicker: Bool = false
     @State private var showingSort: Bool = false
-    @State private var showingReminder: Bool = false
     @State private var showingDefaultStatus: Bool = false
     @FocusState private var titleFocused: Bool
     @FocusState private var subtitleFocused: Bool
@@ -46,8 +47,8 @@ struct ProjectHeaderView: View {
                 headerIconButton(systemName: "arrow.up.arrow.down", tint: .primary, label: "Sort") {
                     showingSort = true
                 }
-                headerIconButton(systemName: "bell", tint: .primary, label: "Reminder Time") {
-                    showingReminder = true
+                headerIconButton(systemName: "calendar", tint: isDateFilterActive ? .accentColor : .primary, label: "Date Filter") {
+                    onDateFilterTap()
                 }
                 headerIconButton(systemName: "flag", tint: .primary, label: "Default Status") {
                     showingDefaultStatus = true
@@ -87,12 +88,6 @@ struct ProjectHeaderView: View {
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $showingReminder) {
-            ReminderTimePickerSheet(board: board)
-                .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
-        }
         .sheet(isPresented: $showingDefaultStatus) {
             DefaultStatusPickerSheet(board: board)
                 .presentationDetents([.fraction(0.6), .large])
@@ -106,9 +101,6 @@ struct ProjectHeaderView: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(tint)
                 .frame(width: 38, height: 38)
-                .background(
-                    Circle().fill(Color(.secondarySystemGroupedBackground))
-                )
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

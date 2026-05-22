@@ -4,40 +4,29 @@ struct DefaultStatusPickerSheet: View {
     let board: Board
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
+    @EnvironmentObject private var settings: SettingsViewModel
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+            GeometryReader { proxy in
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(board.orderedGroups, id: \.id) { group in
-                            Button {
-                                board.defaultGroupUUID = group.id
-                                board.updatedAt = Date()
-                                try? context.save()
-                                dismiss()
-                            } label: {
-                                GridTile(
-                                    title: group.name,
-                                    subtitle: "\(group.orderedTasks.count) tasks",
-                                    dotColor: group.colorKey.dot,
-                                    tintColor: group.colorKey.foreground,
-                                    isSelected: board.defaultGroup?.id == group.id
-                                )
+                    VStack(alignment: .leading, spacing: 0) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(board.orderedGroups.enumerated()), id: \.element.id) { index, group in
+                                statusRow(group)
+                                if index < board.orderedGroups.count - 1 {
+                                    Divider().padding(.horizontal, 8)
+                                }
                             }
-                            .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
+                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
             .navigationTitle("Default Status")
@@ -51,5 +40,42 @@ struct DefaultStatusPickerSheet: View {
                 }
             }
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
+    }
+
+    private func statusRow(_ group: BoardGroup) -> some View {
+        Button {
+            board.defaultGroupUUID = group.id
+            board.updatedAt = Date()
+            try? context.save()
+            dismiss()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                Circle()
+                    .fill(group.colorKey.dot)
+                    .frame(width: 13, height: 13)
+                    .frame(width: 34)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(group.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text("\(group.orderedTasks.count) tasks")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 12)
+
+                if board.defaultGroup?.id == group.id {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.accent)
+                }
+            }
+            .padding(.vertical, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

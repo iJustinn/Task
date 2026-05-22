@@ -36,6 +36,9 @@ struct TaskDetailView: View {
     private enum ReminderAnchor { case working, due, none }
 
     private static let labelColumnWidth: CGFloat = 120
+    private static let taskTitleFontSize: CGFloat = 24
+    private static let propertyFontSize: CGFloat = 16
+    private static let chipFontSize: CGFloat = 16
 
     private var editingTask: TaskItem? {
         if case .edit(let task) = mode { return task }
@@ -108,7 +111,7 @@ struct TaskDetailView: View {
             }
             .sheet(isPresented: $showWorkingPicker) {
                 workingDateSheet
-                    .presentationDetents([.fraction(0.6), .large])
+                    .presentationDetents([.fraction(0.7), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showDuePicker) {
@@ -131,20 +134,19 @@ struct TaskDetailView: View {
                 ) {
                     delete()
                 }
-                .presentationDetents([.height(420)])
-                .presentationDragIndicator(.visible)
+                .confirmationSheetPresentationStyle()
             }
         }
         .presentationDetents([.fraction(0.6), .large])
         .presentationDragIndicator(.visible)
+        .dynamicTypeSize(settings.textSize.dynamicType)
     }
 
     // MARK: - Sections
 
     private var titleField: some View {
         TextField("", text: $title, prompt: Text("Add title").foregroundStyle(.secondary), axis: .vertical)
-            .font(.system(.largeTitle, design: .rounded))
-            .fontWeight(.bold)
+            .font(.system(size: Self.taskTitleFontSize, weight: .bold, design: .rounded))
             .lineLimit(1...3)
             .textInputAutocapitalization(.words)
     }
@@ -192,15 +194,7 @@ struct TaskDetailView: View {
         Button { showStatusPicker = true } label: {
             propertyRow(icon: "circle.dotted", label: "Status") {
                 if let group = selectedGroup {
-                    HStack(spacing: 6) {
-                        Circle().fill(group.colorKey.dot).frame(width: 9, height: 9)
-                        Text(group.name)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(group.colorKey.foreground)
-                    }
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(group.colorKey.background))
+                    taskDetailChip(name: group.name, colorKey: group.colorKey)
                 } else {
                     emptyValueLabel
                 }
@@ -217,7 +211,7 @@ struct TaskDetailView: View {
                 } else {
                     FlowLayout(spacing: 4, lineSpacing: 4) {
                         ForEach(selectedTags, id: \.id) { tag in
-                            TagChip(name: tag.name, colorKey: tag.colorKey)
+                            taskDetailChip(name: tag.name, colorKey: tag.colorKey)
                         }
                     }
                 }
@@ -233,7 +227,7 @@ struct TaskDetailView: View {
                     let tint = dateTint(for: start)
                     HStack(alignment: .center, spacing: 8) {
                         Text(workingDateDisplay(start: start, end: workingEnd))
-                            .font(.system(.body, design: .rounded).weight(.semibold))
+                            .font(.system(size: Self.propertyFontSize, weight: .semibold, design: .rounded))
                             .foregroundStyle(tint)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -267,7 +261,7 @@ struct TaskDetailView: View {
                     let tint = dateTint(for: due)
                     HStack(alignment: .center, spacing: 8) {
                         Text(TaskDateFormat.format(due))
-                            .font(.system(.body, design: .rounded).weight(.semibold))
+                            .font(.system(size: Self.propertyFontSize, weight: .semibold, design: .rounded))
                             .foregroundStyle(tint)
                         Spacer(minLength: 8)
                         if reminderAnchor == .due {
@@ -317,7 +311,7 @@ struct TaskDetailView: View {
                         if repeatRule == .none {
                             emptyValueLabel
                         } else {
-                            TagChip(name: repeatRule.displayName, colorKey: .gray)
+                            taskDetailChip(name: repeatRule.displayName, colorKey: .gray)
                         }
                         Spacer(minLength: 0)
                         // Reserve trailing space so the chip never overlaps the
@@ -365,7 +359,7 @@ struct TaskDetailView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
             Text(label)
-                .font(.system(.body, design: .rounded).weight(.medium))
+                .font(.system(size: Self.propertyFontSize, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)
                 .frame(width: Self.labelColumnWidth, alignment: .leading)
             value()
@@ -377,8 +371,22 @@ struct TaskDetailView: View {
 
     private var emptyValueLabel: some View {
         Text("Empty")
-            .font(.system(.body, design: .rounded))
+            .font(.system(size: Self.propertyFontSize, weight: .regular, design: .rounded))
             .foregroundStyle(Color.secondary.opacity(0.6))
+    }
+
+    private func taskDetailChip(name: String, colorKey: ColorKey) -> some View {
+        Text(name)
+            .font(.system(size: Self.chipFontSize, weight: .semibold, design: .rounded))
+            .lineLimit(1)
+            .foregroundStyle(colorKey.foreground)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(colorKey.background)
+            )
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private func dateTint(for date: Date) -> Color {

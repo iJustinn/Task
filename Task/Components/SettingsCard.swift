@@ -13,20 +13,21 @@ struct SettingsCardSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             if let title {
                 Text(title)
-                    .font(.system(size: 29, weight: .bold, design: .rounded))
+                    .font(.system(.title, design: .rounded).weight(.bold))
                     .foregroundColor(.primary)
             }
             VStack(spacing: 0) {
                 content
             }
-            .taskCardBackground()
         }
     }
 }
 
 struct SettingsRowDivider: View {
     var body: some View {
-        Divider().padding(.leading, 76)
+        Divider()
+            .padding(.leading, 8)
+            .padding(.trailing, 8)
     }
 }
 
@@ -39,10 +40,6 @@ struct SettingsIconTile: View {
             .font(.system(size: 21, weight: .semibold))
             .foregroundColor(color)
             .frame(width: 44, height: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(color.opacity(0.14))
-            )
     }
 }
 
@@ -85,7 +82,7 @@ struct SettingsRowLabel: View {
 
             accessoryView
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 8)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .contentShape(Rectangle())
@@ -125,7 +122,7 @@ struct SettingsButtonRow<Trailing: View>: View {
                 Spacer(minLength: 8)
                 trailing()
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 8)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
             .contentShape(Rectangle())

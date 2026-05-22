@@ -139,8 +139,8 @@ Using these consistently across Settings, Manage Groups, Manage Tags, Task Detai
 
 `TaskDetailView` was rebuilt in 0.3.0 around a flat single-surface property list on `Color(.systemBackground)` — no more `taskCardBackground()` wrappers in the editor. Layout:
 
-- Large bold `TextField` as the title, sitting directly on the surface (not in a card).
-- A `propertyRow(icon:label:valueAlignment:value:)` helper renders five rows (Status / Tags / Working / Due Date / Reminder) as a 16 pt secondary-gray SF Symbol + 120 pt label column + value cell. 42 pt min height.
+- Bold 24 pt rounded `TextField` as the title, sitting directly on the surface (not in a card). Avoid `.largeTitle` here; at larger in-app text settings it overpowers the redesigned sheet hierarchy.
+- A `propertyRow(icon:label:valueAlignment:value:)` helper renders five rows (Status / Tags / Working / Due Date / Reminder) as a 16 pt secondary-gray SF Symbol + 120 pt label column + fixed 16 pt value cell. Keep task-detail chips at the same fixed 16 pt scale with tighter padding; regular `TagChip` is too large here at bigger app text sizes.
 - `valueAlignment: .trailing` (vs the `.leading` default) lets Toggle rows snap their control to the row's right edge while text values still left-align at the label column — the same helper covers both shapes.
 - Sub-sheets (Working Date, Due Date) reuse the same flat surface, the same `propertyRow` for the End Date toggle, and the unchanged `CalendarPicker` without any card around it.
 
@@ -257,7 +257,7 @@ Visual:
 `ConfirmationSheet(icon:iconTint:title:message:confirmLabel:onConfirm:)` in `Task/Components/` replaces `confirmationDialog`. Reasons:
 
 - Matches the Coin/Body visual language (rounded tinted icon tile, large bold title, secondary message, red filled button, gray cancel button).
-- Drag-to-dismiss with a `.height(420)` detent.
+- Drag-to-dismiss with `confirmationSheetPresentationStyle()`; use a compact fixed detent. `presentationSizing(.fitted)` can promote this confirmation to a full-screen/page presentation on iPhone.
 - The "delay then run" pattern (`dismiss()` + `Task.sleep(180_000_000)` + `onConfirm()`) ensures the sheet animates away before the action fires, which prevents flicker if the action triggers another sheet/alert.
 
 Used everywhere destructive: Delete Task, Delete Group, Delete Tag, Reset All Data.
@@ -281,6 +281,16 @@ on the `LazyVStack` forces SwiftUI to rebuild the column from scratch when the s
 ### `@EnvironmentObject` with a `@Published`-driven view model
 
 `SettingsViewModel` exposes every setting as `@Published var foo: SomeEnum { didSet { UserDefaults.set(...) } }`. This pattern combines reactivity (any view observing the env object re-renders on change) with synchronous persistence (every change writes immediately to `UserDefaults`). No save button needed for picker sheets — selection is the save.
+
+`AppTextSize` labels map one step larger than their names suggest to make the in-app scale feel right: Small -> `.large`, Medium -> `.xLarge`, Large -> `.xxLarge`, Extra Large -> `.xxxLarge`. The fresh-install/default setting is still `.medium`; do not change saved raw values for existing users.
+
+The main `SettingsView` must apply `.dynamicTypeSize(settings.textSize.dynamicType)` itself. Relying on the root app environment is not enough for a settings sheet that changes the preference while it is already presented. Settings section headers should use relative fonts such as `.system(.title, design: .rounded).weight(.bold)`, not fixed `size:` fonts, so they resize with the chosen text setting.
+
+### Flat settings picker sheets
+
+Settings option pickers use the same row language as `BoardSwitcherView`: `NavigationStack` + `GeometryReader`, `Color(.systemBackground)`, `ScrollView` + `LazyVStack` + `Divider`, and a 60% / large sheet detent from `SettingsView.sheetContent`. Keep the row tap behavior as immediate assignment plus dismiss; there is no reorder/delete mode for simple settings choices.
+
+`FlatSettingsChoicePicker` in `AppearanceView.swift` is the shared adapter for enum-backed settings (`AppTheme`, `AppLanguage`, `AppTimeFormat`, `AppTextSize`, `AppColumnWidth`, `AppAccent`, `AppDateFormat`, `AppNotesPreview`). Use it for new enum pickers instead of adding another `GridTile` sheet.
 
 ### Sort field migration
 
@@ -541,27 +551,19 @@ The one-shot `migrateLegacyBoardDefaultsIfNeeded` runs from `ensureSeed`; it rea
 
 `ProjectHeaderView`'s `@State` title/subtitle drafts need a `.onChange(of: board.id)` to re-sync when the active board changes — without it, switching boards keeps the prior board's draft strings on screen.
 
-### `BoardSwitcherView` — drag reorder + drag-to-delete drop zone
+### `BoardSwitcherView` — flat rows + expanded-only delete mode
 
-The switcher is a 60% sheet (`[.fraction(0.6), .large]`) with a 3-column `GridTile` grid (matches the other "choose" picker screens). Long-press a tile to drag-reorder — same `.draggable` + per-tile `DropDelegate` pattern as `ManageGroupsView` / `ManageTagsView` / `ColumnView`. Reorder persists via `Board.sortIndex`.
+The switcher is a 60% sheet (`[.fraction(0.6), .large]`) whose compact state only lists flat board rows. Track the selected detent with `.presentationDetents(..., selection:)` and show destructive board management only when `selectedDetent == .large`, matching `TaskDetailView`'s "delete at the bottom of the extended sheet" behavior.
 
-The trash drop zone slides up from the bottom edge while a drag is in progress. Two pitfalls fixed during implementation:
+Long-press row drag-reorder still uses `.draggable(beginDrag(of: board))` plus a per-row `BoardReorderDropDelegate`; reorder persists via `Board.sortIndex`. Deletion is no longer drag-to-trash: the expanded sheet's `Delete a Board` button toggles `deleteMode`, rows tint red with a trash affordance, and tapping a row opens the existing `ConfirmationSheet`.
 
-1. **`.scaleEffect` on hover makes the drop area "shake".** `scaleEffect(1.03)` changes the drop target's hit-testing geometry, which causes SwiftUI to flip-flop between `dropEntered` and `dropExited`. Each toggle fires the haptic again, producing a vibrating wobble. Drop the scale; use only background tint and stroke for hover feedback. Also guard the haptic with `guard !hovered else { return }` in `dropEntered` so even spurious double-enters only fire once per genuine entry.
+Keep the row surface flat (`ScrollView` + `LazyVStack` + `Divider`) rather than `GridTile`; this lets the switcher visually match search results while preserving custom drop delegates and the grow-with-content bottom action. Apply `settings.textSize.dynamicType` directly on the sheet and drag preview so the board rows visibly track the in-app text size preference.
 
-2. **Outer `isTargeted` flickers as the drag preview crosses geometry boundaries.** Using raw `dragOverScreen` (the `isTargeted` binding on the outer `.onDrop`) to gate the trash zone caused the zone to repeatedly slide in/out during a single drag. Fix: debounce the *hide* by 300 ms via an `onChange(of: dragOverScreen)` task — show is immediate on the first `true`, hide waits for stable `false`. Brief flips are absorbed.
+### `StatusPickerSheet` / `TagPickerSheet` — match board management rows
 
-### Don't gate UI on the `.draggable` side-effect state
+Use the same flat sheet pattern as `BoardSwitcherView`: a 60% / large detent pair, `ScrollView` + `LazyVStack` + `Divider`, toolbar `Add`, and an expanded-only destructive bottom action. Keep selection semantics separate: status rows single-select and dismiss; tag rows toggle multi-selection and stay open.
 
-`beginDrag` schedules `draggingBoardID = id` via `DispatchQueue.main.async` and the `@autoclosure` of `.draggable` is re-invoked across the drag lifecycle, sometimes after the drop. If `draggingBoardID` gates a visible affordance (like the trash zone), the affordance can reappear briefly after a drop. Gate visibility on the outer `isTargeted` instead (`dragOverScreen`) — that's authoritative for "a drag is actually over this view".
-
-### Outer `.onDrop` covers the whole sheet, not just the ScrollView
-
-`isTargeted` and the fallback drop closure both need to fire wherever the user might drop. Put the outer `.onDrop(of:isTargeted:perform:)` on the ZStack-level container (after `Color(.systemGroupedBackground).ignoresSafeArea().contentShape(Rectangle())`). Putting it on the `ScrollView` only leaves dead zones (e.g. the bottom padding area) where neither `isTargeted` updates nor the fallback fires.
-
-### `isTargeted: Binding<Bool>?` perform-closure returns `false`
-
-The outer drop on the switcher container is purely a state tracker + fallback cleanup. Returning `false` from its perform closure lets SwiftUI fall through to any inner delegate that actually claimed the drop (tile reorder, trash zone delete). Inner delegates handle the real work; the outer just gets to clear `draggingBoardID` and the hover state when nothing inner claims it.
+Do not bring back drag-to-trash zones for these picker sheets. Reorder stays on each row via the existing `StatusPickerReorderDropDelegate` / `TagPickerReorderDropDelegate`; deletion is a delete mode that tints rows red and opens `ConfirmationSheet` when a row is tapped.
 
 ### Multi-board widget configuration
 
@@ -585,6 +587,11 @@ Board match is ID-only (no "reuse first existing board" fallback like v1 had —
 - Reorder delegate returns `DropProposal(operation: .move)`, updates `sortIndex` in `dropEntered` for live shuffling, saves in `performDrop`.
 - Drag preview shape matches the resting card via `.contentShape(.dragPreview, RoundedRectangle(cornerRadius: 22, style: .continuous))`.
 - For any UI gated on the drag (drop zones, status banners): debounce the hide so geometry-boundary flicker doesn't show up as shake.
+- If the preview uses a view that reads `@EnvironmentObject`, inject that object directly on the preview view. Drag previews are hosted separately enough that relying on an ancestor environment can crash at lift time with `Fatal error: No ObservableObject of type ... found`.
+
+### Board date slider
+
+For the inline board date filter, prefer a horizontal `ScrollView` + `LazyHStack` with `.scrollTargetLayout()` and `.scrollPosition(id:anchor:)` over `ScrollViewReader.scrollTo`. In simulator checks, `ScrollViewReader` sometimes opened at the start of the generated date window instead of centering today's tile. The app targets iOS 18, so scroll-position binding is available and reliably opens around the current day while still allowing swipe navigation.
 
 ## Things to do later
 

@@ -7,6 +7,9 @@ struct ColumnView: View {
     var width: CGFloat = 220
     let sortField: CardSortField
     let sortDirection: CardSortDirection
+    let dateFilter: Date?
+    let dateFilterTarget: AppDateFilterTarget
+    @EnvironmentObject private var settings: SettingsViewModel
     @Binding var draggingTaskID: UUID?
     @Binding var dragSessionEnded: Bool
     var refreshToken: Int = 0
@@ -22,7 +25,9 @@ struct ColumnView: View {
     private let pageSize: Int = 10
 
     private var currentTasks: [TaskItem] {
-        group.sortedTasks(field: sortField, direction: sortDirection)
+        let tasks = group.sortedTasks(field: sortField, direction: sortDirection)
+        guard let dateFilter else { return tasks }
+        return tasks.filter { $0.matchesDateFilter(dateFilter, target: dateFilterTarget) }
     }
 
     private func beginDragTask(_ task: TaskItem) -> String {
@@ -68,6 +73,7 @@ struct ColumnView: View {
                         .onTapGesture { onTapTask(task) }
                         .draggable(beginDragTask(task)) {
                             TaskCardView(task: task)
+                                .environmentObject(settings)
                                 .frame(width: 240)
                         }
                         .onDrop(

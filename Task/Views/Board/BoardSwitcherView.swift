@@ -1,6 +1,5 @@
 import SwiftUI
 import SwiftData
-import UIKit
 
 struct BoardSwitcherView: View {
     let activeBoardID: UUID
@@ -8,79 +7,59 @@ struct BoardSwitcherView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SettingsViewModel
     @Query(sort: \Board.sortIndex) private var boards: [Board]
 
     @State private var pendingDelete: Board?
     @State private var draggingBoardID: UUID?
     @State private var dragSessionEnded: Bool = false
-    @State private var deleteZoneHovered: Bool = false
-    @State private var dragOverScreen: Bool = false
-    @State private var showDeleteZone: Bool = false
-    @State private var hideDeleteZoneTask: Task<Void, Never>?
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
+    @State private var deleteMode: Bool = false
+    @State private var selectedDetent: PresentationDetent = .fraction(0.6)
 
     private var canDelete: Bool { boards.count > 1 }
+    private var isExpanded: Bool { selectedDetent == .large }
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                Color(.systemGroupedBackground)
+            GeometryReader { proxy in
+                Color(.systemBackground)
                     .ignoresSafeArea()
-                    .contentShape(Rectangle())
                 ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(boards, id: \.id) { board in
-                            boardTile(board)
+                    VStack(alignment: .leading, spacing: 0) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(boards.enumerated()), id: \.element.id) { index, board in
+                                boardRow(board)
+                                if index < boards.count - 1 {
+                                    Divider()
+                                }
+                            }
+                        }
+                        if isExpanded && canDelete && !deleteMode {
+                            Spacer(minLength: 24)
+                            deleteButton
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 120)
-                }
-
-                if showDeleteZone && canDelete {
-                    deleteDropZone
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
+                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .onDrop(of: StringMoveDropDelegate.acceptedTypes, isTargeted: $dragOverScreen) { _ in
-                // Drop landed on the empty background — no reorder/delete delegate
-                // claimed it. Clear our internal drag id and let isTargeted
-                // (debounced into showDeleteZone) hide the trash zone.
-                draggingBoardID = nil
-                deleteZoneHovered = false
-                return false
-            }
-            .onChange(of: dragOverScreen) { _, isOver in
-                // Debounce: brief false→true flips that SwiftUI produces as the
-                // drag preview crosses geometry boundaries shouldn't re-animate
-                // the trash zone. Only commit to hiding after 300ms of stable
-                // "not over screen", but show immediately on first entry.
-                hideDeleteZoneTask?.cancel()
-                if isOver {
-                    showDeleteZone = true
-                } else {
-                    hideDeleteZoneTask = Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: 300_000_000)
-                        if Task.isCancelled { return }
-                        showDeleteZone = false
-                    }
-                }
-            }
-            .animation(.easeInOut(duration: 0.22), value: showDeleteZone)
-            .navigationTitle("Boards")
+            .navigationTitle(deleteMode ? "Delete Board" : "Boards")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
+                    Button(deleteMode ? "Cancel" : "Done") {
+                        if deleteMode {
+                            deleteMode = false
+                        } else {
+                            dismiss()
+                        }
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Add") { addBoard() }
+                        .disabled(deleteMode)
                 }
             }
             .sheet(item: $pendingDelete) { board in
@@ -92,24 +71,34 @@ struct BoardSwitcherView: View {
                     confirmLabel: "Delete Board"
                 ) {
                     deleteBoard(board)
+                    deleteMode = false
                 }
-                .presentationDetents([.height(440)])
-                .presentationDragIndicator(.visible)
+                .confirmationSheetPresentationStyle()
             }
         }
-        .presentationDetents([.fraction(0.6), .large])
+        .dynamicTypeSize(settings.textSize.dynamicType)
+        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
         .presentationDragIndicator(.visible)
     }
 
-    private func boardTile(_ board: Board) -> some View {
-        boardCardContent(board)
+    private func boardRow(_ board: Board) -> some View {
+        boardRowContent(board)
+            .contentShape(Rectangle())
+            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
             .onTapGesture {
+                if deleteMode {
+                    if canDelete {
+                        pendingDelete = board
+                    }
+                    return
+                }
                 onPickBoard(board.id)
                 dismiss()
             }
             .draggable(beginDrag(of: board)) {
-                boardCardContent(board)
-                    .frame(maxWidth: 200)
+                boardRowContent(board)
+                    .dynamicTypeSize(settings.textSize.dynamicType)
+                    .frame(width: 320)
             }
             .onDrop(
                 of: StringMoveDropDelegate.acceptedTypes,
@@ -123,17 +112,43 @@ struct BoardSwitcherView: View {
             )
     }
 
-    private func boardCardContent(_ board: Board) -> some View {
+    private func boardRowContent(_ board: Board) -> some View {
         let isActive = board.id == activeBoardID
         let taskCount = board.tasks?.count ?? 0
-        return GridTile(
-            title: board.title,
-            subtitle: "\(taskCount) tasks",
-            iconText: board.iconEmoji,
-            tintColor: .accentColor,
-            isSelected: isActive
-        )
-        .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 22, style: .continuous))
+        return HStack(alignment: .center, spacing: 12) {
+            Text(board.iconEmoji)
+                .font(.title2)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(board.title.isEmpty ? "Untitled" : board.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(deleteMode ? .red : .primary)
+
+                HStack(spacing: 6) {
+                    Text(board.subtitle.isEmpty ? "\(taskCount) tasks" : board.subtitle)
+                    if !board.subtitle.isEmpty {
+                        Text("·")
+                        Text("\(taskCount) tasks")
+                    }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+            if deleteMode {
+                Image(systemName: "trash")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.red)
+            } else if isActive {
+                Image(systemName: "checkmark")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.accent)
+            }
+        }
+        .padding(.vertical, 16)
     }
 
     private func beginDrag(of board: Board) -> String {
@@ -145,39 +160,21 @@ struct BoardSwitcherView: View {
         return board.id.uuidString
     }
 
-    private var deleteDropZone: some View {
-        let baseColor = Color.red
-        let tint = deleteZoneHovered ? baseColor.opacity(0.85) : baseColor.opacity(0.45)
-        return HStack(spacing: 10) {
-            Image(systemName: "trash.fill")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
-            Text(deleteZoneHovered ? "Release to delete" : "Drag here to delete")
-                .font(.system(.headline, design: .rounded).weight(.semibold))
-                .foregroundColor(.white)
+    private var deleteButton: some View {
+        Button { deleteMode = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.system(.subheadline, weight: .bold))
+                Text("Delete a Board")
+                    .font(.system(.headline, design: .rounded))
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 78)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(tint)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(baseColor.opacity(deleteZoneHovered ? 0.95 : 0.6), lineWidth: 1.6)
-        )
-        .padding(.horizontal, 16)
-        .padding(.bottom, 18)
-        .onDrop(
-            of: StringMoveDropDelegate.acceptedTypes,
-            delegate: BoardDeleteDropDelegate(
-                draggingBoardID: $draggingBoardID,
-                dragSessionEnded: $dragSessionEnded,
-                hovered: $deleteZoneHovered,
-                resolveBoard: { id in boards.first(where: { $0.id == id }) },
-                onDelete: { board in pendingDelete = board }
-            )
-        )
+        .buttonStyle(.plain)
     }
 
     private func addBoard() {
@@ -251,47 +248,5 @@ private struct BoardReorderDropDelegate: DropDelegate {
                 }
             }
         }
-    }
-}
-
-private struct BoardDeleteDropDelegate: DropDelegate {
-    @Binding var draggingBoardID: UUID?
-    @Binding var dragSessionEnded: Bool
-    @Binding var hovered: Bool
-    let resolveBoard: (UUID) -> Board?
-    let onDelete: (Board) -> Void
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func dropEntered(info: DropInfo) {
-        // Guard against SwiftUI firing dropEntered repeatedly while the drag
-        // is still inside — only the first entry should fire the haptic.
-        guard !hovered else { return }
-        hovered = true
-        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-    }
-
-    func dropExited(info: DropInfo) {
-        hovered = false
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        let draggedID = draggingBoardID
-        hovered = false
-        draggingBoardID = nil
-        dragSessionEnded = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            dragSessionEnded = false
-        }
-        if let id = draggedID, let board = resolveBoard(id) {
-            DispatchQueue.main.async {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                onDelete(board)
-            }
-            return true
-        }
-        return false
     }
 }

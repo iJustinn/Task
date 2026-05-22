@@ -340,10 +340,10 @@ enum AppTextSize: String, CaseIterable, Identifiable {
 
     var dynamicType: DynamicTypeSize {
         switch self {
-        case .small:      return .medium
-        case .medium:     return .large
-        case .large:      return .xLarge
-        case .extraLarge: return .xxLarge
+        case .small:      return .large
+        case .medium:     return .xLarge
+        case .large:      return .xxLarge
+        case .extraLarge: return .xxxLarge
         }
     }
 }
@@ -536,6 +536,41 @@ enum AppNotesPreview: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppDateFilterTarget: String, CaseIterable, Identifiable {
+    case workingDate
+    case dueDate
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .workingDate: return String(localized: "Working Date")
+        case .dueDate:     return String(localized: "Due Date")
+        }
+    }
+
+    var descriptor: String {
+        switch self {
+        case .workingDate: return String(localized: "Matches working days and ranges")
+        case .dueDate:     return String(localized: "Matches due dates")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .workingDate: return "calendar"
+        case .dueDate:     return "calendar.badge.exclamationmark"
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .workingDate: return .blue
+        case .dueDate:     return .red
+        }
+    }
+}
+
 enum AppColumnWidth: String, CaseIterable, Identifiable {
     case small
     case medium
@@ -632,6 +667,10 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(notesPreview.rawValue, forKey: SettingsViewModel.notesPreviewKey) }
     }
 
+    @Published var dateFilterTarget: AppDateFilterTarget {
+        didSet { UserDefaults.standard.set(dateFilterTarget.rawValue, forKey: SettingsViewModel.dateFilterTargetKey) }
+    }
+
     /// Cached so TaskDetailView can show a warning when the user enables a reminder
     /// while notifications are denied. Refresh from `RootView.task` and after the
     /// permission request.
@@ -650,6 +689,7 @@ final class SettingsViewModel: ObservableObject {
     static let columnWidthKey = "task.columnWidth"
     static let dateFormatKey = "task.dateFormat"
     static let notesPreviewKey = "task.notesPreviewEnabled"
+    static let dateFilterTargetKey = "task.dateFilterTarget"
 
     init() {
         let d = UserDefaults.standard
@@ -663,6 +703,7 @@ final class SettingsViewModel: ObservableObject {
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium
         self.dateFormat = AppDateFormat(rawValue: d.string(forKey: SettingsViewModel.dateFormatKey) ?? "") ?? .shortText
         self.notesPreview = AppNotesPreview(rawValue: d.string(forKey: SettingsViewModel.notesPreviewKey) ?? "") ?? .none
+        self.dateFilterTarget = AppDateFilterTarget(rawValue: d.string(forKey: SettingsViewModel.dateFilterTargetKey) ?? "") ?? .workingDate
         TaskDateFormat.locale = resolvedLanguage.locale
     }
 

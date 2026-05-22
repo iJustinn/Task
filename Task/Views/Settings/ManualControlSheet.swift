@@ -23,6 +23,7 @@ struct TaskExportDocument: FileDocument {
 
 struct ManualControlSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SettingsViewModel
 
     let isImporting: Bool
     let onExport: () -> Void
@@ -34,7 +35,7 @@ struct ManualControlSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     SettingsCardSection {
                         exportRow
@@ -43,9 +44,9 @@ struct ManualControlSheet: View {
                         SettingsRowDivider()
                         resetRow
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
             }
             .navigationTitle("Manual Control")
@@ -65,10 +66,10 @@ struct ManualControlSheet: View {
                 ) {
                     dismissThenRun(onReset)
                 }
-                .presentationDetents([.height(440)])
-                .presentationDragIndicator(.visible)
+                .confirmationSheetPresentationStyle()
             }
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
     }
 
     private var exportRow: some View {
@@ -113,7 +114,7 @@ struct ManualControlSheet: View {
                     .foregroundColor(.red)
                 Spacer()
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 8)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
             .contentShape(Rectangle())
@@ -129,4 +130,3 @@ struct ManualControlSheet: View {
         }
     }
 }
-

@@ -6,27 +6,38 @@ struct GroupMenuSheet: View {
     let board: Board
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var settings: SettingsViewModel
 
     @State private var name: String = ""
     @State private var colorKey: ColorKey = .purple
     @State private var didLoad: Bool = false
     @State private var showDeleteConfirm: Bool = false
+    @State private var selectedDetent: PresentationDetent = .fraction(0.6)
+
+    private var canDelete: Bool { board.orderedGroups.count > 1 }
+    private var isExpanded: Bool { selectedDetent == .large }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+            GeometryReader { proxy in
+                Color(.systemGroupedBackground)
+                    .ignoresSafeArea()
+
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                         nameAndColorSection
-                        deleteSection
+                        if isExpanded && canDelete {
+                            Spacer(minLength: 24)
+                            deleteSection
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
-                    .padding(.bottom, 60)
+                    .padding(.bottom, 24)
+                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle("Group")
+            .navigationTitle("Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
@@ -45,29 +56,29 @@ struct GroupMenuSheet: View {
                 ConfirmationSheet(
                     icon: "trash.fill",
                     iconTint: .red,
-                    title: "Delete Group?",
-                    message: "This group will be removed. Its tasks will move to the first remaining group.",
-                    confirmLabel: "Delete Group"
+                    title: "Delete Status?",
+                    message: "This status will be removed. Its tasks will move to the first remaining status.",
+                    confirmLabel: "Delete Status"
                 ) {
                     deleteAndDismiss()
                 }
-                .presentationDetents([.height(420)])
-                .presentationDragIndicator(.visible)
+                .confirmationSheetPresentationStyle()
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
         .presentationDragIndicator(.visible)
+        .dynamicTypeSize(settings.textSize.dynamicType)
     }
 
     private var nameAndColorSection: some View {
-        SettingsCardSection("Group") {
-            VStack(alignment: .leading, spacing: 14) {
+        SettingsCardSection("Status") {
+            VStack(alignment: .leading, spacing: 26) {
                 HStack(spacing: 14) {
                     SettingsIconTile(systemName: "circle.fill", color: colorKey.foreground)
-                    TextField("Group name", text: $name)
+                    TextField("Status name", text: $name)
                         .font(.system(.headline, design: .rounded))
                 }
-                ColorSwatchPicker(selection: $colorKey).padding(.leading, 58)
+                ColorSwatchPicker(selection: $colorKey)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -75,20 +86,22 @@ struct GroupMenuSheet: View {
     }
 
     private var deleteSection: some View {
-        SettingsCardSection {
-            Button {
-                showDeleteConfirm = true
-            } label: {
-                Text("Delete Group")
+        Button {
+            showDeleteConfirm = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.system(.subheadline, weight: .bold))
+                Text("Delete Status")
                     .font(.system(.headline, design: .rounded))
                     .fontWeight(.semibold)
-                    .foregroundColor(board.orderedGroups.count <= 1 ? .secondary : .red)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .disabled(board.orderedGroups.count <= 1)
+            .foregroundColor(.red)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private func save() {
