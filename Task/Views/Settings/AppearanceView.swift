@@ -145,6 +145,102 @@ struct TimeFormatPickerSheet: View {
     }
 }
 
+// MARK: - Date format picker
+
+struct DateFormatPickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(\.dismiss) private var dismiss
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(AppDateFormat.allCases) { format in
+                            Button {
+                                settings.dateFormat = format
+                                dismiss()
+                            } label: {
+                                GridTile(
+                                    title: format.label,
+                                    subtitle: format.descriptor,
+                                    systemImage: format.systemImage,
+                                    tintColor: format.tintColor,
+                                    isSelected: settings.dateFormat == format
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .padding(.bottom, 30)
+                }
+            }
+            .navigationTitle("Date Format")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Notes preview picker
+
+struct NotesPreviewPickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(\.dismiss) private var dismiss
+    private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(AppNotesPreview.allCases) { option in
+                            Button {
+                                settings.notesPreview = option
+                                dismiss()
+                            } label: {
+                                GridTile(
+                                    title: option.label,
+                                    subtitle: option.descriptor,
+                                    systemImage: option.systemImage,
+                                    tintColor: option.tintColor,
+                                    isSelected: settings.notesPreview == option
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .padding(.bottom, 30)
+                }
+            }
+            .navigationTitle("Notes Preview")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Reminder time picker
 
 struct ReminderTimePickerSheet: View {

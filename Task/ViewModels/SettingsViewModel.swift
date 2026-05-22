@@ -423,6 +423,119 @@ enum CardSortDirection: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppDateFormat: String, CaseIterable, Identifiable {
+    case shortNumeric
+    case shortText
+    case longNumeric
+    case longText
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .shortNumeric: return String(localized: "Short Numeric")
+        case .shortText:    return String(localized: "Short Text")
+        case .longNumeric:  return String(localized: "Long Numeric")
+        case .longText:     return String(localized: "Long Text")
+        }
+    }
+
+    var descriptor: String {
+        switch self {
+        case .shortNumeric: return "05.17"
+        case .shortText:    return String(localized: "May 17")
+        case .longNumeric:  return "2026.05.17"
+        case .longText:     return String(localized: "May 17, 2026")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .shortNumeric: return "calendar"
+        case .shortText:    return "calendar.badge.clock"
+        case .longNumeric:  return "calendar.circle"
+        case .longText:     return "calendar.circle.fill"
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .shortNumeric: return .blue
+        case .shortText:    return .teal
+        case .longNumeric:  return .indigo
+        case .longText:     return .purple
+        }
+    }
+
+    var includesYear: Bool {
+        switch self {
+        case .shortNumeric, .shortText: return false
+        case .longNumeric, .longText:   return true
+        }
+    }
+
+    var usesTextMonth: Bool {
+        switch self {
+        case .shortNumeric, .longNumeric: return false
+        case .shortText, .longText:       return true
+        }
+    }
+}
+
+enum AppNotesPreview: String, CaseIterable, Identifiable {
+    case none
+    case oneLine
+    case twoLines
+    case threeLines
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .none:       return String(localized: "Off")
+        case .oneLine:    return String(localized: "1 Line")
+        case .twoLines:   return String(localized: "2 Lines")
+        case .threeLines: return String(localized: "3 Lines")
+        }
+    }
+
+    var descriptor: String {
+        switch self {
+        case .none:       return String(localized: "Hidden")
+        case .oneLine:    return String(localized: "Compact")
+        case .twoLines:   return String(localized: "Standard")
+        case .threeLines: return String(localized: "Roomy")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .none:       return "doc"
+        case .oneLine:    return "doc.text"
+        case .twoLines:   return "doc.text.fill"
+        case .threeLines: return "doc.richtext.fill"
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .none:       return .gray
+        case .oneLine:    return .teal
+        case .twoLines:   return .green
+        case .threeLines: return .indigo
+        }
+    }
+
+    var lineLimit: Int {
+        switch self {
+        case .none:       return 0
+        case .oneLine:    return 1
+        case .twoLines:   return 2
+        case .threeLines: return 3
+        }
+    }
+}
+
 enum AppColumnWidth: String, CaseIterable, Identifiable {
     case small
     case medium
@@ -511,6 +624,14 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(columnWidth.rawValue, forKey: SettingsViewModel.columnWidthKey) }
     }
 
+    @Published var dateFormat: AppDateFormat {
+        didSet { UserDefaults.standard.set(dateFormat.rawValue, forKey: SettingsViewModel.dateFormatKey) }
+    }
+
+    @Published var notesPreview: AppNotesPreview {
+        didSet { UserDefaults.standard.set(notesPreview.rawValue, forKey: SettingsViewModel.notesPreviewKey) }
+    }
+
     /// Cached so TaskDetailView can show a warning when the user enables a reminder
     /// while notifications are denied. Refresh from `RootView.task` and after the
     /// permission request.
@@ -527,6 +648,8 @@ final class SettingsViewModel: ObservableObject {
     static let appIconKey = "task.appIcon"
     static let textSizeKey = "task.textSize"
     static let columnWidthKey = "task.columnWidth"
+    static let dateFormatKey = "task.dateFormat"
+    static let notesPreviewKey = "task.notesPreviewEnabled"
 
     init() {
         let d = UserDefaults.standard
@@ -538,6 +661,8 @@ final class SettingsViewModel: ObservableObject {
         self.appIcon = AppIconOption(rawValue: d.string(forKey: SettingsViewModel.appIconKey) ?? "") ?? .classic
         self.textSize = AppTextSize(rawValue: d.string(forKey: SettingsViewModel.textSizeKey) ?? "") ?? .medium
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium
+        self.dateFormat = AppDateFormat(rawValue: d.string(forKey: SettingsViewModel.dateFormatKey) ?? "") ?? .shortText
+        self.notesPreview = AppNotesPreview(rawValue: d.string(forKey: SettingsViewModel.notesPreviewKey) ?? "") ?? .none
         TaskDateFormat.locale = resolvedLanguage.locale
     }
 

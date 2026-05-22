@@ -23,7 +23,7 @@ struct SettingsView: View {
     @State private var importOrphanMessage: String? = nil
 
     private enum AppearanceSheet: String, Identifiable {
-        case theme, language, textSize, columnWidth, accent, icon, timeFormat
+        case theme, language, textSize, columnWidth, accent, icon, timeFormat, dateFormat, notesPreview
         var id: String { rawValue }
     }
 
@@ -45,6 +45,7 @@ struct SettingsView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                         appearanceSection
+                        boardStyleSection
                         dataSection
                         aboutSection
                     }
@@ -223,6 +224,28 @@ struct SettingsView: View {
         }
     }
 
+    private var boardStyleSection: some View {
+        SettingsCardSection("Board Style") {
+            SettingsButtonRow(
+                title: "Date Format",
+                systemName: settings.dateFormat.systemImage,
+                tintColor: settings.dateFormat.tintColor,
+                action: { activeSheet = .dateFormat }
+            ) {
+                trailing(value: settings.dateFormat.descriptor)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Notes Preview",
+                systemName: settings.notesPreview.systemImage,
+                tintColor: settings.notesPreview.tintColor,
+                action: { activeSheet = .notesPreview }
+            ) {
+                trailing(value: settings.notesPreview.label)
+            }
+        }
+    }
+
     private var dataSection: some View {
         SettingsCardSection("Data") {
             SettingsRowLabel(
@@ -387,6 +410,16 @@ struct SettingsView: View {
                 .presentationDragIndicator(.visible)
         case .timeFormat:
             TimeFormatPickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        case .dateFormat:
+            DateFormatPickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        case .notesPreview:
+            NotesPreviewPickerSheet()
                 .environmentObject(settings)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
