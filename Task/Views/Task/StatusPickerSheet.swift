@@ -320,4 +320,3 @@ struct StatusPickerSheet: View {
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }
 }
-

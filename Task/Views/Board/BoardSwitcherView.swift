@@ -267,4 +267,3 @@ struct BoardSwitcherView: View {
         }
     }
 }
-
