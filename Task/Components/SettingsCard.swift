@@ -72,8 +72,8 @@ struct SettingsRowLabel: View {
 
             if let value {
                 Text(value)
-                    .font(.system(.headline))
-                    .fontWeight(.semibold)
+                    .font(.system(.subheadline))
+                    .fontWeight(.regular)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

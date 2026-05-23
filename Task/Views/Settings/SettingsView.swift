@@ -391,8 +391,8 @@ struct SettingsView: View {
     private func trailing(value: String) -> some View {
         HStack(spacing: 6) {
             Text(value)
-                .font(.system(.headline))
-                .fontWeight(.semibold)
+                .font(.system(.subheadline))
+                .fontWeight(.regular)
                 .foregroundColor(.secondary)
             Image(systemName: "chevron.right")
                 .font(.system(.caption, weight: .bold))
