@@ -121,6 +121,16 @@ The iOS Simulator emits a flurry of system logs that look like errors but are no
 
 None of these appear on a real device. Filter the Xcode console with `Task[` to see only our app's output, or set `OS_ACTIVITY_MODE=disable` as a Debug-only environment variable to silence most of it.
 
+### xcodebuildmcp stop requires bundle ID
+
+`build_run_sim` reports the launched app bundle ID (`com.ijustin.task`), but `stop_app_sim` still requires that value in session defaults. If stop fails with `Missing required session defaults: bundleId is required`, run:
+
+```bash
+session-set-defaults { "bundleId": "com.ijustin.task" }
+```
+
+Then retry `stop_app_sim`.
+
 ## SwiftUI patterns
 
 ### Settings card UI

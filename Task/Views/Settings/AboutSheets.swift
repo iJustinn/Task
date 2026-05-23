@@ -128,7 +128,7 @@ struct HowToUseSheet: View {
             tintColor: .green,
             steps: [
                 "Tap the Notes area on a task to type. Markdown is supported — **bold**, *italic*, # heading, and - bullet lines all render once you tap away.",
-                "Add a checkbox by starting a line with - [ ] (or - []) for unchecked, or - [x] for checked. Tap a box in the rendered preview to toggle it — the note rewrites in place.",
+                "Add a checkbox by starting a line with [] for unchecked, or [x] for checked. Tap a box in the rendered preview to toggle it — the note rewrites in place.",
                 "Tap any rendered line to jump back into edit mode and adjust the raw markdown. Drag the sheet down to dismiss the keyboard and return to the preview."
             ]
         ),

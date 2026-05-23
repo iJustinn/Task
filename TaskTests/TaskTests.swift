@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import UIKit
 @testable import Task
 
 @MainActor
@@ -138,5 +139,86 @@ final class TaskTests: XCTestCase {
             let raw = key.rawValue
             XCTAssertEqual(ColorKey(rawValue: raw), key)
         }
+    }
+
+    func testCardNotesPreviewParsesTaskLinesAsTypedRows() {
+        let lines = cardNotesPreviewLines(
+            from: """
+            - [ ] research
+            - [x] payment
+            plain note
+            """,
+            limit: 3
+        )
+
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines[0].kind, .task(checked: false))
+        XCTAssertEqual(String(lines[0].text.characters), "research")
+        XCTAssertEqual(lines[1].kind, .task(checked: true))
+        XCTAssertEqual(String(lines[1].text.characters), "payment")
+        XCTAssertEqual(lines[2].kind, .text)
+        XCTAssertEqual(String(lines[2].text.characters), "plain note")
+    }
+
+    func testNotesEditorParsesBareBracketTaskLines() {
+        let lines = parseNoteLines(
+            """
+            [] research
+            [x] payment
+            """
+        )
+
+        XCTAssertEqual(lines.count, 2)
+
+        guard case let .task(firstChecked, firstContent) = lines[0].kind else {
+            XCTFail("Expected first line to parse as an unchecked task")
+            return
+        }
+        XCTAssertFalse(firstChecked)
+        XCTAssertEqual(firstContent, "research")
+
+        guard case let .task(secondChecked, secondContent) = lines[1].kind else {
+            XCTFail("Expected second line to parse as a checked task")
+            return
+        }
+        XCTAssertTrue(secondChecked)
+        XCTAssertEqual(secondContent, "payment")
+    }
+
+    func testNotesEditorTogglesBareBracketTaskMarkers() {
+        XCTAssertEqual(toggleTaskMarker(in: "[] research"), "[x] research")
+        XCTAssertEqual(toggleTaskMarker(in: "[x] payment"), "[] payment")
+        XCTAssertEqual(toggleTaskMarker(in: "  [] indented"), "  [x] indented")
+    }
+
+    func testLiveMarkdownEditingStylePreservesMarkersAndStylesMarkdown() throws {
+        let raw = """
+        # Heading
+        [] research
+        **bold** and *italic*
+        """
+        let styled = markdownEditingAttributedText(raw)
+
+        XCTAssertEqual(styled.string, raw)
+
+        let headingFont = try XCTUnwrap(styled.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
+        let bodyFont = try XCTUnwrap(styled.attribute(.font, at: raw.utf16Offset(of: "research"), effectiveRange: nil) as? UIFont)
+        XCTAssertGreaterThan(headingFont.pointSize, bodyFont.pointSize)
+
+        let checkboxColor = try XCTUnwrap(styled.attribute(.foregroundColor, at: raw.utf16Offset(of: "[]"), effectiveRange: nil) as? UIColor)
+        XCTAssertEqual(checkboxColor, UIColor.secondaryLabel)
+
+        let boldFont = try XCTUnwrap(styled.attribute(.font, at: raw.utf16Offset(of: "bold"), effectiveRange: nil) as? UIFont)
+        XCTAssertTrue(boldFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+
+        let italicFont = try XCTUnwrap(styled.attribute(.font, at: raw.utf16Offset(of: "italic"), effectiveRange: nil) as? UIFont)
+        XCTAssertTrue(italicFont.fontDescriptor.symbolicTraits.contains(.traitItalic))
+    }
+}
+
+private extension String {
+    func utf16Offset(of needle: String) -> Int {
+        let range = self.range(of: needle)!
+        return range.lowerBound.utf16Offset(in: self)
     }
 }

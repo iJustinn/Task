@@ -1,5 +1,13 @@
 # Version History
 
+## 0.4.7 (build 1) — 2026-05-23
+
+Notes editor polish and checklist preview improvements.
+
+- Card note previews now render checklist rows with SF Symbols so checked and unchecked boxes share consistent shape and alignment.
+- Notes now support the shorter `[]` / `[x]` checklist syntax, while the existing `- []`, `- [ ]`, and `- [x]` forms continue to work.
+- The task notes editor now styles Markdown live while typing, keeping raw markers visible for headings, bold, italic, bullets, and checklist lines.
+
 ## 0.4.6 (build 4) — 2026-05-22
 
 Multi-board support across the app, the settings, and the home-screen widget.
