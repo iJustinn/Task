@@ -37,9 +37,6 @@ struct TaskDetailView: View {
     private enum ReminderAnchor { case working, due, none }
 
     private static let labelColumnWidth: CGFloat = 120
-    private static let taskTitleFontSize: CGFloat = 24
-    private static let propertyFontSize: CGFloat = 16
-    private static let chipFontSize: CGFloat = 16
 
     private var editingTask: TaskItem? {
         if case .edit(let task) = mode { return task }
@@ -160,7 +157,7 @@ struct TaskDetailView: View {
 
     private var titleField: some View {
         TextField("", text: $title, prompt: Text("Add title").foregroundStyle(.secondary), axis: .vertical)
-            .font(.system(size: Self.taskTitleFontSize, weight: .bold, design: .rounded))
+            .font(.system(size: settings.textSize.taskDetailTitleSize, weight: .bold))
             .lineLimit(1...3)
             .textInputAutocapitalization(.words)
     }
@@ -179,7 +176,7 @@ struct TaskDetailView: View {
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Notes")
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .font(.system(.subheadline).weight(.semibold))
                 .foregroundStyle(.secondary)
             MarkdownNotesEditor(text: $notes)
         }
@@ -199,32 +196,14 @@ struct TaskDetailView: View {
 
     private var deleteButton: some View {
         Button { showDeleteConfirm = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete Task")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.red)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete Task", systemName: "trash", tintColor: .red)
         }
         .buttonStyle(.plain)
     }
 
     private var duplicateButton: some View {
         Button { showDuplicateConfirm = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Duplicate Task")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.accent)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Duplicate Task", systemName: "doc.on.doc", tintColor: .accentColor)
         }
         .buttonStyle(.plain)
     }
@@ -268,14 +247,14 @@ struct TaskDetailView: View {
                     let tint = dateTint(for: start)
                     HStack(alignment: .center, spacing: 8) {
                         Text(workingDateDisplay(start: start, end: workingEnd))
-                            .font(.system(size: Self.propertyFontSize, weight: .semibold, design: .rounded))
+                            .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .semibold))
                             .foregroundStyle(tint)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 8)
                         if reminderAnchor == .working {
                             Image(systemName: "alarm")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: settings.textSize.taskDetailAccessoryIconSize, weight: .semibold))
                                 .foregroundStyle(tint)
                         }
                     }
@@ -303,12 +282,12 @@ struct TaskDetailView: View {
                     let tint = dateTint(for: due)
                     HStack(alignment: .center, spacing: 8) {
                         Text(TaskDateFormat.format(due, style: settings.dateFormat))
-                            .font(.system(size: Self.propertyFontSize, weight: .semibold, design: .rounded))
+                            .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .semibold))
                             .foregroundStyle(tint)
                         Spacer(minLength: 8)
                         if reminderAnchor == .due {
                             Image(systemName: "alarm")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: settings.textSize.taskDetailAccessoryIconSize, weight: .semibold))
                                 .foregroundStyle(tint)
                         }
                     }
@@ -371,7 +350,7 @@ struct TaskDetailView: View {
                     Spacer()
                     Button { advanceRepeatDates() } label: {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: settings.textSize.taskDetailAccessoryIconSize, weight: .bold))
                             .foregroundStyle(ColorKey.gray.foreground)
                             .frame(width: 62, height: 30)
                             .background(
@@ -397,11 +376,11 @@ struct TaskDetailView: View {
     ) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: settings.textSize.taskDetailRowIconSize, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
             Text(label)
-                .font(.system(size: Self.propertyFontSize, weight: .medium, design: .rounded))
+                .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: Self.labelColumnWidth, alignment: .leading)
             value()
@@ -413,13 +392,13 @@ struct TaskDetailView: View {
 
     private var emptyValueLabel: some View {
         Text("Empty")
-            .font(.system(size: Self.propertyFontSize, weight: .regular, design: .rounded))
+            .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .regular))
             .foregroundStyle(Color.secondary.opacity(0.6))
     }
 
     private func taskDetailChip(name: String, colorKey: ColorKey) -> some View {
         Text(name)
-            .font(.system(size: Self.chipFontSize, weight: .semibold, design: .rounded))
+            .font(.system(size: settings.textSize.taskDetailChipSize, weight: .semibold))
             .lineLimit(1)
             .foregroundStyle(colorKey.foreground)
             .padding(.horizontal, 9)
@@ -692,5 +671,52 @@ struct TaskDetailView: View {
         NotificationService.cancel(for: task)
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
         dismiss()
+    }
+}
+
+private extension AppTextSize {
+    var taskDetailTitleSize: CGFloat {
+        switch self {
+        case .small:      return 22
+        case .medium:     return 24
+        case .large:      return 26
+        case .extraLarge: return 28
+        }
+    }
+
+    var taskDetailPropertySize: CGFloat {
+        switch self {
+        case .small:      return 15
+        case .medium:     return 16
+        case .large:      return 17
+        case .extraLarge: return 18
+        }
+    }
+
+    var taskDetailChipSize: CGFloat {
+        switch self {
+        case .small:      return 15
+        case .medium:     return 16
+        case .large:      return 17
+        case .extraLarge: return 18
+        }
+    }
+
+    var taskDetailRowIconSize: CGFloat {
+        switch self {
+        case .small:      return 15
+        case .medium:     return 16
+        case .large:      return 17
+        case .extraLarge: return 18
+        }
+    }
+
+    var taskDetailAccessoryIconSize: CGFloat {
+        switch self {
+        case .small:      return 14
+        case .medium:     return 15
+        case .large:      return 16
+        case .extraLarge: return 17
+        }
     }
 }

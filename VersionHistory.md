@@ -1,12 +1,59 @@
 # Version History
 
-## 0.4.7 (build 1) — 2026-05-23
+## 0.4.7 (build 4) — 2026-05-23
 
-Notes editor polish and checklist preview improvements.
+Task editing, status/tag management, Markdown notes, and app-wide text polish.
+
+### Notes and card previews
 
 - Card note previews now render checklist rows with SF Symbols so checked and unchecked boxes share consistent shape and alignment.
 - Notes now support the shorter `[]` / `[x]` checklist syntax, while the existing `- []`, `- [ ]`, and `- [x]` forms continue to work.
 - The task notes editor now styles Markdown live while typing, keeping raw markers visible for headings, bold, italic, bullets, and checklist lines.
+- Notes preview and editor formatting now cover headings, bold, italic, bullets, checklist rows, and plain text with more consistent spacing.
+
+### Task detail actions
+
+- Edit Task gained a bottom **Duplicate Task** action beside **Delete Task**.
+- Duplicate uses the same confirmation-sheet pattern as destructive actions before creating the copy.
+- Delete / Duplicate bottom actions are centered as one visual group instead of being centered in separate equal-width areas.
+- Delete, Duplicate, Add, and Edit sheet actions now scale from the Settings → Text Size choice, with reduced action scaling so the labels do not overpower the sheet.
+- Task detail property-row labels, values, chips, and icons now honor the Settings → Text Size choice.
+
+### Choose Status and Choose Tags
+
+- Choose Status / Choose Tags now use top-left **Cancel** and top-right **Done** buttons.
+- The bottom management controls now use the same centered-group layout as Edit Task: **Edit** and **Add** share the first row, with **Delete** below.
+- Bottom management controls stay hidden until the sheet is expanded so they do not peek into the compact detent.
+- Status and tag rows now show the real colored label chip followed immediately by the task count, instead of a separate dot/icon with right-aligned counts.
+- Status and tag label chips were slightly reduced in size after moving to the row treatment.
+- Edit mode now opens a dedicated edit sheet for the chosen status or tag, while delete mode remains a separate confirmation-oriented flow.
+
+### Status and tag editing
+
+- Edit Status is now launched from the status-column header menu and renamed accordingly.
+- The current board's default status can now be set directly from Edit Status.
+- The board-level default-status flag button was removed from the home header, and the previous separate default-status page was deleted.
+- The current default status column now uses a flag icon in the status header instead of the normal three-dot menu.
+- Edit Status now includes a separator and a small line showing the current default status.
+- The "Default for New Tasks" row no longer shows a leading checkmark.
+- Edit Status, New Status, Edit Tag, and New Tag now use a centered colored-chip preview matching how the label will appear in the app.
+- New Status, Edit Status, New Tag, and Edit Tag use the same sheet background color and no longer show the large redundant "Status" / "Tag" section title.
+
+### Board date slider
+
+- The day slider now recenters when reopened instead of only on first presentation.
+- The slider range is capped to one year before and one year after today, even when board tasks exist outside that range.
+
+### About and typography
+
+- Removed remaining rounded-font usage so app text uses the regular system font consistently.
+- About sheets now use traditional bullet points instead of numbered icon badges.
+- Bullet text on About sheets now uses a smaller shared indentation so bullets and text move together without sitting too far from the left edge.
+- The How to Use copy was refreshed to mention the new Default Status flow and updated notes/checklist syntax.
+
+### Versioning
+
+- Build number bumped to `4` for version `0.4.7`.
 
 ## 0.4.6 (build 4) — 2026-05-22
 

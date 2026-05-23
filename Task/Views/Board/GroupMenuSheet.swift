@@ -21,6 +21,10 @@ struct GroupMenuSheet: View {
     private var currentDefaultStatusName: String {
         board.defaultGroup?.name ?? "None"
     }
+    private var previewName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Status name" : trimmed
+    }
 
     var body: some View {
         NavigationStack {
@@ -77,25 +81,21 @@ struct GroupMenuSheet: View {
     }
 
     private var nameAndColorSection: some View {
-        SettingsCardSection("Status") {
+        SettingsCardSection {
             VStack(alignment: .leading, spacing: 26) {
-                HStack(spacing: 14) {
-                    SettingsIconTile(systemName: "circle.fill", color: colorKey.foreground)
-                    TextField("Status name", text: $name)
-                        .font(.system(.headline, design: .rounded))
-                }
+                statusPreviewField
                 ColorSwatchPicker(selection: $colorKey)
                 Divider()
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle(isOn: $isDefaultStatus) {
                         Text("Default for New Tasks")
-                            .font(.system(.headline, design: .rounded))
+                            .font(.system(.headline))
                     }
                     .toggleStyle(.switch)
                     .disabled(!canChangeDefaultStatus)
 
                     Text("Current default: \(currentDefaultStatusName)")
-                        .font(.system(.footnote, design: .rounded))
+                        .font(.system(.footnote))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -104,21 +104,29 @@ struct GroupMenuSheet: View {
         }
     }
 
+    private var statusPreviewField: some View {
+        HStack {
+            Spacer(minLength: 0)
+            TagChip(name: previewName, colorKey: colorKey)
+                .overlay {
+                    TextField("", text: $name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.clear)
+                        .tint(colorKey.foreground)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.words)
+                        .accessibilityLabel("Status name")
+                }
+            Spacer(minLength: 0)
+        }
+    }
+
     private var deleteSection: some View {
         Button {
             showDeleteConfirm = true
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete Status")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundColor(.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete Status", systemName: "trash", tintColor: .red, fillsWidth: true)
         }
         .buttonStyle(.plain)
     }

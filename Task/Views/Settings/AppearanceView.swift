@@ -288,7 +288,7 @@ struct ReminderTimePickerSheet: View {
                     VStack(spacing: 4) {
                         previewLabel
                         Text(hintText)
-                            .font(.system(.footnote, design: .rounded).weight(.semibold))
+                            .font(.system(.footnote).weight(.semibold))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -339,13 +339,13 @@ struct ReminderTimePickerSheet: View {
     private var previewLabel: some View {
         if let components = parsedComponents {
             Text(TimeFormatting.format(hour: components.hour, minute: components.minute, uses24Hour: uses24Hour))
-                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .font(.system(size: 44, weight: .bold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         } else {
             Text(hasError ? "Invalid" : "Enter Time")
-                .font(.system(size: 54, weight: .heavy, design: .rounded))
+                .font(.system(size: 54, weight: .heavy))
                 .foregroundColor(hasError ? .red : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -401,7 +401,7 @@ struct ReminderTimePickerSheet: View {
                         .font(.system(size: isPrimary ? 28 : 23, weight: .bold))
                 } else if let title {
                     Text(title)
-                        .font(.system(size: isCompact ? 18 : 28, weight: .bold, design: .rounded))
+                        .font(.system(size: isCompact ? 18 : 28, weight: .bold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
                 }

@@ -342,12 +342,12 @@ private struct BoardDateSlider: View {
         } label: {
             VStack(spacing: 5) {
                 Text(day.formatted(.dateTime.month(.abbreviated)))
-                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .font(.system(.caption).weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
                 Text(day.formatted(.dateTime.day()))
-                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .font(.system(.title2).weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }

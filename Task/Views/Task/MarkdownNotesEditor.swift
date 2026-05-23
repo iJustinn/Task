@@ -109,9 +109,9 @@ struct MarkdownNotesEditor: View {
 
     private func headingFont(level: Int) -> Font {
         switch level {
-        case 1: return .system(.title2, design: .rounded)
-        case 2: return .system(.title3, design: .rounded)
-        default: return .system(.headline, design: .rounded)
+        case 1: return .system(.title2)
+        case 2: return .system(.title3)
+        default: return .system(.headline)
         }
     }
 

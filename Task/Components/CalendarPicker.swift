@@ -66,7 +66,7 @@ struct CalendarPicker: View {
     private var header: some View {
         HStack(spacing: 12) {
             Text(monthTitle)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
             Spacer()
@@ -82,7 +82,7 @@ struct CalendarPicker: View {
         HStack(spacing: 0) {
             ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity)
             }
@@ -161,7 +161,7 @@ struct CalendarPicker: View {
             stripBackground(state: state)
             endpointBackground(state: state, isToday: isToday, isEnabled: isEnabled)
             Text("\(day)")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .bold))
                 .foregroundColor(textColor(state: state, isEnabled: isEnabled))
         }
         .frame(maxWidth: .infinity)

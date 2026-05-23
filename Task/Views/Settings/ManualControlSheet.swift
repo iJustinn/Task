@@ -109,7 +109,7 @@ struct ManualControlSheet: View {
             HStack(spacing: 14) {
                 SettingsIconTile(systemName: "trash.fill", color: .red)
                 Text("Reset All Data")
-                    .font(.system(.headline, design: .rounded))
+                    .font(.system(.headline))
                     .fontWeight(.semibold)
                     .foregroundColor(.red)
                 Spacer()

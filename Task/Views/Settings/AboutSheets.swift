@@ -27,6 +27,12 @@ private struct AboutSectionDivider: View {
     }
 }
 
+private enum AboutBulletStyle {
+    static let leadingIndent: CGFloat = 32
+    static let markerSlotWidth: CGFloat = 14
+    static let markerSize: CGFloat = 6
+}
+
 struct AboutInfoCard: View {
     let section: AboutInfoSection
 
@@ -35,7 +41,7 @@ struct AboutInfoCard: View {
             HStack(spacing: 12) {
                 SettingsIconTile(systemName: section.systemImage, color: section.tintColor)
                 Text(section.title)
-                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .font(.system(.headline).weight(.bold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -45,16 +51,18 @@ struct AboutInfoCard: View {
                     HStack(alignment: .top, spacing: 10) {
                         Circle()
                             .fill(section.tintColor.opacity(0.72))
-                            .frame(width: 5, height: 5)
+                            .frame(width: AboutBulletStyle.markerSize, height: AboutBulletStyle.markerSize)
                             .padding(.top, 7)
+                            .frame(width: AboutBulletStyle.markerSlotWidth, alignment: .leading)
                         Text(detail)
-                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .font(.system(.subheadline).weight(.semibold))
                             .foregroundColor(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
+            .padding(.leading, AboutBulletStyle.leadingIndent)
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -69,27 +77,29 @@ struct AboutGuideCard: View {
             HStack(spacing: 14) {
                 SettingsIconTile(systemName: section.systemImage, color: section.tintColor)
                 Text(section.title)
-                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .font(.system(.headline).weight(.bold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(section.steps.enumerated()), id: \.offset) { index, step in
+                ForEach(section.steps.indices, id: \.self) { index in
+                    let step = section.steps[index]
                     HStack(alignment: .top, spacing: 10) {
-                        Text("\(index + 1)")
-                            .font(.caption.weight(.bold))
-                            .foregroundColor(section.tintColor)
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(section.tintColor.opacity(0.14)))
+                        Circle()
+                            .fill(section.tintColor.opacity(0.72))
+                            .frame(width: AboutBulletStyle.markerSize, height: AboutBulletStyle.markerSize)
+                            .padding(.top, 7)
+                            .frame(width: AboutBulletStyle.markerSlotWidth, alignment: .leading)
                         Text(step)
-                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .font(.system(.subheadline).weight(.semibold))
                             .foregroundColor(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
+            .padding(.leading, AboutBulletStyle.leadingIndent)
         }
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -446,14 +456,14 @@ struct CopyrightSheet: View {
                             HStack(spacing: 12) {
                                 SettingsIconTile(systemName: "c.circle.fill", color: .purple)
                                 Text("Copyright")
-                                    .font(.system(.headline, design: .rounded).weight(.bold))
+                                    .font(.system(.headline).weight(.bold))
                                     .foregroundColor(.primary)
                             }
                             Text("© 2026 iJustin. All rights reserved.")
-                                .font(.system(.headline, design: .rounded).weight(.semibold))
+                                .font(.system(.headline).weight(.semibold))
                                 .foregroundColor(.primary)
                             Text("Task is a personal productivity app inspired by Notion's Kanban view. Design language adapted from Coin and Body.")
-                                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                                .font(.system(.subheadline).weight(.semibold))
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }

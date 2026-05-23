@@ -15,6 +15,8 @@ struct StatusPickerSheet: View {
     @State private var draggingGroupID: UUID?
     @State private var dragSessionEnded: Bool = false
     @State private var pendingDelete: BoardGroup?
+    @State private var pendingEdit: BoardGroup?
+    @State private var editMode: Bool = false
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
     /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
@@ -25,6 +27,10 @@ struct StatusPickerSheet: View {
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
     private var isExpanded: Bool { selectedDetent == .large }
+    private var newGroupPreviewName: String {
+        let trimmed = newGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Status name" : trimmed
+    }
 
     var body: some View {
         NavigationStack {
@@ -43,7 +49,7 @@ struct StatusPickerSheet: View {
                             }
                         }
 
-                        if isExpanded && !deleteMode {
+                        if isExpanded && !deleteMode && !editMode {
                             Spacer(minLength: 24)
                             bottomActionRow
                         }
@@ -54,13 +60,15 @@ struct StatusPickerSheet: View {
                     .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle(deleteMode ? "Delete Status" : "Choose Status")
+            .navigationTitle(sheetTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
                         if deleteMode {
                             deleteMode = false
+                        } else if editMode {
+                            editMode = false
                         } else {
                             dismiss()
                         }
@@ -83,6 +91,9 @@ struct StatusPickerSheet: View {
                 }
                 .confirmationSheetPresentationStyle()
             }
+            .sheet(item: $pendingEdit, onDismiss: { editMode = false }) { group in
+                GroupMenuSheet(group: group, board: board)
+            }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
         .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
@@ -99,6 +110,12 @@ struct StatusPickerSheet: View {
             reorderWatchdog?.cancel()
             reorderWatchdog = nil
         }
+    }
+
+    private var sheetTitle: String {
+        if deleteMode { return "Delete Status" }
+        if editMode { return "Edit Status" }
+        return "Choose Status"
     }
 
     // MARK: - Reorder rollback
@@ -157,6 +174,10 @@ struct StatusPickerSheet: View {
                     }
                     return
                 }
+                if editMode {
+                    pendingEdit = group
+                    return
+                }
                 selection = group
                 dismiss()
             }
@@ -183,20 +204,17 @@ struct StatusPickerSheet: View {
     private func groupRowContent(_ group: BoardGroup) -> some View {
         let isSelected = selection?.id == group.id
         return HStack(alignment: .center, spacing: 12) {
-            Circle()
-                .fill(deleteMode ? Color.red : group.colorKey.dot)
-                .frame(width: 13, height: 13)
-                .frame(width: 34)
-
-            VStack(alignment: .leading, spacing: 5) {
+            if deleteMode {
                 Text(group.name)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(deleteMode ? .red : .primary)
-
-                Text("\(group.orderedTasks.count) tasks")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.red)
+            } else {
+                TagChip(name: group.name, colorKey: group.colorKey)
             }
+
+            Text("\(group.orderedTasks.count) tasks")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             Spacer(minLength: 12)
 
@@ -204,13 +222,17 @@ struct StatusPickerSheet: View {
                 Image(systemName: "trash")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.red)
+            } else if editMode {
+                Image(systemName: "pencil")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.accent)
             } else if isSelected {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.accent)
             }
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, 20)
     }
 
     private func beginDragGroup(_ group: BoardGroup) -> String {
@@ -223,29 +245,35 @@ struct StatusPickerSheet: View {
     }
 
     private var bottomActionRow: some View {
-        HStack {
-            Spacer(minLength: 0)
-            HStack(spacing: 34) {
-                deleteButton
-                addButton
+        VStack(spacing: 0) {
+            HStack {
+                Spacer(minLength: 0)
+                HStack(spacing: 34) {
+                    editButton
+                    addButton
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
             }
-            .fixedSize(horizontal: true, vertical: false)
-            Spacer(minLength: 0)
+            HStack {
+                Spacer(minLength: 0)
+                deleteButton
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 0)
+            }
         }
+    }
+
+    private var editButton: some View {
+        Button { editMode = true } label: {
+            SheetActionButtonLabel(title: "Edit a Status", systemName: "pencil", tintColor: .accentColor)
+        }
+        .buttonStyle(.plain)
     }
 
     private var deleteButton: some View {
         Button { deleteMode = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete a Status")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.red)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete a Status", systemName: "trash", tintColor: .red)
         }
         .buttonStyle(.plain)
         .disabled(!canDelete)
@@ -254,16 +282,7 @@ struct StatusPickerSheet: View {
 
     private var addButton: some View {
         Button { showAddGroup = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Add a Status")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.accent)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Add a Status", systemName: "plus", tintColor: .accentColor)
         }
         .buttonStyle(.plain)
     }
@@ -271,15 +290,11 @@ struct StatusPickerSheet: View {
     private var newGroupSheet: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
-                    SettingsCardSection("New Status") {
+                    SettingsCardSection {
                         VStack(alignment: .leading, spacing: 26) {
-                            HStack(spacing: 14) {
-                                SettingsIconTile(systemName: "circle.fill", color: newGroupColor.foreground)
-                                TextField("Status name", text: $newGroupName)
-                                    .font(.system(.headline, design: .rounded))
-                            }
+                            newGroupPreviewField
                             ColorSwatchPicker(selection: $newGroupColor)
                         }
                         .padding(.horizontal, 16)
@@ -300,6 +315,24 @@ struct StatusPickerSheet: View {
                         .disabled(newGroupName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
+        }
+    }
+
+    private var newGroupPreviewField: some View {
+        HStack {
+            Spacer(minLength: 0)
+            TagChip(name: newGroupPreviewName, colorKey: newGroupColor)
+                .overlay {
+                    TextField("", text: $newGroupName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.clear)
+                        .tint(newGroupColor.foreground)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.words)
+                        .accessibilityLabel("Status name")
+                }
+            Spacer(minLength: 0)
         }
     }
 

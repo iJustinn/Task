@@ -13,7 +13,7 @@ struct SettingsCardSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             if let title {
                 Text(title)
-                    .font(.system(.title, design: .rounded).weight(.bold))
+                    .font(.system(.title).weight(.bold))
                     .foregroundColor(.primary)
             }
             VStack(spacing: 0) {
@@ -62,7 +62,7 @@ struct SettingsRowLabel: View {
             SettingsIconTile(systemName: systemName, color: tintColor)
 
             Text(title)
-                .font(.system(.headline, design: .rounded))
+                .font(.system(.headline))
                 .fontWeight(.semibold)
                 .foregroundColor(dimmed ? .secondary : .primary)
                 .lineLimit(1)
@@ -72,7 +72,7 @@ struct SettingsRowLabel: View {
 
             if let value {
                 Text(value)
-                    .font(.system(.headline, design: .rounded))
+                    .font(.system(.headline))
                     .fontWeight(.semibold)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -116,7 +116,7 @@ struct SettingsButtonRow<Trailing: View>: View {
             HStack(spacing: 14) {
                 SettingsIconTile(systemName: systemName, color: tintColor)
                 Text(title)
-                    .font(.system(.headline, design: .rounded))
+                    .font(.system(.headline))
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
                 Spacer(minLength: 8)
@@ -128,5 +128,58 @@ struct SettingsButtonRow<Trailing: View>: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct SheetActionButtonLabel: View {
+    let title: LocalizedStringKey
+    let systemName: String
+    let tintColor: Color
+    var fillsWidth: Bool = false
+
+    @EnvironmentObject private var settings: SettingsViewModel
+
+    var body: some View {
+        HStack(spacing: settings.textSize.sheetActionSpacing) {
+            Image(systemName: systemName)
+                .font(.system(size: settings.textSize.sheetActionIconSize, weight: .bold))
+            Text(title)
+                .font(.system(size: settings.textSize.sheetActionTextSize, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(tintColor)
+        .frame(maxWidth: fillsWidth ? .infinity : nil)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+    }
+}
+
+private extension AppTextSize {
+    var sheetActionTextSize: CGFloat {
+        switch self {
+        case .small:      return 15.5
+        case .medium:     return 16.5
+        case .large:      return 17.5
+        case .extraLarge: return 18.5
+        }
+    }
+
+    var sheetActionIconSize: CGFloat {
+        switch self {
+        case .small:      return 13.5
+        case .medium:     return 14.5
+        case .large:      return 15.5
+        case .extraLarge: return 16.5
+        }
+    }
+
+    var sheetActionSpacing: CGFloat {
+        switch self {
+        case .small:      return 7
+        case .medium:     return 7
+        case .large:      return 8
+        case .extraLarge: return 8
+        }
     }
 }
