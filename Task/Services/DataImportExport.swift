@@ -162,6 +162,57 @@ struct ImportResult {
     static let failure = ImportResult(success: false)
 }
 
+enum ImportResultMessageFormatter {
+    static func successMessage(for outcome: ImportResult) -> String {
+        let summary = localizedFormat(
+            "Imported %1$lld %2$@ and %3$lld %4$@.",
+            outcome.boardCount,
+            unit(singular: "board", plural: "boards", count: outcome.boardCount),
+            outcome.taskCount,
+            unit(singular: "task", plural: "tasks", count: outcome.taskCount)
+        )
+        let warnings = [
+            orphanTaskMessage(count: outcome.orphanTasks),
+            orphanTagReferenceMessage(count: outcome.orphanTagRefs)
+        ].compactMap { $0 }
+
+        if warnings.isEmpty {
+            return summary
+        }
+        return summary + "\n\n" + warnings.joined(separator: "\n")
+    }
+
+    private static func orphanTaskMessage(count: Int) -> String? {
+        guard count > 0 else { return nil }
+        if count == 1 {
+            return localizedFormat(
+                "%lld task moved to the first group because its original group wasn't in the file.",
+                count
+            )
+        }
+        return localizedFormat(
+            "%lld tasks moved to the first group because their original groups weren't in the file.",
+            count
+        )
+    }
+
+    private static func orphanTagReferenceMessage(count: Int) -> String? {
+        guard count > 0 else { return nil }
+        if count == 1 {
+            return localizedFormat("%lld tag reference couldn't be resolved and was dropped.", count)
+        }
+        return localizedFormat("%lld tag references couldn't be resolved and were dropped.", count)
+    }
+
+    private static func unit(singular: String, plural: String, count: Int) -> String {
+        count == 1 ? singular : plural
+    }
+
+    private static func localizedFormat(_ key: String.LocalizationValue, _ arguments: CVarArg...) -> String {
+        String(format: String(localized: key), locale: .current, arguments: arguments)
+    }
+}
+
 struct DataStorageSummary: Equatable {
     var itemCount: Int
     var byteCount: Int

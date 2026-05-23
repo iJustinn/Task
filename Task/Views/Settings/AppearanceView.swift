@@ -15,7 +15,7 @@ private extension FlatSettingsChoice {
 }
 
 private struct FlatSettingsChoicePicker<Option: FlatSettingsChoice>: View {
-    let title: String
+    let title: LocalizedStringKey
     let options: [Option]
     @Binding var selection: Option
     @Environment(\.dismiss) private var dismiss

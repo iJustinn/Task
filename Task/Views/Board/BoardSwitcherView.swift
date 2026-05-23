@@ -188,10 +188,12 @@ struct BoardSwitcherView: View {
                     .foregroundStyle(deleteMode ? .red : .primary)
 
                 HStack(spacing: 6) {
-                    Text(board.subtitle.isEmpty ? "\(taskCount) tasks" : board.subtitle)
-                    if !board.subtitle.isEmpty {
+                    if board.subtitle.isEmpty {
+                        Text("^[\(taskCount) task](inflect: true)")
+                    } else {
+                        Text(board.subtitle)
                         Text("·")
-                        Text("\(taskCount) tasks")
+                        Text("^[\(taskCount) task](inflect: true)")
                     }
                 }
                 .font(.subheadline)

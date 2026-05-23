@@ -109,7 +109,7 @@ struct StatusPickerSheet: View {
         }
     }
 
-    private var sheetTitle: String {
+    private var sheetTitle: LocalizedStringKey {
         if deleteMode { return "Delete Status" }
         return "Choose Status"
     }
@@ -207,7 +207,7 @@ struct StatusPickerSheet: View {
                 TagChip(name: group.name, colorKey: group.colorKey)
             }
 
-            Text("\(group.orderedTasks.count) tasks")
+            Text("^[\(group.orderedTasks.count) task](inflect: true)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 

@@ -34,6 +34,10 @@ enum UpcomingSnapshotBuilder {
 
         let upcoming = allTasks.compactMap { task -> SharedDefaultsService.UpcomingSnapshotEntry? in
             guard overlapsWindow(task) else { return nil }
+            // Tasks the user has visibly checked off shouldn't keep prime real
+            // estate on the widget — drop them so checking in the app removes
+            // them from Upcoming Tasks.
+            if task.showsCheckbox && task.isChecked { return nil }
             guard let board = task.board else { return nil }
             return SharedDefaultsService.UpcomingSnapshotEntry(
                 id: task.id,

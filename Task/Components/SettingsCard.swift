@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct SettingsCardSection<Content: View>: View {
-    let title: String?
+    let title: LocalizedStringKey?
     private let content: Content
 
-    init(_ title: String? = nil, @ViewBuilder content: () -> Content) {
+    init(_ title: LocalizedStringKey? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.content = content()
     }
@@ -50,7 +50,10 @@ enum SettingsRowAccessory {
 }
 
 struct SettingsRowLabel: View {
-    let title: String
+    let title: LocalizedStringKey
+    /// Pre-resolved text — typically a dynamic value (app version, user choice
+    /// label). Static literals should be wrapped with `String(localized:)` at
+    /// the callsite so they translate.
     var value: String? = nil
     let systemName: String
     let tintColor: Color
@@ -105,7 +108,7 @@ struct SettingsRowLabel: View {
 }
 
 struct SettingsButtonRow<Trailing: View>: View {
-    let title: String
+    let title: LocalizedStringKey
     let systemName: String
     let tintColor: Color
     let action: () -> Void

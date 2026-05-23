@@ -279,7 +279,7 @@ struct SettingsView: View {
         SettingsCardSection("Data") {
             SettingsRowLabel(
                 title: "iCloud Sync",
-                value: "Coming Soon",
+                value: String(localized: "Coming Soon"),
                 systemName: "icloud.fill",
                 tintColor: .blue,
                 dimmed: true
@@ -527,21 +527,7 @@ struct SettingsView: View {
     }
 
     private func orphanMessage(for outcome: ImportResult) -> String? {
-        let summary = String(
-            localized: "Imported ^[\(outcome.boardCount) board](inflect: true) and ^[\(outcome.taskCount) task](inflect: true)."
-        )
-        let warnings = [
-            outcome.orphanTasks > 0 ? String(
-                localized: "^[\(outcome.orphanTasks) task](inflect: true) moved to the first group because their original group wasn't in the file."
-            ) : nil,
-            outcome.orphanTagRefs > 0 ? String(
-                localized: "^[\(outcome.orphanTagRefs) tag reference](inflect: true) couldn't be resolved and were dropped."
-            ) : nil
-        ].compactMap { $0 }
-        if warnings.isEmpty {
-            return summary
-        }
-        return summary + "\n\n" + warnings.joined(separator: "\n")
+        ImportResultMessageFormatter.successMessage(for: outcome)
     }
 
     private func performReset() {

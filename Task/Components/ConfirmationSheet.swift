@@ -3,10 +3,10 @@ import SwiftUI
 struct ConfirmationSheet: View {
     let icon: String
     let iconTint: Color
-    let title: String
-    let message: String
-    var confirmLabel: String = "Delete"
-    var cancelLabel: String = "Cancel"
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
+    var confirmLabel: LocalizedStringKey = "Delete"
+    var cancelLabel: LocalizedStringKey = "Cancel"
     var isDestructive: Bool = true
     let onConfirm: () -> Void
 

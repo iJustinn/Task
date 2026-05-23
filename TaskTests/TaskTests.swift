@@ -137,6 +137,40 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(current.isChecked)
     }
 
+    func testImportSuccessMessageDoesNotExposeInflectionMarkup() {
+        let outcome = ImportResult(success: true, boardCount: 3, taskCount: 375)
+
+        let message = ImportResultMessageFormatter.successMessage(for: outcome)
+
+        XCTAssertEqual(message, "Imported 3 boards and 375 tasks.")
+        XCTAssertFalse(message.contains("^["))
+        XCTAssertFalse(message.contains("inflect: true"))
+    }
+
+    func testImportSuccessMessageFormatsSingularAndWarnings() {
+        let outcome = ImportResult(
+            success: true,
+            boardCount: 1,
+            taskCount: 1,
+            orphanTasks: 1,
+            orphanTagRefs: 2
+        )
+
+        let message = ImportResultMessageFormatter.successMessage(for: outcome)
+
+        XCTAssertEqual(
+            message,
+            """
+            Imported 1 board and 1 task.
+
+            1 task moved to the first group because its original group wasn't in the file.
+            2 tag references couldn't be resolved and were dropped.
+            """
+        )
+        XCTAssertFalse(message.contains("^["))
+        XCTAssertFalse(message.contains("inflect: true"))
+    }
+
     func testStorageSummaryCountsAppDataModelsAndExportBytes() throws {
         let container = try makeContainer()
         let context = container.mainContext
@@ -407,6 +441,38 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(settings.textSize, .medium)
     }
 
+    func testNotesPreviewUsesNewStorageKeyAndFallsBackToLegacyKey() {
+        let defaults = UserDefaults.standard
+        let newKey = "task.notesPreview"
+        let legacyKey = "task.notesPreviewEnabled"
+        let originalNew = defaults.string(forKey: newKey)
+        let originalLegacy = defaults.string(forKey: legacyKey)
+        defer {
+            if let originalNew {
+                defaults.set(originalNew, forKey: newKey)
+            } else {
+                defaults.removeObject(forKey: newKey)
+            }
+            if let originalLegacy {
+                defaults.set(originalLegacy, forKey: legacyKey)
+            } else {
+                defaults.removeObject(forKey: legacyKey)
+            }
+        }
+
+        defaults.set(AppNotesPreview.oneLine.rawValue, forKey: legacyKey)
+        defaults.set(AppNotesPreview.threeLines.rawValue, forKey: newKey)
+        XCTAssertEqual(SettingsViewModel().notesPreview, .threeLines)
+
+        defaults.removeObject(forKey: newKey)
+        XCTAssertEqual(SettingsViewModel().notesPreview, .oneLine)
+
+        let settings = SettingsViewModel()
+        settings.notesPreview = .twoLines
+        XCTAssertEqual(defaults.string(forKey: newKey), AppNotesPreview.twoLines.rawValue)
+        XCTAssertEqual(defaults.string(forKey: legacyKey), AppNotesPreview.oneLine.rawValue)
+    }
+
     func testColorKeyRoundTrip() {
         for key in ColorKey.allCases {
             let raw = key.rawValue
@@ -415,16 +481,7 @@ final class TaskTests: XCTestCase {
     }
 
     func testStringCatalogHasTranslatedZhHansForActiveKeys() throws {
-        let testFile = URL(fileURLWithPath: #filePath)
-        let projectRoot = testFile.deletingLastPathComponent().deletingLastPathComponent()
-        let catalogURL = projectRoot.appending(path: "Task/Localizable.xcstrings")
-        let data = try Data(contentsOf: catalogURL)
-        let rawJSON = try JSONSerialization.jsonObject(with: data)
-        guard let catalog = rawJSON as? [String: Any],
-              let strings = catalog["strings"] as? [String: [String: Any]] else {
-            XCTFail("Localizable.xcstrings has an unexpected shape")
-            return
-        }
+        let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
 
         let requiredKeys = [
             "Reminder time has already passed today — this reminder won't fire. Pick a future date or change Reminder Time in Settings."
@@ -448,6 +505,52 @@ final class TaskTests: XCTestCase {
         }
 
         XCTAssertTrue(missing.isEmpty, "Missing zh-Hans translations: \(missing.sorted().joined(separator: ", "))")
+    }
+
+    func testTaskEditorVisibleLabelsAreActiveInStringCatalog() throws {
+        let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
+        let visibleLabels = [
+            "Status",
+            "Tags",
+            "Working",
+            "Due Date",
+            "Reminder",
+            "Checkbox",
+            "Repeat",
+            "End Date"
+        ]
+
+        let missingOrStale = visibleLabels.filter { key in
+            guard let entry = strings[key] else { return true }
+            return entry["extractionState"] as? String == "stale"
+        }
+
+        XCTAssertTrue(missingOrStale.isEmpty, "Visible task editor labels missing or stale: \(missingOrStale.joined(separator: ", "))")
+    }
+
+    func testWidgetStringCatalogIncludesMetadataKeys() throws {
+        let strings = try loadStringCatalog(relativePath: "TaskWidgetExtension/Localizable.xcstrings")
+        let requiredKeys = [
+            "%lld upcoming",
+            "Background",
+            "Black",
+            "Board",
+            "Choose Board and Status",
+            "Default",
+            "No upcoming",
+            "No upcoming tasks",
+            "Pick which board and status the widget shows. Leave empty to see tasks from every board or status.",
+            "See tasks with a working or due date in the next seven days. Choose a board or show all of them.",
+            "Status",
+            "Untitled",
+            "Upcoming",
+            "Upcoming Tasks",
+            "White"
+        ]
+
+        let missing = requiredKeys.filter { strings[$0] == nil }
+
+        XCTAssertTrue(missing.isEmpty, "Missing widget catalog keys: \(missing.joined(separator: ", "))")
     }
 
     func testCardNotesPreviewParsesTaskLinesAsTypedRows() {
@@ -533,6 +636,20 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(SwipeToEditRowMetrics.shouldOpenEdit(for: CGSize(width: -72, height: 8)))
         XCTAssertFalse(SwipeToEditRowMetrics.shouldOpenEdit(for: CGSize(width: -42, height: 4)))
         XCTAssertFalse(SwipeToEditRowMetrics.shouldOpenEdit(for: CGSize(width: -72, height: 60)))
+    }
+
+    private func loadStringCatalog(relativePath: String) throws -> [String: [String: Any]] {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = testFile.deletingLastPathComponent().deletingLastPathComponent()
+        let catalogURL = projectRoot.appending(path: relativePath)
+        let data = try Data(contentsOf: catalogURL)
+        let rawJSON = try JSONSerialization.jsonObject(with: data)
+        guard let catalog = rawJSON as? [String: Any],
+              let strings = catalog["strings"] as? [String: [String: Any]] else {
+            XCTFail("\(relativePath) has an unexpected shape")
+            return [:]
+        }
+        return strings
     }
 }
 

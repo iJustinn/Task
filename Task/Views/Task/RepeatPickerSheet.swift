@@ -53,7 +53,7 @@ struct RepeatPickerSheet: View {
             HStack(alignment: .center, spacing: 12) {
                 TagChip(name: rule.displayName, colorKey: .gray)
 
-                Text("\(taskCount(for: rule)) tasks")
+                Text("^[\(taskCount(for: rule)) task](inflect: true)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 

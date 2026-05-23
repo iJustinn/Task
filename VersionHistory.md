@@ -1,6 +1,6 @@
 # Version History
 
-## 0.4.7 (build 5) — 2026-05-23
+## 0.4.7 (build 6) — 2026-05-23
 
 Task editing, status/tag management, Markdown notes, and app-wide text polish.
 
@@ -54,7 +54,7 @@ Task editing, status/tag management, Markdown notes, and app-wide text polish.
 
 ### Versioning
 
-- Build number bumped to `5` for version `0.4.7`.
+- Build number bumped to `6` for version `0.4.7`.
 
 ## 0.4.6 (build 4) — 2026-05-22
 
@@ -100,7 +100,7 @@ Multi-board support across the app, the settings, and the home-screen widget.
 
 ### Testdata
 
-- `TestData/testdata.json` regenerated for the three default boards (125 tasks each) with realistic date distribution (overdue / today / this week / later this month) and notes/reminder/tag mixes. Preserves board / group / tag IDs so re-imports update in place.
+- `TestData/testdata-01.json` and `TestData/testdata-02.json` cover the three default boards (125 tasks each) with realistic date distribution (overdue / today / this week / later this month) and notes/reminder/tag mixes. Preserves board / group / tag IDs so re-imports update in place.
 
 ## 0.3.0 (build 2) — 2026-05-20
 

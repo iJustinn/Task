@@ -390,7 +390,7 @@ struct TaskDetailView: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Reset to next occurrence"))
+                    .accessibilityLabel(Text("Advance to next occurrence"))
                 }
             }
         }
@@ -401,7 +401,7 @@ struct TaskDetailView: View {
     @ViewBuilder
     private func propertyRow<Content: View>(
         icon: String,
-        label: String,
+        label: LocalizedStringKey,
         valueAlignment: Alignment = .leading,
         @ViewBuilder value: () -> Content
     ) -> some View {

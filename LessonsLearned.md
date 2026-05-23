@@ -613,6 +613,14 @@ The generated day window must always include the current focus day when it is wi
 
 When recentering the date slider on reopen, drive it from a parent-owned open token and set the bound `scrollPosition` through `nil` before applying the target on the next main-queue tick. Reassigning the same `Date` target is a no-op for `.scrollPosition(id:anchor:)`, so SwiftUI can preserve the old horizontal offset instead of centering the focus day again.
 
+### 2026-05-23 - Redirect raw JSON through rtk proxy
+
+- Context: Generating `TestData/testdata-02.json` from `TestData/testdata.json` with `jq`.
+- Symptom: `jq empty TestData/testdata-02.json` failed with `Invalid numeric literal` after a redirected `rtk jq` command.
+- Cause: RTK's filtered stdout wrote a truncation marker into the redirected JSON file.
+- Fix: Use `rtk proxy jq ... > file` for commands where stdout is the artifact, then validate with `rtk jq empty`.
+- Reuse: Any time a generated fixture, report, or source file is created from command stdout.
+
 ## Things to do later
 
 - **iCloud sync** — enable `cloudKitDatabase: .private` on `ModelConfiguration` and add the CloudKit entitlement. Schema is already compatible.

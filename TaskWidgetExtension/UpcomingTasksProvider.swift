@@ -33,7 +33,16 @@ struct UpcomingTasksProvider: AppIntentTimelineProvider {
 
     private func filter(_ snapshot: WidgetUpcomingSnapshot, by config: BoardConfigurationIntent) -> WidgetUpcomingSnapshot {
         let boardID = config.board?.id
-        let statusID = config.status?.id
+        // If the user picked a status from a different board than the
+        // configured board, the AND of the two filters can never match.
+        // Drop the status filter in that case so the widget surfaces the
+        // board's tasks instead of locking into a permanent "No upcoming".
+        let effectiveStatus: StatusEntity? = {
+            guard let status = config.status else { return nil }
+            if let boardID, status.boardID != boardID { return nil }
+            return status
+        }()
+        let statusID = effectiveStatus?.id
         guard boardID != nil || statusID != nil else { return snapshot }
 
         var filtered = snapshot

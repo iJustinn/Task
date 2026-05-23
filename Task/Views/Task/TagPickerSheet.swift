@@ -119,7 +119,7 @@ struct TagPickerSheet: View {
         }
     }
 
-    private var sheetTitle: String {
+    private var sheetTitle: LocalizedStringKey {
         if deleteMode { return "Delete Tag" }
         return "Choose Tags"
     }
@@ -214,7 +214,7 @@ struct TagPickerSheet: View {
                 TagChip(name: tag.name, colorKey: tag.colorKey)
             }
 
-            Text("\(tag.tasks?.count ?? 0) tasks")
+            Text("^[\(tag.tasks?.count ?? 0) task](inflect: true)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
