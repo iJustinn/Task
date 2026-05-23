@@ -3,7 +3,7 @@ import UIKit
 
 struct MarkdownNotesEditor: View {
     @Binding var text: String
-    var placeholder: String = "Add notes"
+    var placeholder: String = String(localized: "Add notes")
 
     @State private var isEditing: Bool = false
     @State private var editorFocused: Bool = false

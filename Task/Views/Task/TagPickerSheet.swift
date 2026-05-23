@@ -354,7 +354,12 @@ struct TagPickerSheet: View {
     private func addTag() {
         let trimmed = newTagName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        if board.orderedTags.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+        if let existing = board.orderedTags.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            // Mirror StatusPickerSheet.addGroup: select the existing tag instead
+            // of silently dropping the user's input on a duplicate name.
+            if !selection.contains(where: { $0.id == existing.id }) {
+                selection.append(existing)
+            }
             newTagName = ""
             showAddTag = false
             return

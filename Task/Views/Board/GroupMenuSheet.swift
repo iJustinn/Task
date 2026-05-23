@@ -19,7 +19,7 @@ struct GroupMenuSheet: View {
     private var isExpanded: Bool { selectedDetent == .large }
     private var canChangeDefaultStatus: Bool { board.orderedGroups.count > 1 }
     private var currentDefaultStatusName: String {
-        board.defaultGroup?.name ?? "None"
+        board.defaultGroup?.name ?? String(localized: "None")
     }
     private var previewName: String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

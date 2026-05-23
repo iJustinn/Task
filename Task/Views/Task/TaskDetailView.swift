@@ -307,18 +307,36 @@ struct TaskDetailView: View {
                     .disabled(workingStart == nil && dueDate == nil)
             }
             if hasReminder, settings.notificationsAuthorized == false {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                    Text("Notifications are off for Task. Enable them in iOS Settings or this reminder won't fire.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.leading, 32)
+                reminderWarning("Notifications are off for Task. Enable them in iOS Settings or this reminder won't fire.")
+            }
+            if hasReminder, reminderFireDateInPast {
+                reminderWarning("Reminder time has already passed today — this reminder won't fire. Pick a future date or change Reminder Time in Settings.")
             }
         }
+    }
+
+    private func reminderWarning(_ message: LocalizedStringKey) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.leading, 32)
+    }
+
+    /// `true` when a non-repeating reminder's resolved fire time (anchor +
+    /// board reminder hour/minute) is already in the past. Drives an inline
+    /// warning so the silent `hasReminder` clear in `save()` isn't a
+    /// surprise — the user sees, before tapping Save, that today won't
+    /// deliver.
+    private var reminderFireDateInPast: Bool {
+        guard hasReminder, repeatRule == .none else { return false }
+        guard let fire = candidateFireDate() else { return false }
+        return fire <= Date()
     }
 
     private var repeatRow: some View {

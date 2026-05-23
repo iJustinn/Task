@@ -341,12 +341,12 @@ private struct BoardDateSlider: View {
             }
         } label: {
             VStack(spacing: 5) {
-                Text(day.formatted(.dateTime.month(.abbreviated)))
+                Text(day.formatted(.dateTime.month(.abbreviated).locale(TaskDateFormat.locale)))
                     .font(.system(.caption).weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
-                Text(day.formatted(.dateTime.day()))
+                Text(day.formatted(.dateTime.day().locale(TaskDateFormat.locale)))
                     .font(.system(.title2).weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -367,7 +367,7 @@ private struct BoardDateSlider: View {
             .contentShape(RoundedRectangle(cornerRadius: tileCornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+        .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day().year().locale(TaskDateFormat.locale)))
         .accessibilityHint(isSelected ? Text("Show all tasks") : Text("Filter tasks by this date"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

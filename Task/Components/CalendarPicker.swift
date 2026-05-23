@@ -328,7 +328,7 @@ struct CalendarPicker: View {
     }
 
     private var monthTitle: String {
-        visibleMonthStart.formatted(.dateTime.month(.wide).year())
+        visibleMonthStart.formatted(.dateTime.month(.wide).year().locale(TaskDateFormat.locale))
     }
 
     private var canMovePrev: Bool {

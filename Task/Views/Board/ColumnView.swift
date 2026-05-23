@@ -2,6 +2,11 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
+/// Drag payload prefix for a group header (the rest is the group's UUID
+/// string). Tasks drag the bare UUID; the column drop handler peels this
+/// prefix to disambiguate.
+private let groupDragPrefix = "group:"
+
 struct ColumnView: View {
     let group: BoardGroup
     var width: CGFloat = 220
@@ -23,7 +28,6 @@ struct ColumnView: View {
     @State private var visibleCount: Int = 10
     @State private var animateIn: Bool = false
 
-    private let groupDragPrefix = "group:"
     private let pageSize: Int = 10
 
     private var currentTasks: [TaskItem] {
@@ -263,8 +267,8 @@ private struct TaskRowDropDelegate: DropDelegate {
             DispatchQueue.main.async {
                 defer { cleanup() }
                 guard let raw = resolved else { return }
-                if raw.hasPrefix("group:") {
-                    let stripped = String(raw.dropFirst("group:".count))
+                if raw.hasPrefix(groupDragPrefix) {
+                    let stripped = String(raw.dropFirst(groupDragPrefix.count))
                     if let gid = UUID(uuidString: stripped),
                        let g = findGroup(gid),
                        g.id != targetGroup.id {

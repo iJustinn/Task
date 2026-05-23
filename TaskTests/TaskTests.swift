@@ -253,6 +253,42 @@ final class TaskTests: XCTestCase {
         }
     }
 
+    func testStringCatalogHasTranslatedZhHansForActiveKeys() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = testFile.deletingLastPathComponent().deletingLastPathComponent()
+        let catalogURL = projectRoot.appending(path: "Task/Localizable.xcstrings")
+        let data = try Data(contentsOf: catalogURL)
+        let rawJSON = try JSONSerialization.jsonObject(with: data)
+        guard let catalog = rawJSON as? [String: Any],
+              let strings = catalog["strings"] as? [String: [String: Any]] else {
+            XCTFail("Localizable.xcstrings has an unexpected shape")
+            return
+        }
+
+        let requiredKeys = [
+            "Reminder time has already passed today — this reminder won't fire. Pick a future date or change Reminder Time in Settings."
+        ]
+
+        for key in requiredKeys {
+            XCTAssertNotNil(strings[key], "Missing string catalog key: \(key)")
+        }
+
+        let missing = strings.compactMap { key, value -> String? in
+            if value["extractionState"] as? String == "stale" {
+                return nil
+            }
+            guard let localizations = value["localizations"] as? [String: Any],
+                  let zhHans = localizations["zh-Hans"] as? [String: Any],
+                  let stringUnit = zhHans["stringUnit"] as? [String: Any],
+                  stringUnit["state"] as? String == "translated" else {
+                return key
+            }
+            return nil
+        }
+
+        XCTAssertTrue(missing.isEmpty, "Missing zh-Hans translations: \(missing.sorted().joined(separator: ", "))")
+    }
+
     func testCardNotesPreviewParsesTaskLinesAsTypedRows() {
         let lines = cardNotesPreviewLines(
             from: """

@@ -378,7 +378,7 @@ struct ReminderTimePickerSheet: View {
                 if uses24Hour {
                     key(String(localized: "AM/PM"), isCompact: true, isDisabled: true) {}
                 } else {
-                    key(isPM ? "PM" : "AM", isCompact: true) { isPM.toggle() }
+                    key(isPM ? String(localized: "PM") : String(localized: "AM"), isCompact: true) { isPM.toggle() }
                 }
                 key(systemImage: "checkmark", isPrimary: true) { applyAndDismiss() }
             }
@@ -468,15 +468,20 @@ struct ReminderTimePickerSheet: View {
         if changed {
             // Existing UNCalendarNotificationTriggers were anchored to the old hour/
             // minute at scheduling time. Re-schedule every active reminder on this
-            // board so they pick up the new time of day.
-            rescheduleReminders()
+            // board so they pick up the new time of day. Snapshot now and run the loop
+            // asynchronously so the sheet dismisses immediately even on a large board.
+            let pending = (board.tasks ?? []).filter(\.hasReminder)
+            Task { @MainActor in await rescheduleReminders(pending) }
         }
         dismiss()
     }
 
-    private func rescheduleReminders() {
-        for task in (board.tasks ?? []) where task.hasReminder {
+    private func rescheduleReminders(_ tasks: [TaskItem]) async {
+        for (idx, task) in tasks.enumerated() {
             NotificationService.schedule(for: task)
+            if idx % 50 == 49 {
+                await Task.yield()
+            }
         }
     }
 }
