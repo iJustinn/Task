@@ -2,15 +2,12 @@ import SwiftUI
 
 struct TaskCardView: View {
     let task: TaskItem
+    var onToggleChecked: (() -> Void)? = nil
     @EnvironmentObject private var settings: SettingsViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            titleRow
 
             if let tags = task.tags, !tags.isEmpty {
                 FlowLayout(spacing: 4, lineSpacing: 4) {
@@ -82,6 +79,46 @@ struct TaskCardView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color(uiColor: .systemGray5), lineWidth: 0.5)
         )
+    }
+
+    private var titleRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            if task.showsCheckbox {
+                checkboxControl
+            }
+
+            Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isVisiblyChecked ? .secondary : .primary)
+                .strikethrough(isVisiblyChecked, color: .secondary)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var isVisiblyChecked: Bool {
+        task.showsCheckbox && task.isChecked
+    }
+
+    @ViewBuilder
+    private var checkboxControl: some View {
+        if let onToggleChecked {
+            Button(action: onToggleChecked) {
+                checkboxImage
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isVisiblyChecked ? Text("Mark task not done") : Text("Mark task done"))
+        } else {
+            checkboxImage
+        }
+    }
+
+    private var checkboxImage: some View {
+        Image(systemName: isVisiblyChecked ? "checkmark.square.fill" : "square")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isVisiblyChecked ? Color.accentColor : .secondary)
+            .frame(width: 18, alignment: .center)
     }
 
     private var footerDividerLine: some View {

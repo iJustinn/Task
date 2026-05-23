@@ -25,8 +25,10 @@ struct WidgetUpcomingEntry: Codable, Identifiable {
     var dueDate: Date?
     var workingStart: Date?
     var workingEnd: Date?
+    var groupID: UUID?
     var groupName: String
     var groupColorKey: String
+    var groupSortIndex: Int?
     var boardID: UUID?
     var boardEmoji: String?
     var boardTitle: String?
@@ -53,10 +55,21 @@ struct WidgetBoardListEntry: Codable, Identifiable {
     var iconEmoji: String
 }
 
+struct WidgetStatusListEntry: Codable, Identifiable {
+    var id: UUID
+    var boardID: UUID
+    var boardEmoji: String
+    var boardTitle: String
+    var name: String
+    var colorKey: String
+    var sortIndex: Int
+}
+
 enum WidgetSharedDefaults {
     static let appGroupIdentifier = "group.com.ijustin.task"
     static let upcomingSnapshotKey = "task.upcomingSnapshot"
     static let boardListKey = "task.boardList"
+    static let statusListKey = "task.statusList"
 
     static func read() -> WidgetUpcomingSnapshot {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
@@ -73,5 +86,12 @@ enum WidgetSharedDefaults {
               let data = defaults.data(forKey: boardListKey) else { return [] }
         let decoder = JSONDecoder()
         return (try? decoder.decode([WidgetBoardListEntry].self, from: data)) ?? []
+    }
+
+    static func readStatusList() -> [WidgetStatusListEntry] {
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier),
+              let data = defaults.data(forKey: statusListKey) else { return [] }
+        let decoder = JSONDecoder()
+        return (try? decoder.decode([WidgetStatusListEntry].self, from: data)) ?? []
     }
 }

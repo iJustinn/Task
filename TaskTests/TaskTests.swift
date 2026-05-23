@@ -53,6 +53,8 @@ final class TaskTests: XCTestCase {
         task.dueDate = dueDate
         task.hasReminder = true
         task.repeatRule = .weekly
+        task.showsCheckbox = true
+        task.isChecked = true
 
         let duplicate = task.duplicated(sortIndex: 5)
 
@@ -68,6 +70,48 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(duplicate.dueDate, dueDate)
         XCTAssertTrue(duplicate.hasReminder)
         XCTAssertEqual(duplicate.repeatRule, RepeatRule.weekly)
+        XCTAssertTrue(duplicate.showsCheckbox)
+        XCTAssertTrue(duplicate.isChecked)
+    }
+
+    func testTaskExportDecodesCheckboxFieldsAndDefaultsLegacyPayloadsToOff() throws {
+        let id = UUID()
+        let createdAt = "2026-05-23T00:00:00Z"
+        let updatedAt = "2026-05-23T01:00:00Z"
+
+        let legacyJSON = """
+        {
+          "id": "\(id.uuidString)",
+          "title": "Legacy",
+          "notes": "",
+          "hasReminder": false,
+          "sortIndex": 0,
+          "createdAt": "\(createdAt)",
+          "updatedAt": "\(updatedAt)",
+          "tagIDs": []
+        }
+        """
+        let legacy = try DataImportExport.makeDecoder().decode(TaskExport.self, from: Data(legacyJSON.utf8))
+        XCTAssertFalse(legacy.showsCheckbox)
+        XCTAssertFalse(legacy.isChecked)
+
+        let currentJSON = """
+        {
+          "id": "\(id.uuidString)",
+          "title": "Current",
+          "notes": "",
+          "hasReminder": false,
+          "showsCheckbox": true,
+          "isChecked": true,
+          "sortIndex": 0,
+          "createdAt": "\(createdAt)",
+          "updatedAt": "\(updatedAt)",
+          "tagIDs": []
+        }
+        """
+        let current = try DataImportExport.makeDecoder().decode(TaskExport.self, from: Data(currentJSON.utf8))
+        XCTAssertTrue(current.showsCheckbox)
+        XCTAssertTrue(current.isChecked)
     }
 
     func testBoardDefaultGroupToggleSetsAndMovesDefaultWhenDisabled() {
@@ -223,6 +267,76 @@ final class TaskTests: XCTestCase {
         let task = TaskItem(title: "Due", notes: "")
         task.dueDate = date
         return task
+    }
+
+    func testUpcomingSnapshotSortPrioritizesStatusOrderBeforeDate() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let sooner = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+        let later = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 24)))
+
+        let pendingSooner = SharedDefaultsService.UpcomingSnapshotEntry(
+            id: UUID(),
+            title: "Pending sooner",
+            dueDate: sooner,
+            workingStart: nil,
+            workingEnd: nil,
+            groupName: "Pending",
+            groupColorKey: ColorKey.yellow.rawValue,
+            groupSortIndex: 2,
+            boardID: UUID(),
+            boardEmoji: "🏃",
+            boardTitle: "Personal"
+        )
+        let waitingLater = SharedDefaultsService.UpcomingSnapshotEntry(
+            id: UUID(),
+            title: "Waiting later",
+            dueDate: later,
+            workingStart: nil,
+            workingEnd: nil,
+            groupName: "Waiting",
+            groupColorKey: ColorKey.blue.rawValue,
+            groupSortIndex: 0,
+            boardID: UUID(),
+            boardEmoji: "🏃",
+            boardTitle: "Personal"
+        )
+
+        let sorted = UpcomingSnapshotBuilder.sortedEntries([pendingSooner, waitingLater])
+
+        XCTAssertEqual(sorted.map(\.title), ["Waiting later", "Pending sooner"])
+    }
+
+    func testWidgetStatusListUsesBoardAndStatusOrder() {
+        let personal = Board(title: "Personal")
+        personal.iconEmoji = "🏃"
+        personal.sortIndex = 1
+        let personalDoing = BoardGroup(name: "Doing", colorKey: .red, sortIndex: 1)
+        let personalWaiting = BoardGroup(name: "Waiting", colorKey: .blue, sortIndex: 0)
+        personal.groups = [personalDoing, personalWaiting]
+
+        let work = Board(title: "Work")
+        work.iconEmoji = "💼"
+        work.sortIndex = 0
+        let workDone = BoardGroup(name: "Done", colorKey: .green, sortIndex: 1)
+        let workWaiting = BoardGroup(name: "Waiting", colorKey: .yellow, sortIndex: 0)
+        work.groups = [workDone, workWaiting]
+
+        let statuses = UpcomingSnapshotBuilder.statusListEntries(from: [personal, work])
+
+        XCTAssertEqual(statuses.map { "\($0.boardTitle):\($0.name)" }, [
+            "Work:Waiting",
+            "Work:Done",
+            "Personal:Waiting",
+            "Personal:Doing"
+        ])
+        XCTAssertEqual(statuses.map(\.boardID), [work.id, work.id, personal.id, personal.id])
+        XCTAssertEqual(statuses.map(\.boardEmoji), ["💼", "💼", "🏃", "🏃"])
+        XCTAssertEqual(statuses.map(\.colorKey), [
+            ColorKey.yellow.rawValue,
+            ColorKey.green.rawValue,
+            ColorKey.blue.rawValue,
+            ColorKey.red.rawValue
+        ])
     }
 
     func testTextSizeSettingsAreShiftedOneSizeUpAndDefaultToMedium() {

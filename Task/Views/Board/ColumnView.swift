@@ -15,6 +15,7 @@ struct ColumnView: View {
     let dateFilter: Date?
     let dateFilterTarget: AppDateFilterTarget
     let isDefaultStatus: Bool
+    @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
     @Binding var draggingTaskID: UUID?
     @Binding var dragSessionEnded: Bool
@@ -74,7 +75,9 @@ struct ColumnView: View {
                 let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)"
                 let _ = sortKey // forces dependency for re-render
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
-                    TaskCardView(task: task)
+                    TaskCardView(task: task) {
+                        toggleTaskChecked(task)
+                    }
                         .contentShape(Rectangle())
                         .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .onTapGesture { onTapTask(task) }
@@ -154,6 +157,16 @@ struct ColumnView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .padding(.horizontal, 8)
+    }
+
+    private func toggleTaskChecked(_ task: TaskItem) {
+        guard task.showsCheckbox else { return }
+        withAnimation(.easeInOut(duration: 0.16)) {
+            task.isChecked.toggle()
+            task.touch()
+        }
+        try? context.save()
+        UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }
 
     private var emptyStateText: String {

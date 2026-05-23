@@ -32,9 +32,16 @@ struct UpcomingTasksProvider: AppIntentTimelineProvider {
     }
 
     private func filter(_ snapshot: WidgetUpcomingSnapshot, by config: BoardConfigurationIntent) -> WidgetUpcomingSnapshot {
-        guard let boardID = config.board?.id else { return snapshot }
+        let boardID = config.board?.id
+        let statusID = config.status?.id
+        guard boardID != nil || statusID != nil else { return snapshot }
+
         var filtered = snapshot
-        filtered.entries = snapshot.entries.filter { $0.boardID == boardID }
+        filtered.entries = snapshot.entries.filter { entry in
+            if let boardID, entry.boardID != boardID { return false }
+            if let statusID, entry.groupID != statusID { return false }
+            return true
+        }
         return filtered
     }
 }

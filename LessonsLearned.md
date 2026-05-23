@@ -581,11 +581,13 @@ Do not bring back drag-to-trash zones for these picker sheets. Reorder stays on 
 
 ### Multi-board widget configuration
 
-`UpcomingTasksWidget` switched from `StaticConfiguration` to `AppIntentConfiguration(intent: BoardConfigurationIntent.self, provider:)`. The provider is now an `AppIntentTimelineProvider`. The intent has a single `@Parameter var board: BoardEntity?` — `nil` means "All Boards".
+`UpcomingTasksWidget` switched from `StaticConfiguration` to `AppIntentConfiguration(intent: BoardConfigurationIntent.self, provider:)`. The provider is now an `AppIntentTimelineProvider`. The intent uses optional board/status/background parameters; `nil` means "All Boards" or "All Statuses" for filters.
 
-`BoardEntity` / `BoardEntityQuery` populate the picker by reading a `BoardListEntry[]` from the App Group's shared defaults. The app writes this list (id + title + iconEmoji) every time it writes the upcoming snapshot, so the widget edit sheet always shows current boards.
+All `WidgetConfigurationIntent` parameters must be optional, including fixed `AppEnum` choices. If adding a setting such as `@Parameter var background: WidgetBackgroundStyle?`, render `nil` as the default in the widget view. A non-optional parameter fails the AppIntents metadata export with "Encountered a non-optional type for parameter".
 
-Each snapshot entry now carries `boardID`, `boardEmoji`, and `boardTitle`. The provider filters entries by the configured board (or returns all). When "All Boards" is selected, the widget UI shows the board emoji on each row for disambiguation.
+`BoardEntity` / `BoardEntityQuery` populate the picker by reading a `BoardListEntry[]` from the App Group's shared defaults. `StatusEntity` / `StatusEntityQuery` do the same with `StatusListEntry[]`. The app writes these lists every time it writes the upcoming snapshot, so the widget edit sheet always shows current boards and statuses.
+
+Each snapshot entry now carries `boardID`, `boardEmoji`, `boardTitle`, and `groupID`. The provider filters entries by configured board and/or status, returning all when those parameters are empty. When "All Boards" is selected, the widget UI shows the board emoji on each row for disambiguation.
 
 ### Multi-board import/export
 

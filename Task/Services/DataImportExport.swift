@@ -74,6 +74,8 @@ struct TaskExport: Codable {
     var workingEnd: Date?
     var dueDate: Date?
     var hasReminder: Bool
+    var showsCheckbox: Bool
+    var isChecked: Bool
     var repeatRule: String?
     var sortIndex: Int
     var createdAt: Date
@@ -83,7 +85,7 @@ struct TaskExport: Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, notes, workingStart, workingEnd, dueDate, hasReminder
-        case repeatRule, sortIndex, createdAt, updatedAt, groupID, tagIDs
+        case showsCheckbox, isChecked, repeatRule, sortIndex, createdAt, updatedAt, groupID, tagIDs
     }
 
     init(
@@ -94,6 +96,8 @@ struct TaskExport: Codable {
         workingEnd: Date?,
         dueDate: Date?,
         hasReminder: Bool,
+        showsCheckbox: Bool = false,
+        isChecked: Bool = false,
         repeatRule: String?,
         sortIndex: Int,
         createdAt: Date,
@@ -108,6 +112,8 @@ struct TaskExport: Codable {
         self.workingEnd = workingEnd
         self.dueDate = dueDate
         self.hasReminder = hasReminder
+        self.showsCheckbox = showsCheckbox
+        self.isChecked = isChecked
         self.repeatRule = repeatRule
         self.sortIndex = sortIndex
         self.createdAt = createdAt
@@ -125,6 +131,8 @@ struct TaskExport: Codable {
         workingEnd = try c.decodeIfPresent(Date.self, forKey: .workingEnd)
         dueDate = try c.decodeIfPresent(Date.self, forKey: .dueDate)
         hasReminder = try c.decode(Bool.self, forKey: .hasReminder)
+        showsCheckbox = try c.decodeIfPresent(Bool.self, forKey: .showsCheckbox) ?? false
+        isChecked = try c.decodeIfPresent(Bool.self, forKey: .isChecked) ?? false
         repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule)
         sortIndex = try c.decode(Int.self, forKey: .sortIndex)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
@@ -190,6 +198,8 @@ enum DataImportExport {
                     workingEnd: task.workingEnd,
                     dueDate: task.dueDate,
                     hasReminder: task.hasReminder,
+                    showsCheckbox: task.showsCheckbox,
+                    isChecked: task.isChecked,
                     repeatRule: task.repeatRuleRaw.isEmpty ? nil : task.repeatRuleRaw,
                     sortIndex: task.sortIndex,
                     createdAt: task.createdAt,
@@ -455,6 +465,8 @@ enum DataImportExport {
                 existing.workingEnd = t.workingEnd
                 existing.dueDate = t.dueDate
                 existing.hasReminder = t.hasReminder
+                existing.showsCheckbox = t.showsCheckbox
+                existing.isChecked = t.isChecked
                 existing.repeatRuleRaw = t.repeatRule ?? ""
                 existing.sortIndex = t.sortIndex
                 existing.updatedAt = t.updatedAt
@@ -469,6 +481,8 @@ enum DataImportExport {
                 new.workingEnd = t.workingEnd
                 new.dueDate = t.dueDate
                 new.hasReminder = t.hasReminder
+                new.showsCheckbox = t.showsCheckbox
+                new.isChecked = t.isChecked
                 new.repeatRuleRaw = t.repeatRule ?? ""
                 new.createdAt = t.createdAt
                 new.updatedAt = t.updatedAt

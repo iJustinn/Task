@@ -129,6 +129,7 @@ struct HowToUseSheet: View {
             steps: [
                 "Tap + in the bottom bar to start a new task and type a title.",
                 "New tasks open in the board's Default Status. Open a status column's ··· menu and enable Default for New Tasks to change where new tasks land.",
+                "Toggle Checkbox in a task to show a box before the card title. Tap the box on the card to mark the task done or not done without moving it to another status.",
                 "Toggle Reminder to schedule a local notification. A small footer on the card shows a notes icon when the task has notes and an alarm icon when a reminder is set."
             ]
         ),

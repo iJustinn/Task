@@ -41,19 +41,17 @@ enum UpcomingSnapshotBuilder {
                 dueDate: task.dueDate,
                 workingStart: task.workingStart,
                 workingEnd: task.workingEnd,
+                groupID: task.group?.id,
                 groupName: task.group?.name ?? "",
                 groupColorKey: task.group?.colorKey.rawValue ?? ColorKey.gray.rawValue,
+                groupSortIndex: task.group?.sortIndex,
                 boardID: board.id,
                 boardEmoji: board.iconEmoji,
                 boardTitle: board.title
             )
-        }.sorted { left, right in
-            let l = [left.workingStart, left.workingEnd, left.dueDate].compactMap { $0 }.min() ?? .distantFuture
-            let r = [right.workingStart, right.workingEnd, right.dueDate].compactMap { $0 }.min() ?? .distantFuture
-            return l < r
         }
 
-        let snapshot = SharedDefaultsService.UpcomingSnapshot(entries: upcoming, updatedAt: Date())
+        let snapshot = SharedDefaultsService.UpcomingSnapshot(entries: sortedEntries(upcoming), updatedAt: Date())
         SharedDefaultsService.writeUpcoming(snapshot)
 
         let boardList = allBoards
@@ -61,6 +59,49 @@ enum UpcomingSnapshotBuilder {
             .map { SharedDefaultsService.BoardListEntry(id: $0.id, title: $0.title, iconEmoji: $0.iconEmoji) }
         SharedDefaultsService.writeBoardList(boardList)
 
+        SharedDefaultsService.writeStatusList(statusListEntries(from: allBoards))
+
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    static func statusListEntries(from boards: [Board]) -> [SharedDefaultsService.StatusListEntry] {
+        boards
+            .sorted { $0.sortIndex < $1.sortIndex }
+            .flatMap { board in
+                board.orderedGroups.map { group in
+                    SharedDefaultsService.StatusListEntry(
+                        id: group.id,
+                        boardID: board.id,
+                        boardEmoji: board.iconEmoji,
+                        boardTitle: board.title,
+                        name: group.name,
+                        colorKey: group.colorKey.rawValue,
+                        sortIndex: group.sortIndex
+                    )
+                }
+            }
+    }
+
+    static func sortedEntries(
+        _ entries: [SharedDefaultsService.UpcomingSnapshotEntry]
+    ) -> [SharedDefaultsService.UpcomingSnapshotEntry] {
+        entries.sorted { left, right in
+            let leftGroupOrder = left.groupSortIndex ?? Int.max
+            let rightGroupOrder = right.groupSortIndex ?? Int.max
+            if leftGroupOrder != rightGroupOrder { return leftGroupOrder < rightGroupOrder }
+
+            let leftDate = primaryWidgetDate(left)
+            let rightDate = primaryWidgetDate(right)
+            if leftDate != rightDate { return leftDate < rightDate }
+
+            let titleComparison = left.title.localizedCaseInsensitiveCompare(right.title)
+            if titleComparison != .orderedSame { return titleComparison == .orderedAscending }
+
+            return left.id.uuidString < right.id.uuidString
+        }
+    }
+
+    private static func primaryWidgetDate(_ entry: SharedDefaultsService.UpcomingSnapshotEntry) -> Date {
+        [entry.workingStart, entry.workingEnd, entry.dueDate].compactMap { $0 }.min() ?? .distantFuture
     }
 }

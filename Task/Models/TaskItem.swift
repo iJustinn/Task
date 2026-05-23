@@ -12,6 +12,8 @@ final class TaskItem {
     var dueDate: Date?
 
     var hasReminder: Bool = false
+    var showsCheckbox: Bool = false
+    var isChecked: Bool = false
     var repeatRuleRaw: String = ""
 
     var sortIndex: Int = 0
@@ -87,6 +89,8 @@ final class TaskItem {
         copy.workingEnd = workingEnd
         copy.dueDate = dueDate
         copy.hasReminder = hasReminder
+        copy.showsCheckbox = showsCheckbox
+        copy.isChecked = isChecked
         copy.repeatRule = repeatRule
         copy.board = board
         copy.group = group

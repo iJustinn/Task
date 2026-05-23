@@ -22,6 +22,8 @@ struct TaskDetailView: View {
     @State private var workingEnd: Date? = nil
     @State private var dueDate: Date? = nil
     @State private var hasReminder: Bool = false
+    @State private var showsCheckbox: Bool = false
+    @State private var isChecked: Bool = false
     @State private var repeatRule: RepeatRule = .none
     @State private var isWorkingRange: Bool = false
     @State private var didLoad: Bool = false
@@ -97,6 +99,9 @@ struct TaskDetailView: View {
             .onChange(of: hasReminder) { _, isOn in
                 if isOn { Task { await requestNotificationPermissionIfNeeded() } }
             }
+            .onChange(of: showsCheckbox) { _, isOn in
+                if !isOn { isChecked = false }
+            }
             .sheet(isPresented: $showStatusPicker) {
                 StatusPickerSheet(board: board, selection: $selectedGroup)
                     .presentationDetents([.fraction(0.6), .large])
@@ -169,6 +174,7 @@ struct TaskDetailView: View {
             workingDateRow
             dueDateRow
             repeatRow
+            checkboxRow
             reminderRow
         }
     }
@@ -312,6 +318,13 @@ struct TaskDetailView: View {
             if hasReminder, reminderFireDateInPast {
                 reminderWarning("Reminder time has already passed today — this reminder won't fire. Pick a future date or change Reminder Time in Settings.")
             }
+        }
+    }
+
+    private var checkboxRow: some View {
+        propertyRow(icon: "checkmark.square", label: "Checkbox", valueAlignment: .trailing) {
+            Toggle("", isOn: $showsCheckbox)
+                .labelsHidden()
         }
     }
 
@@ -525,6 +538,8 @@ struct TaskDetailView: View {
             workingEnd = task.workingEnd
             dueDate = task.dueDate
             hasReminder = task.hasReminder
+            showsCheckbox = task.showsCheckbox
+            isChecked = task.isChecked
             repeatRule = task.repeatRule
             isWorkingRange = task.workingIsRange
         }
@@ -560,6 +575,8 @@ struct TaskDetailView: View {
         task.workingStart = workingStart
         task.workingEnd = isWorkingRange ? workingEnd : nil
         task.dueDate = dueDate
+        task.showsCheckbox = showsCheckbox
+        task.isChecked = showsCheckbox && isChecked
         let intendsReminder = hasReminder && (workingStart != nil || dueDate != nil)
         // For non-repeating tasks, a fire date in the past would never deliver a
         // notification. Clear the flag so the card/editor don't show the alarm icon
