@@ -34,6 +34,42 @@ final class TaskTests: XCTestCase {
         XCTAssertFalse(task.workingIsRange)
     }
 
+    func testTaskDuplicateCopiesEditableFieldsAndRelationships() throws {
+        let board = Board(title: "Board", subtitle: "Test")
+        board.iconEmoji = "✅"
+        let group = BoardGroup(name: "Doing", colorKey: .blue, sortIndex: 0)
+        let tag = TaskTag(name: "Health", colorKey: .green, sortIndex: 0)
+        let calendar = Calendar(identifier: .gregorian)
+        let workingStart = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+        let workingEnd = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 24)))
+        let dueDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 25)))
+
+        let task = TaskItem(title: "Sign up", notes: "[] research", sortIndex: 4)
+        task.board = board
+        task.group = group
+        task.tags = [tag]
+        task.workingStart = workingStart
+        task.workingEnd = workingEnd
+        task.dueDate = dueDate
+        task.hasReminder = true
+        task.repeatRule = .weekly
+
+        let duplicate = task.duplicated(sortIndex: 5)
+
+        XCTAssertNotEqual(duplicate.id, task.id)
+        XCTAssertEqual(duplicate.title, task.title)
+        XCTAssertEqual(duplicate.notes, task.notes)
+        XCTAssertEqual(duplicate.sortIndex, 5)
+        XCTAssertEqual(duplicate.board?.id, board.id)
+        XCTAssertEqual(duplicate.group?.id, group.id)
+        XCTAssertEqual(duplicate.tags?.map { $0.id }, [tag.id])
+        XCTAssertEqual(duplicate.workingStart, workingStart)
+        XCTAssertEqual(duplicate.workingEnd, workingEnd)
+        XCTAssertEqual(duplicate.dueDate, dueDate)
+        XCTAssertTrue(duplicate.hasReminder)
+        XCTAssertEqual(duplicate.repeatRule, RepeatRule.weekly)
+    }
+
     func testTaskDateFilterCanTargetWorkingRangeOrDueDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let may10 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 10)))

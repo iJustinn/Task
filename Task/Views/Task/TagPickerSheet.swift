@@ -51,9 +51,9 @@ struct TagPickerSheet: View {
                                 .padding(.vertical, 16)
                         }
 
-                        if isExpanded && canDelete && !deleteMode {
+                        if isExpanded && !deleteMode {
                             Spacer(minLength: 24)
-                            deleteButton
+                            bottomActionRow
                         }
                     }
                     .padding(.horizontal, 20)
@@ -66,7 +66,7 @@ struct TagPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(deleteMode ? "Cancel" : "Done") {
+                    Button("Cancel") {
                         if deleteMode {
                             deleteMode = false
                         } else {
@@ -75,8 +75,7 @@ struct TagPickerSheet: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add") { showAddTag = true }
-                        .disabled(deleteMode)
+                    Button("Done") { dismiss() }
                 }
             }
             .sheet(item: $pendingDelete) { tag in
@@ -228,6 +227,18 @@ struct TagPickerSheet: View {
         return tag.id.uuidString
     }
 
+    private var bottomActionRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
+                deleteButton
+                addButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+        }
+    }
+
     private var deleteButton: some View {
         Button { deleteMode = true } label: {
             HStack(spacing: 8) {
@@ -238,7 +249,24 @@ struct TagPickerSheet: View {
                     .fontWeight(.semibold)
             }
             .foregroundStyle(.red)
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canDelete)
+        .opacity(canDelete ? 1 : 0.35)
+    }
+
+    private var addButton: some View {
+        Button { showAddTag = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(.subheadline, weight: .bold))
+                Text("Add a Tag")
+                    .font(.system(.headline, design: .rounded))
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(.accent)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }

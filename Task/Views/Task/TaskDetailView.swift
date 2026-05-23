@@ -32,6 +32,7 @@ struct TaskDetailView: View {
     @State private var showDuePicker: Bool = false
     @State private var showRepeatPicker: Bool = false
     @State private var showDeleteConfirm: Bool = false
+    @State private var showDuplicateConfirm: Bool = false
 
     private enum ReminderAnchor { case working, due, none }
 
@@ -73,7 +74,7 @@ struct TaskDetailView: View {
                             notesSection
                             if !isCreating {
                                 Spacer(minLength: 24)
-                                deleteButton
+                                bottomActionRow
                             }
                         }
                         .padding(.horizontal, 20)
@@ -136,6 +137,19 @@ struct TaskDetailView: View {
                 }
                 .confirmationSheetPresentationStyle()
             }
+            .sheet(isPresented: $showDuplicateConfirm) {
+                ConfirmationSheet(
+                    icon: "doc.on.doc.fill",
+                    iconTint: .blue,
+                    title: "Duplicate Task?",
+                    message: "A copy of this task will be created in the same status.",
+                    confirmLabel: "Duplicate Task",
+                    isDestructive: false
+                ) {
+                    duplicate()
+                }
+                .confirmationSheetPresentationStyle()
+            }
         }
         .presentationDetents([.fraction(0.6), .large])
         .presentationDragIndicator(.visible)
@@ -171,6 +185,18 @@ struct TaskDetailView: View {
         }
     }
 
+    private var bottomActionRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
+                deleteButton
+                duplicateButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+        }
+    }
+
     private var deleteButton: some View {
         Button { showDeleteConfirm = true } label: {
             HStack(spacing: 8) {
@@ -181,7 +207,22 @@ struct TaskDetailView: View {
                     .fontWeight(.semibold)
             }
             .foregroundStyle(.red)
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var duplicateButton: some View {
+        Button { showDuplicateConfirm = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(.subheadline, weight: .bold))
+                Text("Duplicate Task")
+                    .font(.system(.headline, design: .rounded))
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(.accent)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
@@ -600,6 +641,37 @@ struct TaskDetailView: View {
         workingStart = workingStart.map { repeatRule.advance($0) }
         workingEnd = workingEnd.map { repeatRule.advance($0) }
         dueDate = dueDate.map { repeatRule.advance($0) }
+    }
+
+    private func duplicate() {
+        guard let task = editingTask else { return }
+        let group = task.group ?? selectedGroup
+        let insertSortIndex = task.sortIndex + 1
+
+        if let group {
+            for sibling in group.orderedTasks where sibling.id != task.id && sibling.sortIndex >= insertSortIndex {
+                sibling.sortIndex += 1
+            }
+        }
+
+        let copy = task.duplicated(sortIndex: insertSortIndex)
+        copy.board = task.board ?? board
+        copy.group = group
+        context.insert(copy)
+
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            dismiss()
+            return
+        }
+
+        if copy.hasReminder {
+            NotificationService.schedule(for: copy)
+        }
+        UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        dismiss()
     }
 
     private func delete() {

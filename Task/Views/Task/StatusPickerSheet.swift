@@ -43,9 +43,9 @@ struct StatusPickerSheet: View {
                             }
                         }
 
-                        if isExpanded && canDelete && !deleteMode {
+                        if isExpanded && !deleteMode {
                             Spacer(minLength: 24)
-                            deleteButton
+                            bottomActionRow
                         }
                     }
                     .padding(.horizontal, 20)
@@ -58,7 +58,7 @@ struct StatusPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(deleteMode ? "Cancel" : "Done") {
+                    Button("Cancel") {
                         if deleteMode {
                             deleteMode = false
                         } else {
@@ -67,8 +67,7 @@ struct StatusPickerSheet: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add") { showAddGroup = true }
-                        .disabled(deleteMode)
+                    Button("Done") { dismiss() }
                 }
             }
             .sheet(item: $pendingDelete) { group in
@@ -223,6 +222,18 @@ struct StatusPickerSheet: View {
         return group.id.uuidString
     }
 
+    private var bottomActionRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
+                deleteButton
+                addButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+        }
+    }
+
     private var deleteButton: some View {
         Button { deleteMode = true } label: {
             HStack(spacing: 8) {
@@ -233,7 +244,24 @@ struct StatusPickerSheet: View {
                     .fontWeight(.semibold)
             }
             .foregroundStyle(.red)
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canDelete)
+        .opacity(canDelete ? 1 : 0.35)
+    }
+
+    private var addButton: some View {
+        Button { showAddGroup = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(.subheadline, weight: .bold))
+                Text("Add a Status")
+                    .font(.system(.headline, design: .rounded))
+                    .fontWeight(.semibold)
+            }
+            .foregroundStyle(.accent)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }

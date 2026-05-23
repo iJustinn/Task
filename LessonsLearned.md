@@ -203,6 +203,10 @@ The working/due rows then each check `reminderAnchor == .working` / `.due` to de
 
 iOS convention bolds the trailing primary toolbar action (`.fontWeight(.bold)` on `Done` / `Save` / `Add`) and leaves the leading `Cancel` at default weight. In this app the visual mismatch was noticeable enough that 0.3.0 stripped the bold from all 23 trailing toolbar buttons (across 13 files) so paired Cancel/Done look identical. The disabled state and the action's blue tint still distinguish the primary action; that's enough emphasis here. Full-width *body* CTAs (`Add Tag`, `Add Group`, `Delete Task`) keep their bold weight — they aren't toolbar siblings and benefit from extra visual mass.
 
+### Bottom action clusters
+
+When a sheet has two bottom text actions, such as `Delete Task` / `Duplicate Task` or `Delete a Status` / `Add a Status`, treat them as one centered visual cluster. Use an outer full-width `HStack` with leading/trailing `Spacer(minLength: 0)` and an inner `.fixedSize(horizontal: true, vertical: false)` `HStack(spacing: 34)` for the actual buttons. Avoid `.frame(maxWidth: .infinity)` on each button label here, because that centers each action in its own half of the row instead of centering the pair as one piece. In picker management sheets, keep these bottom actions behind the large-detent gate (`isExpanded && !deleteMode`) so users do not see Delete/Add before swiping up.
+
 ### Picker tiles
 
 `GridTile` in `Task/Components/GridTile.swift` is the shared tile used by every grid picker. It handles three variants:

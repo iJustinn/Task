@@ -80,4 +80,17 @@ final class TaskItem {
     func touch() {
         updatedAt = Date()
     }
+
+    func duplicated(sortIndex: Int) -> TaskItem {
+        let copy = TaskItem(title: title, notes: notes, sortIndex: sortIndex)
+        copy.workingStart = workingStart
+        copy.workingEnd = workingEnd
+        copy.dueDate = dueDate
+        copy.hasReminder = hasReminder
+        copy.repeatRule = repeatRule
+        copy.board = board
+        copy.group = group
+        copy.tags = tags
+        return copy
+    }
 }
