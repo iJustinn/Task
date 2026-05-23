@@ -16,7 +16,6 @@ struct StatusPickerSheet: View {
     @State private var dragSessionEnded: Bool = false
     @State private var pendingDelete: BoardGroup?
     @State private var pendingEdit: BoardGroup?
-    @State private var editMode: Bool = false
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
     /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
@@ -49,7 +48,7 @@ struct StatusPickerSheet: View {
                             }
                         }
 
-                        if isExpanded && !deleteMode && !editMode {
+                        if isExpanded && !deleteMode {
                             Spacer(minLength: 24)
                             bottomActionRow
                         }
@@ -67,8 +66,6 @@ struct StatusPickerSheet: View {
                     Button("Cancel") {
                         if deleteMode {
                             deleteMode = false
-                        } else if editMode {
-                            editMode = false
                         } else {
                             dismiss()
                         }
@@ -91,7 +88,7 @@ struct StatusPickerSheet: View {
                 }
                 .confirmationSheetPresentationStyle()
             }
-            .sheet(item: $pendingEdit, onDismiss: { editMode = false }) { group in
+            .sheet(item: $pendingEdit) { group in
                 GroupMenuSheet(group: group, board: board)
             }
         }
@@ -114,7 +111,6 @@ struct StatusPickerSheet: View {
 
     private var sheetTitle: String {
         if deleteMode { return "Delete Status" }
-        if editMode { return "Edit Status" }
         return "Choose Status"
     }
 
@@ -164,23 +160,22 @@ struct StatusPickerSheet: View {
     }
 
     private func groupRow(_ group: BoardGroup) -> some View {
-        groupRowContent(group)
+        SwipeToEditRow(isEnabled: !deleteMode, onEdit: { pendingEdit = group }) {
+            groupRowContent(group)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if deleteMode {
+                        if canDelete {
+                            pendingDelete = group
+                        }
+                        return
+                    }
+                    selection = group
+                    dismiss()
+                }
+        }
             .contentShape(Rectangle())
             .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .onTapGesture {
-                if deleteMode {
-                    if canDelete {
-                        pendingDelete = group
-                    }
-                    return
-                }
-                if editMode {
-                    pendingEdit = group
-                    return
-                }
-                selection = group
-                dismiss()
-            }
             .draggable(beginDragGroup(group)) {
                 groupRowContent(group)
                     .dynamicTypeSize(settings.textSize.dynamicType)
@@ -222,10 +217,6 @@ struct StatusPickerSheet: View {
                 Image(systemName: "trash")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.red)
-            } else if editMode {
-                Image(systemName: "pencil")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.accent)
             } else if isSelected {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
@@ -245,30 +236,15 @@ struct StatusPickerSheet: View {
     }
 
     private var bottomActionRow: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer(minLength: 0)
-                HStack(spacing: 34) {
-                    editButton
-                    addButton
-                }
-                .fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
-            }
-            HStack {
-                Spacer(minLength: 0)
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
                 deleteButton
-                    .fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
+                addButton
             }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
         }
-    }
-
-    private var editButton: some View {
-        Button { editMode = true } label: {
-            SheetActionButtonLabel(title: "Edit a Status", systemName: "pencil", tintColor: .accentColor)
-        }
-        .buttonStyle(.plain)
     }
 
     private var deleteButton: some View {
@@ -316,6 +292,7 @@ struct StatusPickerSheet: View {
                 }
             }
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
     }
 
     private var newGroupPreviewField: some View {

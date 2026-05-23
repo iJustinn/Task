@@ -1,6 +1,6 @@
 # Version History
 
-## 0.4.7 (build 4) — 2026-05-23
+## 0.4.7 (build 5) — 2026-05-23
 
 Task editing, status/tag management, Markdown notes, and app-wide text polish.
 
@@ -22,11 +22,12 @@ Task editing, status/tag management, Markdown notes, and app-wide text polish.
 ### Choose Status and Choose Tags
 
 - Choose Status / Choose Tags now use top-left **Cancel** and top-right **Done** buttons.
-- The bottom management controls now use the same centered-group layout as Edit Task: **Edit** and **Add** share the first row, with **Delete** below.
+- The bottom management controls now show **Delete** beside **Add** in one centered row.
 - Bottom management controls stay hidden until the sheet is expanded so they do not peek into the compact detent.
 - Status and tag rows now show the real colored label chip followed immediately by the task count, instead of a separate dot/icon with right-aligned counts.
 - Status and tag label chips were slightly reduced in size after moving to the row treatment.
-- Edit mode now opens a dedicated edit sheet for the chosen status or tag, while delete mode remains a separate confirmation-oriented flow.
+- Swipe left on a status or tag row now slides the row to reveal Edit and opens the existing edit sheet.
+- Delete mode remains a separate confirmation-oriented flow.
 
 ### Status and tag editing
 
@@ -53,7 +54,7 @@ Task editing, status/tag management, Markdown notes, and app-wide text polish.
 
 ### Versioning
 
-- Build number bumped to `4` for version `0.4.7`.
+- Build number bumped to `5` for version `0.4.7`.
 
 ## 0.4.6 (build 4) — 2026-05-22
 

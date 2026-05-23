@@ -16,7 +16,6 @@ struct TagPickerSheet: View {
     @State private var dragSessionEnded: Bool = false
     @State private var pendingDelete: TaskTag?
     @State private var pendingEdit: TaskTag?
-    @State private var editMode: Bool = false
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
     /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
@@ -57,7 +56,7 @@ struct TagPickerSheet: View {
                                 .padding(.vertical, 16)
                         }
 
-                        if isExpanded && !deleteMode && !editMode {
+                        if isExpanded && !deleteMode {
                             Spacer(minLength: 24)
                             bottomActionRow
                         }
@@ -75,8 +74,6 @@ struct TagPickerSheet: View {
                     Button("Cancel") {
                         if deleteMode {
                             deleteMode = false
-                        } else if editMode {
-                            editMode = false
                         } else {
                             dismiss()
                         }
@@ -99,7 +96,7 @@ struct TagPickerSheet: View {
                 }
                 .confirmationSheetPresentationStyle()
             }
-            .sheet(item: $pendingEdit, onDismiss: { editMode = false }) { tag in
+            .sheet(item: $pendingEdit) { tag in
                 EditTagSheet(tag: tag)
                     .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
@@ -124,7 +121,6 @@ struct TagPickerSheet: View {
 
     private var sheetTitle: String {
         if deleteMode { return "Delete Tag" }
-        if editMode { return "Edit Tag" }
         return "Choose Tags"
     }
 
@@ -174,20 +170,19 @@ struct TagPickerSheet: View {
     }
 
     private func tagRow(_ tag: TaskTag) -> some View {
-        tagRowContent(tag)
+        SwipeToEditRow(isEnabled: !deleteMode, onEdit: { pendingEdit = tag }) {
+            tagRowContent(tag)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if deleteMode {
+                        pendingDelete = tag
+                        return
+                    }
+                    toggle(tag)
+                }
+        }
             .contentShape(Rectangle())
             .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .onTapGesture {
-                if deleteMode {
-                    pendingDelete = tag
-                    return
-                }
-                if editMode {
-                    pendingEdit = tag
-                    return
-                }
-                toggle(tag)
-            }
             .draggable(beginDragTag(tag)) {
                 tagRowContent(tag)
                     .dynamicTypeSize(settings.textSize.dynamicType)
@@ -229,10 +224,6 @@ struct TagPickerSheet: View {
                 Image(systemName: "trash")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.red)
-            } else if editMode {
-                Image(systemName: "pencil")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.accent)
             } else if isSelected {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))
@@ -252,30 +243,15 @@ struct TagPickerSheet: View {
     }
 
     private var bottomActionRow: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer(minLength: 0)
-                HStack(spacing: 34) {
-                    editButton
-                    addButton
-                }
-                .fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
-            }
-            HStack {
-                Spacer(minLength: 0)
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
                 deleteButton
-                    .fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
+                addButton
             }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
         }
-    }
-
-    private var editButton: some View {
-        Button { editMode = true } label: {
-            SheetActionButtonLabel(title: "Edit a Tag", systemName: "pencil", tintColor: .accentColor)
-        }
-        .buttonStyle(.plain)
     }
 
     private var deleteButton: some View {
@@ -323,6 +299,7 @@ struct TagPickerSheet: View {
                 }
             }
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
     }
 
     private var newTagPreviewField: some View {

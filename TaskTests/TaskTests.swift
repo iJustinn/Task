@@ -362,6 +362,17 @@ final class TaskTests: XCTestCase {
         let italicFont = try XCTUnwrap(styled.attribute(.font, at: raw.utf16Offset(of: "italic"), effectiveRange: nil) as? UIFont)
         XCTAssertTrue(italicFont.fontDescriptor.symbolicTraits.contains(.traitItalic))
     }
+
+    func testSwipeToEditMetricsMoveRowsOnlyForHorizontalLeftSwipes() {
+        XCTAssertEqual(SwipeToEditRowMetrics.visibleOffset(for: CGSize(width: -36, height: 4)), -36)
+        XCTAssertEqual(SwipeToEditRowMetrics.visibleOffset(for: CGSize(width: -140, height: 4)), -SwipeToEditRowMetrics.actionWidth)
+        XCTAssertEqual(SwipeToEditRowMetrics.visibleOffset(for: CGSize(width: 32, height: 4)), 0)
+        XCTAssertEqual(SwipeToEditRowMetrics.visibleOffset(for: CGSize(width: -36, height: 44)), 0)
+
+        XCTAssertTrue(SwipeToEditRowMetrics.shouldOpenEdit(for: CGSize(width: -72, height: 8)))
+        XCTAssertFalse(SwipeToEditRowMetrics.shouldOpenEdit(for: CGSize(width: -42, height: 4)))
+        XCTAssertFalse(SwipeToEditRowMetrics.shouldOpenEdit(for: CGSize(width: -72, height: 60)))
+    }
 }
 
 private extension String {
