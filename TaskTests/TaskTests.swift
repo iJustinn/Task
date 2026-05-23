@@ -34,6 +34,29 @@ final class TaskTests: XCTestCase {
         XCTAssertFalse(task.workingIsRange)
     }
 
+    func testBiweeklyRepeatAdvancesByTwoWeeks() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+        let advanced = RepeatRule.biweekly.advance(start, calendar: calendar)
+        let expected = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 6, day: 6)))
+
+        XCTAssertEqual(advanced, expected)
+    }
+
+    func testQuarterlyAndAnnuallyRepeatAdvanceByExpectedIntervals() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let start = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+
+        XCTAssertEqual(
+            RepeatRule.quarterly.advance(start, calendar: calendar),
+            try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 23)))
+        )
+        XCTAssertEqual(
+            RepeatRule.annually.advance(start, calendar: calendar),
+            try XCTUnwrap(calendar.date(from: DateComponents(year: 2027, month: 5, day: 23)))
+        )
+    }
+
     func testTaskDuplicateCopiesEditableFieldsAndRelationships() throws {
         let board = Board(title: "Board", subtitle: "Test")
         board.iconEmoji = "✅"
@@ -112,6 +135,30 @@ final class TaskTests: XCTestCase {
         let current = try DataImportExport.makeDecoder().decode(TaskExport.self, from: Data(currentJSON.utf8))
         XCTAssertTrue(current.showsCheckbox)
         XCTAssertTrue(current.isChecked)
+    }
+
+    func testStorageSummaryCountsAppDataModelsAndExportBytes() throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let board = Board(title: "Storage")
+        let group = BoardGroup(name: "Waiting", colorKey: .blue, sortIndex: 0)
+        let tag = TaskTag(name: "Work", colorKey: .purple, sortIndex: 0)
+        let task = TaskItem(title: "Check", notes: "")
+        board.groups = [group]
+        board.tags = [tag]
+        board.tasks = [task]
+        group.board = board
+        tag.board = board
+        task.board = board
+        task.group = group
+        task.tags = [tag]
+        context.insert(board)
+        try context.save()
+
+        let summary = DataImportExport.storageSummary(context: context)
+
+        XCTAssertEqual(summary.itemCount, 4)
+        XCTAssertEqual(summary.byteCount, try XCTUnwrap(DataImportExport.exportData(context: context)).count)
     }
 
     func testBoardDefaultGroupToggleSetsAndMovesDefaultWhenDisabled() {

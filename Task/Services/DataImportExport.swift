@@ -162,6 +162,25 @@ struct ImportResult {
     static let failure = ImportResult(success: false)
 }
 
+struct DataStorageSummary: Equatable {
+    var itemCount: Int
+    var byteCount: Int
+
+    var displayText: String {
+        let itemLabel = itemCount == 1 ? String(localized: "item") : String(localized: "items")
+        return "\(itemCount) \(itemLabel) / \(Self.formatBytes(byteCount))"
+    }
+
+    private static func formatBytes(_ byteCount: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: Int64(byteCount))
+    }
+}
+
 enum DataImportExport {
     static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
@@ -230,6 +249,19 @@ enum DataImportExport {
 
         let payload = MultiBoardExportPayload(boards: entries)
         return try? makeEncoder().encode(payload)
+    }
+
+    @MainActor
+    static func storageSummary(context: ModelContext) -> DataStorageSummary {
+        let boardCount = ((try? context.fetch(FetchDescriptor<Board>())) ?? []).count
+        let groupCount = ((try? context.fetch(FetchDescriptor<BoardGroup>())) ?? []).count
+        let tagCount = ((try? context.fetch(FetchDescriptor<TaskTag>())) ?? []).count
+        let taskCount = ((try? context.fetch(FetchDescriptor<TaskItem>())) ?? []).count
+        let byteCount = exportData(context: context)?.count ?? 0
+        return DataStorageSummary(
+            itemCount: boardCount + groupCount + tagCount + taskCount,
+            byteCount: byteCount
+        )
     }
 
     private static func decodePayload(_ data: Data) -> MultiBoardExportPayload? {

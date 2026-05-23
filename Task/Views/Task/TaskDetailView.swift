@@ -123,7 +123,7 @@ struct TaskDetailView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showRepeatPicker) {
-                RepeatPickerSheet(selection: $repeatRule)
+                RepeatPickerSheet(board: board, selection: $repeatRule)
                     .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
             }

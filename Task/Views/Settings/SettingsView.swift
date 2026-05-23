@@ -19,6 +19,8 @@ struct SettingsView: View {
     @State private var isImporting = false
     @State private var isExporting = false
     @State private var isResetting = false
+    @State private var storageSummary: DataStorageSummary?
+    @State private var isCheckingStorage = false
     @State private var resultAlert: ResultAlert?
     @State private var importOrphanMessage: String? = nil
 
@@ -293,7 +295,27 @@ struct SettingsView: View {
                     .font(.system(.caption, weight: .bold))
                     .foregroundColor(.secondary.opacity(0.7))
             }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Storage Check",
+                systemName: "internaldrive.fill",
+                tintColor: .orange,
+                action: { checkStorage() }
+            ) {
+                Text(storageCheckValue)
+                    .font(.system(.subheadline))
+                    .fontWeight(.regular)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.trailing)
+            }
         }
+    }
+
+    private var storageCheckValue: String {
+        if isCheckingStorage { return String(localized: "Checking...") }
+        return storageSummary?.displayText ?? String(localized: "Tap to check")
     }
 
     private var aboutSection: some View {
@@ -531,6 +553,16 @@ struct SettingsView: View {
             if !ok {
                 resultAlert = .resetFailure
             }
+        }
+    }
+
+    private func checkStorage() {
+        guard !isCheckingStorage else { return }
+        isCheckingStorage = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            storageSummary = DataImportExport.storageSummary(context: context)
+            isCheckingStorage = false
         }
     }
 
