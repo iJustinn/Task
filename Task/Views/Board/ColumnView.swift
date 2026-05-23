@@ -9,6 +9,7 @@ struct ColumnView: View {
     let sortDirection: CardSortDirection
     let dateFilter: Date?
     let dateFilterTarget: AppDateFilterTarget
+    let isDefaultStatus: Bool
     @EnvironmentObject private var settings: SettingsViewModel
     @Binding var draggingTaskID: UUID?
     @Binding var dragSessionEnded: Bool
@@ -46,6 +47,7 @@ struct ColumnView: View {
                 name: group.name,
                 count: currentTasks.count,
                 colorKey: group.colorKey,
+                isDefaultStatus: isDefaultStatus,
                 onMenuTap: onMenuTap
             )
             .padding(.horizontal, 6)

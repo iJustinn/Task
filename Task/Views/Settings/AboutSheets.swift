@@ -118,7 +118,7 @@ struct HowToUseSheet: View {
             tintColor: .blue,
             steps: [
                 "Tap + in the bottom bar to start a new task and type a title.",
-                "New tasks open in the board's Default Status (tap the flag icon on the board header to pick which group new tasks land in) — pick a different group inline, add Tags, and set a Working date or Due date.",
+                "New tasks open in the board's Default Status. Open a status column's ··· menu and enable Default for New Tasks to change where new tasks land.",
                 "Toggle Reminder to schedule a local notification. A small footer on the card shows a notes icon when the task has notes and an alarm icon when a reminder is set."
             ]
         ),
@@ -175,10 +175,10 @@ struct HowToUseSheet: View {
         ),
         AboutGuideSection(
             title: "Defaults",
-            systemImage: "flag.fill",
+            systemImage: "slider.horizontal.3",
             tintColor: .teal,
             steps: [
-                "Three small icons on the board header configure that board: flag for Default Status, up-down arrows for Card Order, and bell for Reminder Time. Each board remembers its own.",
+                "The board header keeps quick controls for Card Order and the date filter. Default Status now lives in each status column's ··· menu.",
                 "Default Status sets which group new tasks on that board land in. Falls back to the first group if your choice is later deleted. Card Order controls how cards sort inside every group on that board — Manual (drag), Title (alphabetical), or Date (smart).",
                 "Reminder Time sets the hour and minute (defaults to 9:00) that this board's per-task reminders fire on the chosen date."
             ]

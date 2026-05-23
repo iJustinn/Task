@@ -557,7 +557,7 @@ Default Status, Card Order, and Reminder Time were `UserDefaults`-scoped global 
 
 The one-shot `migrateLegacyBoardDefaultsIfNeeded` runs from `ensureSeed`; it reads the legacy `UserDefaults` keys (`task.defaultGroupID`, `task.cardSortField`, `task.cardSortDirection`, `task.reminderMinutesOfDay`) and copies them onto the first board (by `createdAt`), then flips `task.boardDefaultsMigrated` so it never re-fires. Users upgrading from 0.3.x keep their preferences on their existing board.
 
-`SettingsViewModel` only owns truly global preferences now (Theme, Language, Time Format, Text Size, Group Width, App Accent, App Icon). The per-board pickers (`DefaultStatusPickerSheet`, `CardOrderPickerSheet`, `ReminderTimePickerSheet`) take a `Board` and mutate it directly.
+`SettingsViewModel` only owns truly global preferences now (Theme, Language, Time Format, Text Size, Group Width, App Accent, App Icon). Card Order and Reminder Time still use board-scoped sheets (`CardOrderPickerSheet`, `ReminderTimePickerSheet`) that take a `Board` and mutate it directly. Default Status is board-scoped too, but it now lives inside `GroupMenuSheet` as "Default for New Tasks" so the board header does not need a separate flag button or default-status sheet.
 
 ### Active board tracking
 
@@ -606,6 +606,10 @@ Board match is ID-only (no "reuse first existing board" fallback like v1 had —
 ### Board date slider
 
 For the inline board date filter, prefer a horizontal `ScrollView` + `LazyHStack` with `.scrollTargetLayout()` and `.scrollPosition(id:anchor:)` over `ScrollViewReader.scrollTo`. In simulator checks, `ScrollViewReader` sometimes opened at the start of the generated date window instead of centering today's tile. The app targets iOS 18, so scroll-position binding is available and reliably opens around the current day while still allowing swipe navigation.
+
+The generated day window must always include the current focus day when it is within range: the selected filter date when one exists, otherwise today. The hard cap is always plus/minus one calendar year around today, not around the selected date. Clip task-derived dates to that today-based range before building the contiguous day range; far-future or far-past task dates should not make the slider enormous.
+
+When recentering the date slider on reopen, drive it from a parent-owned open token and set the bound `scrollPosition` through `nil` before applying the target on the next main-queue tick. Reassigning the same `Date` target is a no-op for `.scrollPosition(id:anchor:)`, so SwiftUI can preserve the old horizontal offset instead of centering the focus day again.
 
 ## Things to do later
 

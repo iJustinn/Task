@@ -4,6 +4,7 @@ struct GroupHeaderPill: View {
     let name: String
     let count: Int
     let colorKey: ColorKey
+    var isDefaultStatus: Bool = false
     var onMenuTap: (() -> Void)? = nil
 
     var body: some View {
@@ -26,12 +27,13 @@ struct GroupHeaderPill: View {
 
             if let onMenuTap {
                 Button(action: onMenuTap) {
-                    Image(systemName: "ellipsis")
+                    Image(systemName: isDefaultStatus ? "flag" : "ellipsis")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(colorKey.foreground.opacity(0.75))
                         .padding(.horizontal, 4)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isDefaultStatus ? "Edit Default Status" : "Edit Status")
             }
         }
         .padding(.horizontal, 4)

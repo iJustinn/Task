@@ -70,6 +70,26 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(duplicate.repeatRule, RepeatRule.weekly)
     }
 
+    func testBoardDefaultGroupToggleSetsAndMovesDefaultWhenDisabled() {
+        let board = Board(title: "Board")
+        let waiting = BoardGroup(name: "Waiting", colorKey: .blue, sortIndex: 0)
+        let doing = BoardGroup(name: "Doing", colorKey: .red, sortIndex: 1)
+        board.groups = [waiting, doing]
+
+        board.setDefaultGroup(doing, enabled: true)
+
+        XCTAssertEqual(board.defaultGroupUUID, doing.id)
+
+        board.setDefaultGroup(waiting, enabled: false)
+
+        XCTAssertEqual(board.defaultGroupUUID, doing.id)
+
+        board.setDefaultGroup(doing, enabled: false)
+
+        XCTAssertEqual(board.defaultGroupUUID, waiting.id)
+        XCTAssertEqual(board.defaultGroup?.id, waiting.id)
+    }
+
     func testTaskDateFilterCanTargetWorkingRangeOrDueDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let may10 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 10)))
@@ -147,6 +167,62 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(dates.contains(calendar.startOfDay(for: may9)))
         XCTAssertTrue(dates.contains(calendar.startOfDay(for: june14)))
         XCTAssertFalse(dates.contains(calendar.startOfDay(for: ignoredWorking)))
+    }
+
+    func testBoardDateSliderWindowIncludesFocusDateWhenTasksDoNotUseThatDay() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let focus = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+        let later = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 6, day: 3)))
+
+        let task = TaskItem(title: "Later", notes: "")
+        task.workingStart = later
+
+        let dates = BoardDateSliderDayWindow.dates(
+            for: [task],
+            target: .workingDate,
+            fallback: focus,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(dates.first, calendar.startOfDay(for: focus))
+        XCTAssertEqual(dates.last, calendar.startOfDay(for: later))
+        XCTAssertTrue(dates.contains(calendar.startOfDay(for: focus)))
+    }
+
+    func testBoardDateSliderWindowCapsDatesToOneYearAroundToday() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let today = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+        let selectedFocus = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 9)))
+        let lowerCap = try XCTUnwrap(calendar.date(byAdding: .year, value: -1, to: calendar.startOfDay(for: today)))
+        let upperCap = try XCTUnwrap(calendar.date(byAdding: .year, value: 1, to: calendar.startOfDay(for: today)))
+        let beforeCap = try XCTUnwrap(calendar.date(byAdding: .day, value: -1, to: lowerCap))
+        let afterCap = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: upperCap))
+
+        let dates = BoardDateSliderDayWindow.dates(
+            for: [
+                dueDateTask(beforeCap),
+                dueDateTask(lowerCap),
+                dueDateTask(upperCap),
+                dueDateTask(afterCap)
+            ],
+            target: .dueDate,
+            fallback: selectedFocus,
+            today: today,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(dates.first, lowerCap)
+        XCTAssertEqual(dates.last, upperCap)
+        XCTAssertTrue(dates.contains(calendar.startOfDay(for: today)))
+        XCTAssertTrue(dates.contains(calendar.startOfDay(for: selectedFocus)))
+        XCTAssertFalse(dates.contains(beforeCap))
+        XCTAssertFalse(dates.contains(afterCap))
+    }
+
+    private func dueDateTask(_ date: Date) -> TaskItem {
+        let task = TaskItem(title: "Due", notes: "")
+        task.dueDate = date
+        return task
     }
 
     func testTextSizeSettingsAreShiftedOneSizeUpAndDefaultToMedium() {

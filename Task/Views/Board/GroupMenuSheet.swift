@@ -10,17 +10,22 @@ struct GroupMenuSheet: View {
 
     @State private var name: String = ""
     @State private var colorKey: ColorKey = .purple
+    @State private var isDefaultStatus: Bool = false
     @State private var didLoad: Bool = false
     @State private var showDeleteConfirm: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
     private var isExpanded: Bool { selectedDetent == .large }
+    private var canChangeDefaultStatus: Bool { board.orderedGroups.count > 1 }
+    private var currentDefaultStatusName: String {
+        board.defaultGroup?.name ?? "None"
+    }
 
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemGroupedBackground)
+                Color(.systemBackground)
                     .ignoresSafeArea()
 
                 ScrollView(.vertical, showsIndicators: false) {
@@ -37,7 +42,7 @@ struct GroupMenuSheet: View {
                     .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle("Status")
+            .navigationTitle("Edit Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
@@ -49,6 +54,7 @@ struct GroupMenuSheet: View {
                 if !didLoad {
                     name = group.name
                     colorKey = group.colorKey
+                    isDefaultStatus = board.defaultGroup?.id == group.id
                     didLoad = true
                 }
             }
@@ -79,6 +85,19 @@ struct GroupMenuSheet: View {
                         .font(.system(.headline, design: .rounded))
                 }
                 ColorSwatchPicker(selection: $colorKey)
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(isOn: $isDefaultStatus) {
+                        Text("Default for New Tasks")
+                            .font(.system(.headline, design: .rounded))
+                    }
+                    .toggleStyle(.switch)
+                    .disabled(!canChangeDefaultStatus)
+
+                    Text("Current default: \(currentDefaultStatusName)")
+                        .font(.system(.footnote, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -108,6 +127,8 @@ struct GroupMenuSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty { group.name = trimmed }
         group.colorKey = colorKey
+        board.setDefaultGroup(group, enabled: isDefaultStatus)
+        board.updatedAt = Date()
         try? context.save()
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }

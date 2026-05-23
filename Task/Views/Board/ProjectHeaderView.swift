@@ -12,7 +12,6 @@ struct ProjectHeaderView: View {
     @State private var draftSubtitle: String = ""
     @State private var showIconPicker: Bool = false
     @State private var showingSort: Bool = false
-    @State private var showingDefaultStatus: Bool = false
     @FocusState private var titleFocused: Bool
     @FocusState private var subtitleFocused: Bool
 
@@ -50,9 +49,6 @@ struct ProjectHeaderView: View {
                 headerIconButton(systemName: "calendar", tint: isDateFilterActive ? .accentColor : .primary, label: "Date Filter") {
                     onDateFilterTap()
                 }
-                headerIconButton(systemName: "flag", tint: .primary, label: "Default Status") {
-                    showingDefaultStatus = true
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -85,11 +81,6 @@ struct ProjectHeaderView: View {
         .sheet(isPresented: $showingSort) {
             CardOrderPickerSheet(board: board)
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showingDefaultStatus) {
-            DefaultStatusPickerSheet(board: board)
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         }
