@@ -11,9 +11,9 @@ Current app version: **0.4.7 (build 8)**
 ## Screenshots
 
 <p align="center">
-  <img src="Screenshots/01-v0.4.6.PNG" alt="Board home" width="32%"/>
+  <img src="Screenshots/01-v0.4.7.PNG" alt="Board home" width="32%"/>
   <img src="Screenshots/02-v0.4.6.PNG" alt="Board switcher" width="32%"/>
-  <img src="Screenshots/03-v0.4.6.PNG" alt="Task editor" width="32%"/>
+  <img src="Screenshots/03-v0.4.7.PNG" alt="Task editor" width="32%"/>
 </p>
 <p align="center">
   <img src="Screenshots/04-v0.4.6.PNG" alt="Calendar picker" width="32%"/>
