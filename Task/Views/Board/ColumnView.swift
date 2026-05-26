@@ -164,11 +164,19 @@ struct ColumnView: View {
 
     private func toggleTaskChecked(_ task: TaskItem) {
         guard task.showsCheckbox else { return }
+        var canceledReminder = false
         withAnimation(.easeInOut(duration: 0.16)) {
-            task.isChecked.toggle()
-            task.touch()
+            canceledReminder = task.toggleCheckboxChecked()
         }
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            return
+        }
+        if canceledReminder {
+            NotificationService.cancel(for: task)
+        }
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }
 

@@ -177,7 +177,9 @@ private struct LiveMarkdownTextView: UIViewRepresentable {
 
         if textView.text != text || textView.font?.pointSize != bodyFont.pointSize {
             textView.font = bodyFont
-            context.coordinator.apply(text, to: textView)
+            if shouldRestyleMarkdownText(hasMarkedText: textView.markedTextRange != nil) {
+                context.coordinator.apply(text, to: textView)
+            }
         }
 
         if isFocused, !textView.isFirstResponder {
@@ -217,6 +219,7 @@ private struct LiveMarkdownTextView: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             guard !isApplying else { return }
             text = textView.text
+            guard shouldRestyleMarkdownText(hasMarkedText: textView.markedTextRange != nil) else { return }
             apply(textView.text, to: textView)
         }
 
@@ -257,6 +260,10 @@ final class MarkdownUITextView: UITextView {
     required init?(coder: NSCoder) {
         nil
     }
+}
+
+func shouldRestyleMarkdownText(hasMarkedText: Bool) -> Bool {
+    !hasMarkedText
 }
 
 func markdownEditingAttributedText(

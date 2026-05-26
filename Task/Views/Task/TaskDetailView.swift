@@ -35,6 +35,7 @@ struct TaskDetailView: View {
     @State private var showRepeatPicker: Bool = false
     @State private var showDeleteConfirm: Bool = false
     @State private var showDuplicateConfirm: Bool = false
+    @State private var saveErrorMessage: String?
 
     private enum ReminderAnchor { case working, due, none }
 
@@ -101,6 +102,14 @@ struct TaskDetailView: View {
             }
             .onChange(of: showsCheckbox) { _, isOn in
                 if !isOn { isChecked = false }
+            }
+            .alert("Save Failed", isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { if !$0 { saveErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { saveErrorMessage = nil }
+            } message: {
+                Text(saveErrorMessage ?? "")
             }
             .sheet(isPresented: $showStatusPicker) {
                 StatusPickerSheet(board: board, selection: $selectedGroup)
@@ -549,7 +558,6 @@ struct TaskDetailView: View {
         guard !trimmed.isEmpty, let group = selectedGroup else { return }
 
         let task: TaskItem
-        let isNewTask: Bool
         switch mode {
         case .create:
             let sortIndex = (group.orderedTasks.last?.sortIndex ?? -1) + 1
@@ -557,7 +565,6 @@ struct TaskDetailView: View {
             task.board = board
             task.group = group
             context.insert(task)
-            isNewTask = true
         case .edit(let existing):
             task = existing
             task.title = trimmed
@@ -566,7 +573,6 @@ struct TaskDetailView: View {
                 task.group = group
                 task.sortIndex = (group.orderedTasks.last?.sortIndex ?? -1) + 1
             }
-            isNewTask = false
         }
 
         task.tags = selectedTags
@@ -583,6 +589,7 @@ struct TaskDetailView: View {
         } else {
             task.hasReminder = intendsReminder
         }
+        let canceledReminder = task.clearReminderIfCheckedCheckbox()
         task.repeatRule = repeatRule
         task.touch()
 
@@ -590,14 +597,16 @@ struct TaskDetailView: View {
             try context.save()
         } catch {
             // Save failed — don't schedule/cancel notifications or update the widget
-            // for state that didn't commit. Drop the new task from the context so a
-            // later unrelated save doesn't persist a half-built orphan.
-            if isNewTask { context.delete(task) }
-            dismiss()
+            // for state that didn't commit. Roll back the model object mutations so
+            // a later unrelated save doesn't persist a rejected edit.
+            context.rollback()
+            saveErrorMessage = String(localized: "Couldn't save this task. Try again.")
             return
         }
 
-        if task.hasReminder {
+        if canceledReminder {
+            NotificationService.cancel(for: task)
+        } else if task.hasReminder {
             NotificationService.schedule(for: task)
         } else {
             NotificationService.cancel(for: task)

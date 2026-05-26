@@ -6,7 +6,7 @@ enum TaskDateFormat {
     nonisolated(unsafe) static var locale: Locale = .autoupdatingCurrent {
         didSet {
             guard oldValue != locale else { return }
-            for f in styledFormatters.values { f.locale = locale }
+            styledFormatters.removeAll()
         }
     }
 

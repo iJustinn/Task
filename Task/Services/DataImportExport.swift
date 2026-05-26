@@ -250,8 +250,7 @@ struct DataStorageSummary: Equatable {
     var byteCount: Int
 
     var displayText: String {
-        let itemLabel = itemCount == 1 ? String(localized: "item") : String(localized: "items")
-        return "\(itemCount) \(itemLabel) / \(Self.formatBytes(byteCount))"
+        "\(String(localized: "^[\(itemCount) item](inflect: true)")) / \(Self.formatBytes(byteCount))"
     }
 
     private static func formatBytes(_ byteCount: Int) -> String {
@@ -458,7 +457,7 @@ enum DataImportExport {
             if let gid = payloadBoard.defaultGroupID { existing.defaultGroupID = gid }
             if let sf = payloadBoard.cardSortFieldRaw { existing.cardSortFieldRaw = sf }
             if let sd = payloadBoard.cardSortDirectionRaw { existing.cardSortDirectionRaw = sd }
-            if let m = payloadBoard.reminderMinutesOfDay { existing.reminderMinutesOfDay = m }
+            if let m = sanitizedReminderMinutesOfDay(payloadBoard.reminderMinutesOfDay) { existing.reminderMinutesOfDay = m }
             existing.updatedAt = payloadBoard.updatedAt
             board = existing
         } else {
@@ -469,7 +468,7 @@ enum DataImportExport {
             if let gid = payloadBoard.defaultGroupID { newBoard.defaultGroupID = gid }
             if let sf = payloadBoard.cardSortFieldRaw { newBoard.cardSortFieldRaw = sf }
             if let sd = payloadBoard.cardSortDirectionRaw { newBoard.cardSortDirectionRaw = sd }
-            if let m = payloadBoard.reminderMinutesOfDay { newBoard.reminderMinutesOfDay = m }
+            if let m = sanitizedReminderMinutesOfDay(payloadBoard.reminderMinutesOfDay) { newBoard.reminderMinutesOfDay = m }
             newBoard.createdAt = payloadBoard.createdAt
             newBoard.updatedAt = payloadBoard.updatedAt
             context.insert(newBoard)
@@ -629,6 +628,11 @@ enum DataImportExport {
         return (orphanTasks, orphanTagRefs)
     }
 
+    static func sanitizedReminderMinutesOfDay(_ value: Int?) -> Int? {
+        guard let value, (0..<(24 * 60)).contains(value) else { return nil }
+        return value
+    }
+
     /// `true` when the destructive delete saved cleanly and the re-seed completed.
     /// `false` means the user's data is in an indeterminate state and the caller
     /// should show a failure alert instead of pretending the reset succeeded.
@@ -672,9 +676,12 @@ enum DataImportExport {
         return true
     }
 
-    static func defaultExportFileName() -> String {
+    static func defaultExportFileName(for date: Date = Date(), timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd-HHmm"
-        return "task-export-\(formatter.string(from: Date()))"
+        return "task-export-\(formatter.string(from: date))"
     }
 }

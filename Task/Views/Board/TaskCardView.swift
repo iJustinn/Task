@@ -52,16 +52,19 @@ struct TaskCardView: View {
                         Image(systemName: "arrow.clockwise")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel(Text("Repeats"))
                     }
                     if task.hasNotes {
                         Image(systemName: "doc.text")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel(Text("Has notes"))
                     }
                     if task.hasReminder {
                         Image(systemName: "alarm")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel(Text("Has reminder"))
                     }
                     footerDividerLine
                 }

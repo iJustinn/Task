@@ -58,14 +58,27 @@ enum UpcomingSnapshotBuilder {
         let snapshot = SharedDefaultsService.UpcomingSnapshot(entries: sortedEntries(upcoming), updatedAt: Date())
         SharedDefaultsService.writeUpcoming(snapshot)
 
-        let boardList = allBoards
-            .sorted { $0.sortIndex < $1.sortIndex }
-            .map { SharedDefaultsService.BoardListEntry(id: $0.id, title: $0.title, iconEmoji: $0.iconEmoji) }
-        SharedDefaultsService.writeBoardList(boardList)
-
-        SharedDefaultsService.writeStatusList(statusListEntries(from: allBoards))
+        writeConfigurationLists(from: allBoards)
 
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    @MainActor
+    static func writeConfigurationLists(from context: ModelContext) {
+        let allBoards = (try? context.fetch(FetchDescriptor<Board>())) ?? []
+        writeConfigurationLists(from: allBoards)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    static func boardListEntries(from boards: [Board]) -> [SharedDefaultsService.BoardListEntry] {
+        boards
+            .sorted { $0.sortIndex < $1.sortIndex }
+            .map { SharedDefaultsService.BoardListEntry(id: $0.id, title: $0.title, iconEmoji: $0.iconEmoji) }
+    }
+
+    private static func writeConfigurationLists(from boards: [Board]) {
+        SharedDefaultsService.writeBoardList(boardListEntries(from: boards))
+        SharedDefaultsService.writeStatusList(statusListEntries(from: boards))
     }
 
     static func statusListEntries(from boards: [Board]) -> [SharedDefaultsService.StatusListEntry] {

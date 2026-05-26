@@ -83,6 +83,22 @@ final class TaskItem {
         updatedAt = Date()
     }
 
+    @discardableResult
+    func toggleCheckboxChecked() -> Bool {
+        guard showsCheckbox else { return false }
+        isChecked.toggle()
+        let canceledReminder = clearReminderIfCheckedCheckbox()
+        touch()
+        return canceledReminder
+    }
+
+    @discardableResult
+    func clearReminderIfCheckedCheckbox() -> Bool {
+        guard showsCheckbox, isChecked, hasReminder else { return false }
+        hasReminder = false
+        return true
+    }
+
     func duplicated(sortIndex: Int) -> TaskItem {
         let copy = TaskItem(title: title, notes: notes, sortIndex: sortIndex)
         copy.workingStart = workingStart

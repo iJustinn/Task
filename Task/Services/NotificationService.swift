@@ -48,19 +48,40 @@ enum NotificationService {
     }
 
     static func fireDates(for task: TaskItem, now: Date = Date(), calendar: Calendar = .current) -> [Date] {
-        guard task.hasReminder, let anchor = task.primaryReminderDate else { return [] }
-
-        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
-        // Tasks only carry a date; the time-of-day comes from the board's Reminder Time setting.
-        if components.hour == 0 && components.minute == 0 {
-            let minutes = task.board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
-            components.hour = minutes / 60
-            components.minute = minutes % 60
-        }
-        guard let resolvedAnchor = calendar.date(from: components), resolvedAnchor > now else { return [] }
+        guard let resolvedAnchor = resolvedFireDate(for: task, calendar: calendar), resolvedAnchor > now else { return [] }
 
         // Repeat controls date advancement on the task card, not notification recurrence.
         return [resolvedAnchor]
+    }
+
+    static func advanceRepeatingReminderIfNeeded(
+        for task: TaskItem,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Bool {
+        let rule = task.repeatRule
+        guard task.hasReminder, rule != .none else { return false }
+        guard task.workingStart != nil || task.workingEnd != nil || task.dueDate != nil else { return false }
+
+        var didAdvance = false
+        var attempts = 0
+        while let fireDate = resolvedFireDate(for: task, calendar: calendar), fireDate <= now {
+            let before = (task.workingStart, task.workingEnd, task.dueDate)
+            task.workingStart = task.workingStart.map { rule.advance($0, calendar: calendar) }
+            task.workingEnd = task.workingEnd.map { rule.advance($0, calendar: calendar) }
+            task.dueDate = task.dueDate.map { rule.advance($0, calendar: calendar) }
+            let after = (task.workingStart, task.workingEnd, task.dueDate)
+            guard before.0 != after.0 || before.1 != after.1 || before.2 != after.2 else { break }
+
+            didAdvance = true
+            attempts += 1
+            if attempts >= 10_000 { break }
+        }
+
+        if didAdvance {
+            task.touch()
+        }
+        return didAdvance
     }
 
     static func cancel(for task: TaskItem) {
@@ -71,6 +92,19 @@ enum NotificationService {
             identifiers.append("\(task.id.uuidString)@\(i)")
         }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
+
+    private static func resolvedFireDate(for task: TaskItem, calendar: Calendar) -> Date? {
+        guard task.hasReminder, let anchor = task.primaryReminderDate else { return nil }
+
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
+        // Tasks only carry a date; the time-of-day comes from the board's Reminder Time setting.
+        if components.hour == 0 && components.minute == 0 {
+            let minutes = task.board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
+            components.hour = minutes / 60
+            components.minute = minutes % 60
+        }
+        return calendar.date(from: components)
     }
 
     private static func boardSubtitle(for board: Board) -> String {

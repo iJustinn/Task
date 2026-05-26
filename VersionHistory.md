@@ -1,5 +1,63 @@
 # Version History
 
+## 0.4.7 (build 8) — 2026-05-26
+
+Persistence, reminders, import validation, widget configuration, and notes input polish.
+
+### Reminder and persistence consistency
+
+- Completing a checkbox task now clears its reminder and cancels the pending local notification after the save succeeds.
+- Task save failures now roll back edited fields and keep the editor open with an error alert instead of dismissing with dirty in-memory changes.
+- Board deletion now commits the SwiftData delete before cancelling task reminders or writing widget state.
+
+### Data and widget correctness
+
+- Imported board reminder times outside 0..<1440 are ignored so malformed backups keep the existing/default reminder time.
+- Date formatters now rebuild their localized pattern when the app language changes.
+- Widget board and status configuration lists refresh after board reorder, status reorder, and status creation.
+- App Group snapshot write failures now log diagnostic errors.
+
+### Notes and documentation
+
+- Live Markdown notes editing now avoids restyling while an input method is composing marked text.
+- README now documents the command-line `xcodebuild` verification command.
+- Import/export notes in LessonsLearned were updated to match the current v2 multi-board schema behavior.
+
+### Versioning
+
+- Build number bumped to `8` for version `0.4.7`.
+
+## 0.4.7 (build 7) — 2026-05-26
+
+Task board controls, repeat reminder reconciliation, date picker clearing, and notes polish.
+
+### Repeating reminders
+
+- Repeating reminders now auto-advance stale task dates when the app becomes active, then schedule the next reminder on the updated card date.
+- Legacy future reminder batches are still cleaned up so upgraded installs do not keep firing dates that no longer match the card.
+
+### Board and calendar controls
+
+- Edit Status now includes a **Cards per Column** segmented picker with 5, 10, 15, 20, and All choices.
+- Status columns default to 5 visible cards, with More expanding by the selected per-status limit.
+- Working and Due Date pickers now include a **Clear button** beside Today to remove the selected single date or range.
+
+### Notes and card previews
+
+- Notes indentation is preserved for leading spaces and tabs in the editor preview and card previews.
+- The live notes editor keeps the same body text size while typing longer notes or adding new lines.
+- Card note previews now keep indented plain text and checklist rows aligned with the saved note.
+
+### Accessibility and localization
+
+- Card footer repeat, notes, and reminder icons now have semantic VoiceOver labels.
+- About sheet titles and explanatory copy now use localizable keys instead of raw stored strings.
+- Storage Check now uses an inflected item-count key for pluralization.
+
+### Versioning
+
+- Build number bumped to `7` for version `0.4.7`.
+
 ## 0.4.7 (build 6) — 2026-05-23
 
 Task editing, status/tag management, Markdown notes, and app-wide text polish.

@@ -186,7 +186,14 @@ struct StatusPickerSheet: View {
                 delegate: ReorderDropDelegate<BoardGroup>(
                     target: group,
                     ordered: { board.orderedGroups },
-                    onCommit: { try? context.save() },
+                    onCommit: {
+                        do {
+                            try context.save()
+                            UpcomingSnapshotBuilder.writeConfigurationLists(from: context)
+                        } catch {
+                            context.rollback()
+                        }
+                    },
                     onBeginDrag: { captureReorderSnapshotIfNeeded() },
                     onTick: { rearmReorderWatchdogIfDragging() },
                     onCompleteDrag: { completeReorder() },
@@ -326,7 +333,13 @@ struct StatusPickerSheet: View {
         let group = BoardGroup(name: trimmed, colorKey: newGroupColor, sortIndex: sortIndex)
         group.board = board
         context.insert(group)
-        try? context.save()
+        do {
+            try context.save()
+            UpcomingSnapshotBuilder.writeConfigurationLists(from: context)
+        } catch {
+            context.rollback()
+            return
+        }
         selection = group
         newGroupName = ""
         showAddGroup = false

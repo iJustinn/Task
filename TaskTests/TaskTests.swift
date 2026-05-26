@@ -76,18 +76,53 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(dates, [expectedFireDate])
     }
 
-    func testRepeatingReminderDoesNotAdvancePastCardDate() throws {
+    func testRepeatingReminderAutoAdvancesPastCardDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let chosenDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+        let expectedNextDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 30)))
+        let expectedFireDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 30, hour: 9)))
         let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 25, hour: 12)))
         let task = TaskItem(title: "Stale repeat reminder", notes: "")
         task.dueDate = chosenDay
         task.hasReminder = true
         task.repeatRule = .weekly
 
+        let didAdvance = NotificationService.advanceRepeatingReminderIfNeeded(for: task, now: now, calendar: calendar)
         let dates = NotificationService.fireDates(for: task, now: now, calendar: calendar)
 
-        XCTAssertTrue(dates.isEmpty)
+        XCTAssertTrue(didAdvance)
+        XCTAssertEqual(task.dueDate, expectedNextDay)
+        XCTAssertEqual(dates, [expectedFireDate])
+    }
+
+    func testCompletingCheckboxTaskClearsReminderWithoutRestoringItOnUncheck() {
+        let task = TaskItem(title: "Checked reminder", notes: "")
+        task.showsCheckbox = true
+        task.hasReminder = true
+
+        let canceledReminder = task.toggleCheckboxChecked()
+
+        XCTAssertTrue(canceledReminder)
+        XCTAssertTrue(task.isChecked)
+        XCTAssertFalse(task.hasReminder)
+
+        let canceledReminderOnUncheck = task.toggleCheckboxChecked()
+
+        XCTAssertFalse(canceledReminderOnUncheck)
+        XCTAssertFalse(task.isChecked)
+        XCTAssertFalse(task.hasReminder)
+    }
+
+    func testCheckedCheckboxReminderPolicyClearsReminderForEditorSaves() {
+        let task = TaskItem(title: "Editor checked reminder", notes: "")
+        task.showsCheckbox = true
+        task.isChecked = true
+        task.hasReminder = true
+
+        let canceledReminder = task.clearReminderIfCheckedCheckbox()
+
+        XCTAssertTrue(canceledReminder)
+        XCTAssertFalse(task.hasReminder)
     }
 
     func testTaskDuplicateCopiesEditableFieldsAndRelationships() throws {
@@ -298,6 +333,75 @@ final class TaskTests: XCTestCase {
 
         XCTAssertEqual(summary.itemCount, 4)
         XCTAssertEqual(summary.byteCount, try XCTUnwrap(DataImportExport.exportData(context: context)).count)
+    }
+
+    func testStorageSummaryUsesInflectedItemCountCatalogKey() throws {
+        let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
+
+        XCTAssertNotNil(strings["^[%lld item](inflect: true)"])
+        XCTAssertNil(strings["items"])
+    }
+
+    func testDefaultExportFileNameUsesStableGregorianTimestamp() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26, hour: 13, minute: 7)))
+
+        XCTAssertEqual(
+            DataImportExport.defaultExportFileName(for: date, timeZone: calendar.timeZone),
+            "task-export-2026-05-26-1307"
+        )
+    }
+
+    func testImportedInvalidReminderTimeKeepsDefaultBoardReminderTime() async throws {
+        let container = try makeContainer()
+        let context = container.mainContext
+        let boardID = UUID()
+        let createdAt = Date()
+        let payload = MultiBoardExportPayload(
+            boards: [
+                BoardExportEntry(
+                    board: BoardExport(
+                        id: boardID,
+                        title: "Imported",
+                        subtitle: "",
+                        iconEmoji: nil,
+                        sortIndex: 0,
+                        defaultGroupID: nil,
+                        cardSortFieldRaw: nil,
+                        cardSortDirectionRaw: nil,
+                        reminderMinutesOfDay: 24 * 60,
+                        createdAt: createdAt,
+                        updatedAt: createdAt
+                    ),
+                    groups: [],
+                    tags: [],
+                    tasks: []
+                )
+            ]
+        )
+        let data = try DataImportExport.makeEncoder().encode(payload)
+
+        let result = await DataImportExport.importData(data, context: context)
+        let boards = try context.fetch(FetchDescriptor<Board>())
+
+        XCTAssertTrue(result.success)
+        XCTAssertEqual(boards.first?.reminderMinutesOfDay, ReminderDefaults.defaultMinutesOfDay)
+    }
+
+    func testDateFormatterRebuildsLocalizedPatternAfterLocaleChanges() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let date = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 12, day: 31)))
+        TaskDateFormat.locale = Locale(identifier: "en_US")
+        _ = TaskDateFormat.format(date, style: .shortText)
+
+        TaskDateFormat.locale = Locale(identifier: "zh_Hans")
+        let localized = TaskDateFormat.format(date, style: .shortText)
+        TaskDateFormat.locale = .autoupdatingCurrent
+
+        XCTAssertTrue(localized.contains("月"))
+        XCTAssertTrue(localized.contains("31"))
+        XCTAssertFalse(localized.contains(" "))
     }
 
     func testBoardDefaultGroupToggleSetsAndMovesDefaultWhenDisabled() {
@@ -525,6 +629,20 @@ final class TaskTests: XCTestCase {
         ])
     }
 
+    func testWidgetBoardListUsesBoardOrder() {
+        let personal = Board(title: "Personal")
+        personal.iconEmoji = "🏃"
+        personal.sortIndex = 1
+        let work = Board(title: "Work")
+        work.iconEmoji = "💼"
+        work.sortIndex = 0
+
+        let boards = UpcomingSnapshotBuilder.boardListEntries(from: [personal, work])
+
+        XCTAssertEqual(boards.map(\.title), ["Work", "Personal"])
+        XCTAssertEqual(boards.map(\.iconEmoji), ["💼", "🏃"])
+    }
+
     func testTextSizeSettingsAreShiftedOneSizeUpAndDefaultToMedium() {
         XCTAssertEqual(AppTextSize.small.dynamicType, .large)
         XCTAssertEqual(AppTextSize.medium.dynamicType, .xLarge)
@@ -610,6 +728,56 @@ final class TaskTests: XCTestCase {
         }
 
         XCTAssertTrue(missing.isEmpty, "Missing zh-Hans translations: \(missing.sorted().joined(separator: ", "))")
+    }
+
+    func testAboutSheetCopyIsCatalogedAndCatalogHasNoManualWorkarounds() throws {
+        let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
+        let requiredKeys = [
+            "Create Tasks",
+            "Notes & Checklists",
+            "Organize the Board",
+            "Tags & Groups",
+            "Dates & Reminders",
+            "Defaults",
+            "Widget",
+            "Local-First Data",
+            "Network Access",
+            "Notifications",
+            "Your Control",
+            "Tap + in the bottom bar to start a new task and type a title.",
+            "Tap the Notes area on a task to type. Markdown is supported — **bold**, *italic*, # heading, and - bullet lines all render once you tap away.",
+            "Task does not make any network requests on its own.",
+            "Local notifications depend on your device permissions and iOS scheduling; if a reminder is critical, also confirm it with the system Calendar or Reminders app."
+        ]
+
+        let missing = requiredKeys.filter { strings[$0] == nil }
+        XCTAssertTrue(missing.isEmpty, "Missing About catalog keys: \(missing.joined(separator: ", "))")
+
+        let manual = strings.compactMap { key, value -> String? in
+            value["extractionState"] as? String == "manual" ? key : nil
+        }
+        XCTAssertTrue(manual.isEmpty, "Manual catalog entries remain: \(manual.sorted().joined(separator: ", "))")
+    }
+
+    func testTaskCardFooterAccessibilityLabelsAreCataloged() throws {
+        let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
+        let requiredKeys = ["Repeats", "Has notes", "Has reminder"]
+        let missing = requiredKeys.filter { strings[$0] == nil }
+
+        XCTAssertTrue(missing.isEmpty, "Missing card footer accessibility labels: \(missing.joined(separator: ", "))")
+    }
+
+    func testReleaseDocsMatchBuildEightAndMentionRecentVisibleChanges() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = testFile.deletingLastPathComponent().deletingLastPathComponent()
+        let readme = try String(contentsOf: projectRoot.appending(path: "README.md"), encoding: .utf8)
+        let history = try String(contentsOf: projectRoot.appending(path: "VersionHistory.md"), encoding: .utf8)
+
+        XCTAssertTrue(readme.contains("0.4.7 (build 8)"))
+        XCTAssertTrue(history.contains("## 0.4.7 (build 8)"))
+        XCTAssertTrue(history.contains("Completing a checkbox task now clears its reminder"))
+        XCTAssertTrue(history.contains("Widget board and status configuration lists refresh"))
+        XCTAssertTrue(history.contains("Live Markdown notes editing now avoids restyling"))
     }
 
     func testTaskEditorVisibleLabelsAreActiveInStringCatalog() throws {
@@ -788,6 +956,11 @@ final class TaskTests: XCTestCase {
 
         let typingFont = try XCTUnwrap(markdownEditingTypingAttributes(bodyFont: bodyFont)[.font] as? UIFont)
         XCTAssertEqual(typingFont.pointSize, bodyFont.pointSize)
+    }
+
+    func testLiveMarkdownEditingSkipsRestylingDuringMarkedTextComposition() {
+        XCTAssertFalse(shouldRestyleMarkdownText(hasMarkedText: true))
+        XCTAssertTrue(shouldRestyleMarkdownText(hasMarkedText: false))
     }
 
     func testSwipeToEditMetricsMoveRowsOnlyForHorizontalLeftSwipes() {

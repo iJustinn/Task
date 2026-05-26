@@ -5,18 +5,18 @@ import UIKit
 
 struct AboutInfoSection: Identifiable {
     let id = UUID()
-    let title: String
+    let title: LocalizedStringKey
     let systemImage: String
     let tintColor: Color
-    let details: [String]
+    let details: [LocalizedStringKey]
 }
 
 struct AboutGuideSection: Identifiable {
     let id = UUID()
-    let title: String
+    let title: LocalizedStringKey
     let systemImage: String
     let tintColor: Color
-    let steps: [String]
+    let steps: [LocalizedStringKey]
 }
 
 private struct AboutSectionDivider: View {
@@ -47,7 +47,8 @@ struct AboutInfoCard: View {
                     .minimumScaleFactor(0.8)
             }
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(section.details, id: \.self) { detail in
+                ForEach(section.details.indices, id: \.self) { index in
+                    let detail = section.details[index]
                     HStack(alignment: .top, spacing: 10) {
                         Circle()
                             .fill(section.tintColor.opacity(0.72))

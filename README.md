@@ -6,7 +6,7 @@
 
 A privacy-focused iOS task manager with a Notion-style task editor and a Kanban board home. Multiple boards, multi-select tags, working dates and due dates, local notifications, and a home-screen widget — all on-device.
 
-Current app version: **0.4.7 (build 6)**
+Current app version: **0.4.7 (build 8)**
 
 ## Screenshots
 
@@ -44,6 +44,12 @@ Current app version: **0.4.7 (build 6)**
 1. Open `task.xcodeproj` in Xcode.
 2. Select the `Task` scheme.
 3. Build and run on an iPhone simulator or device.
+
+For command-line verification, use an iOS simulator destination and a disposable derived-data folder:
+
+```sh
+rtk xcodebuild test -project task.xcodeproj -scheme Task -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /private/tmp/task-derived
+```
 
 The signing team ID lives in [`Config/Signing.xcconfig`](Config/Signing.xcconfig). Contributors can override it without touching the project file by creating `Config/Signing.local.xcconfig` (gitignored) containing `DEVELOPMENT_TEAM = YOUR_TEAM_ID`.
 

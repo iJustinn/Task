@@ -1,6 +1,9 @@
 import Foundation
+import os
 
 enum SharedDefaultsService {
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Task", category: "SharedDefaults")
+
     static let appGroupIdentifier = "group.com.ijustin.task"
     static let upcomingSnapshotKey = "task.upcomingSnapshot"
     static let boardListKey = "task.boardList"
@@ -47,11 +50,17 @@ enum SharedDefaultsService {
     }
 
     static func writeUpcoming(_ snapshot: UpcomingSnapshot) {
-        guard let defaults = sharedDefaults else { return }
+        guard let defaults = sharedDefaults else {
+            logger.error("Failed to open App Group defaults for upcoming snapshot")
+            return
+        }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(snapshot) {
+        do {
+            let data = try encoder.encode(snapshot)
             defaults.set(data, forKey: upcomingSnapshotKey)
+        } catch {
+            logger.error("Failed to encode upcoming snapshot: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -64,10 +73,16 @@ enum SharedDefaultsService {
     }
 
     static func writeBoardList(_ boards: [BoardListEntry]) {
-        guard let defaults = sharedDefaults else { return }
+        guard let defaults = sharedDefaults else {
+            logger.error("Failed to open App Group defaults for board list")
+            return
+        }
         let encoder = JSONEncoder()
-        if let data = try? encoder.encode(boards) {
+        do {
+            let data = try encoder.encode(boards)
             defaults.set(data, forKey: boardListKey)
+        } catch {
+            logger.error("Failed to encode board list: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -79,10 +94,16 @@ enum SharedDefaultsService {
     }
 
     static func writeStatusList(_ statuses: [StatusListEntry]) {
-        guard let defaults = sharedDefaults else { return }
+        guard let defaults = sharedDefaults else {
+            logger.error("Failed to open App Group defaults for status list")
+            return
+        }
         let encoder = JSONEncoder()
-        if let data = try? encoder.encode(statuses) {
+        do {
+            let data = try encoder.encode(statuses)
             defaults.set(data, forKey: statusListKey)
+        } catch {
+            logger.error("Failed to encode status list: \(error.localizedDescription, privacy: .public)")
         }
     }
 

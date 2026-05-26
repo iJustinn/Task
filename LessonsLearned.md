@@ -338,7 +338,7 @@ Whenever enum cases are removed or merged, surface the migration explicitly. The
 2. **Name match** (groups and tags only, case-insensitive) — same name → update the existing record and remap the imported UUID to the existing object in the lookup dictionary so tasks in the same payload that reference the imported UUID resolve to the existing group/tag.
 3. **Insert** — neither match → create a new entity with the imported UUID.
 
-The name-based fallback is critical because on every fresh install, `SwiftDataManager.ensureSeed` creates the six default groups with **freshly-minted UUIDs**. Without a name match, importing a previously-exported board on a different device (or after Reset All Data) would create duplicate groups: original "Daily" with seed UUID + imported "Daily" with the export's UUID. The fallback collapses them.
+The name-based fallback is scoped to a single board and is critical because on every fresh install, `SwiftDataManager.ensureSeed` creates the five default groups with **freshly-minted UUIDs**. Without a name match, importing a previously-exported board on a different device (or after Reset All Data) would create duplicate groups: seed "Waiting" with its fresh UUID plus imported "Waiting" with the export's UUID. The fallback collapses them without mixing groups across boards.
 
 Tasks are still ID-only (no name fallback) since task names aren't unique and duplicates are a legitimate case.
 
@@ -350,11 +350,11 @@ When generating test data externally, due dates must be ≥ working dates (or wo
 
 `DataImportExport.importData(_:context:)` is non-destructive — entities not present in the imported file stay put. **Never wipe existing data on import** unless that's the explicit user gesture (Reset All Data).
 
-For the single board: if no ID matches but a board exists, reuse the existing board (preserving its ID) and overwrite its metadata. This avoids creating a duplicate board.
+Boards are ID-only in the v2 multi-board format. The decoder still accepts legacy v1 single-board payloads by wrapping them into a one-board v2 payload, but it does not reuse an unrelated existing board when the UUID differs.
 
 ### Notification re-scheduling on import
 
-When a task is updated via import, cancel its old pending notification first (`NotificationService.cancel(for: existing)`), then re-schedule based on the updated `hasReminder` value. Don't assume the old notification still matches the new dates.
+When a task is updated via import, queue cancellation of its old pending notification and queue re-scheduling based on the updated `hasReminder` value. Replay the queued notification plan only after the import save succeeds. Don't assume the old notification still matches the new dates, and don't cancel a real notification for an import that fails to commit.
 
 ### File round-trip
 
@@ -368,7 +368,7 @@ JSON uses `JSONEncoder().dateEncodingStrategy = .iso8601` and `.outputFormatting
 
 ### Reminder time-of-day comes from the user setting
 
-Tasks store a date only, never a time. When `NotificationService.schedule(for:)` builds the `UNCalendarNotificationTrigger`, it falls through to the user-configurable Reminder Time (Settings → Default → Reminder Time, default 9:00):
+Tasks store a date only, never a time. When `NotificationService.schedule(for:)` builds the `UNCalendarNotificationTrigger`, it falls through to the board's user-configurable Reminder Time (Settings → Board → Reminder Time, default 9:00):
 
 ```swift
 if components.hour == 0 && components.minute == 0 {
@@ -379,6 +379,10 @@ if components.hour == 0 && components.minute == 0 {
 ```
 
 The reminder identifier is `task.id.uuidString` so we can cancel cleanly.
+
+### Repeating reminders advance the card date, then schedule one notification
+
+Repeating task rules are date-advancement rules, not repeating `UNCalendarNotificationTrigger`s. On scene-active, `RootView.refreshRepeatReminders()` calls `NotificationService.advanceRepeatingReminderIfNeeded(for:)` for stale repeating reminders, advances every set task date by the rule until the resolved reminder time is in the future, saves once, writes the widget snapshot, then schedules the next one-shot notification. This keeps the card date, widget date, and reminder date aligned while still cancelling legacy `taskID@N` repeat batches.
 
 ### Don't share static config across a `@MainActor` boundary — extract it
 
@@ -552,6 +556,8 @@ The model-level companion is `Board.orderedTags` sorting by `sortIndex` then `cr
 
 `Localizable.xcstrings` covers English and Simplified Chinese. New strings added via `String(localized: "…")` or plain `Text("…")` get auto-extracted on build thanks to `LOCALIZATION_PREFERS_STRING_CATALOGS = YES`. Don't manually edit the JSON unless adding translations.
 
+When a reusable model stores user-facing SwiftUI text, use `LocalizedStringKey`, not `String`. A stored `String` rendered as `Text(value)` bypasses runtime catalog lookup and also prevents call-site literals from being extracted. `AboutInfoSection` and `AboutGuideSection` deliberately store titles/details as `LocalizedStringKey` for this reason.
+
 ## Multi-board (0.4.0)
 
 ### Default seed: three boards, not one
@@ -592,7 +598,7 @@ Do not bring back drag-to-trash zones for these picker sheets. Reorder stays on 
 
 All `WidgetConfigurationIntent` parameters must be optional, including fixed `AppEnum` choices. If adding a setting such as `@Parameter var background: WidgetBackgroundStyle?`, render `nil` as the default in the widget view. A non-optional parameter fails the AppIntents metadata export with "Encountered a non-optional type for parameter".
 
-`BoardEntity` / `BoardEntityQuery` populate the picker by reading a `BoardListEntry[]` from the App Group's shared defaults. `StatusEntity` / `StatusEntityQuery` do the same with `StatusListEntry[]`. The app writes these lists every time it writes the upcoming snapshot, so the widget edit sheet always shows current boards and statuses.
+`BoardEntity` / `BoardEntityQuery` populate the picker by reading a `BoardListEntry[]` from the App Group's shared defaults. `StatusEntity` / `StatusEntityQuery` do the same with `StatusListEntry[]`. The app writes these lists every time it writes the upcoming snapshot and also after board/status reorder or status creation via `UpcomingSnapshotBuilder.writeConfigurationLists(from:)`, so the widget edit sheet always shows current boards and statuses.
 
 Each snapshot entry now carries `boardID`, `boardEmoji`, `boardTitle`, and `groupID`. The provider filters entries by configured board and/or status, returning all when those parameters are empty. When "All Boards" is selected, the widget UI shows the board emoji on each row for disambiguation.
 
@@ -619,6 +625,10 @@ For the inline board date filter, prefer a horizontal `ScrollView` + `LazyHStack
 The generated day window must always include the current focus day when it is within range: the selected filter date when one exists, otherwise today. The hard cap is always plus/minus one calendar year around today, not around the selected date. Clip task-derived dates to that today-based range before building the contiguous day range; far-future or far-past task dates should not make the slider enormous.
 
 When recentering the date slider on reopen, drive it from a parent-owned open token and set the bound `scrollPosition` through `nil` before applying the target on the next main-queue tick. Reassigning the same `Date` target is a no-op for `.scrollPosition(id:anchor:)`, so SwiftUI can preserve the old horizontal offset instead of centering the focus day again.
+
+### Reminder side-effect ordering
+
+Only schedule or cancel notifications after the SwiftData save that owns the change succeeds. For destructive flows, capture the tasks to cancel, commit the deletion, then replay notification cancellations. For edits and checkbox completion, roll back on save failure and skip widget writes. This keeps notification state aligned with durable task state instead of with a failed in-memory mutation.
 
 ### 2026-05-23 - Redirect raw JSON through rtk proxy
 
