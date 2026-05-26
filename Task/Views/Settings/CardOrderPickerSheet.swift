@@ -26,9 +26,6 @@ struct CardOrderPickerSheet: View {
             .navigationTitle("Sort")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                 }
@@ -40,7 +37,7 @@ struct CardOrderPickerSheet: View {
     private var sortBySection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Sort By")
-                .font(.system(size: 29, weight: .bold, design: .rounded))
+                .font(.system(size: 29, weight: .bold))
                 .foregroundColor(.primary)
             LazyVStack(spacing: 0) {
                 ForEach(Array(CardSortField.allCases.enumerated()), id: \.element.id) { index, field in
@@ -56,7 +53,7 @@ struct CardOrderPickerSheet: View {
     private var orderSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Order")
-                .font(.system(size: 29, weight: .bold, design: .rounded))
+                .font(.system(size: 29, weight: .bold))
                 .foregroundColor(.primary)
             LazyVStack(spacing: 0) {
                 ForEach(Array(CardSortDirection.allCases.enumerated()), id: \.element.id) { index, direction in
@@ -70,7 +67,7 @@ struct CardOrderPickerSheet: View {
 
             if board.cardSortField == .manual {
                 Text("Order doesn't apply to Manual — drag a card to reorder it inside its group.")
-                    .font(.system(.footnote, design: .rounded).weight(.medium))
+                    .font(.system(.footnote).weight(.medium))
                     .foregroundColor(.secondary)
                     .padding(.top, 2)
             }

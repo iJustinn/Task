@@ -30,8 +30,8 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             // The user may have changed notification permission in iOS Settings while
             // the app was backgrounded; re-read so TaskDetailView's warning is accurate.
-            // Also re-batch repeating reminders so Daily/Weekly tasks don't go silent
-            // after their 16-occurrence batch runs out.
+            // Also reconcile repeating reminders so stale task dates advance and
+            // legacy future batches are removed before scheduling the next ring.
             if phase == .active {
                 Task { await settings.refreshNotificationAuthorization() }
                 refreshRepeatReminders()
@@ -58,15 +58,29 @@ struct RootView: View {
         }
     }
 
-    /// Re-schedule every repeating task's reminder batch. `NotificationService.schedule`
-    /// advances the cursor past now before laying down 16 one-shots, so a task whose
-    /// anchor is in the past picks up future occurrences. Called on scene-active so
-    /// a Daily reminder set last month doesn't fall off after its initial 16-day batch.
+    /// Re-schedule every repeating task's reminder request. If the task's reminder
+    /// date has elapsed, advance its card dates by the repeat rule until the next
+    /// reminder is in the future, then persist once before scheduling.
     private func refreshRepeatReminders() {
         let descriptor = FetchDescriptor<TaskItem>(
             predicate: #Predicate { $0.hasReminder && !$0.repeatRuleRaw.isEmpty }
         )
         guard let tasks = try? context.fetch(descriptor) else { return }
+        var didAdvance = false
+        for task in tasks {
+            didAdvance = NotificationService.advanceRepeatingReminderIfNeeded(for: task) || didAdvance
+        }
+
+        if didAdvance {
+            do {
+                try context.save()
+                UpcomingSnapshotBuilder.writeSnapshot(from: context)
+            } catch {
+                context.rollback()
+                return
+            }
+        }
+
         for task in tasks {
             NotificationService.schedule(for: task)
         }

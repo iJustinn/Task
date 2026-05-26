@@ -6,6 +6,7 @@ final class BoardGroup {
     var id: UUID = UUID()
     var name: String = ""
     var colorKeyRaw: String = ColorKey.purple.rawValue
+    var cardDisplayLimitRaw: String = CardDisplayLimit.five.rawValue
     var sortIndex: Int = 0
     var createdAt: Date = Date()
 
@@ -23,6 +24,11 @@ final class BoardGroup {
     var colorKey: ColorKey {
         get { ColorKey(rawValue: colorKeyRaw) ?? .purple }
         set { colorKeyRaw = newValue.rawValue }
+    }
+
+    var cardDisplayLimit: CardDisplayLimit {
+        get { CardDisplayLimit(rawValue: cardDisplayLimitRaw) ?? .five }
+        set { cardDisplayLimitRaw = newValue.rawValue }
     }
 
     var orderedTasks: [TaskItem] {
@@ -72,5 +78,45 @@ final class BoardGroup {
             }
         }
         return direction == .ascending ? base : base.reversed()
+    }
+}
+
+enum CardDisplayLimit: String, CaseIterable, Identifiable {
+    case five = "5"
+    case ten = "10"
+    case fifteen = "15"
+    case twenty = "20"
+    case all = "all"
+
+    var id: String { rawValue }
+
+    var count: Int? {
+        switch self {
+        case .five: return 5
+        case .ten: return 10
+        case .fifteen: return 15
+        case .twenty: return 20
+        case .all: return nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .five: return "5"
+        case .ten: return "10"
+        case .fifteen: return "15"
+        case .twenty: return "20"
+        case .all: return String(localized: "All")
+        }
+    }
+
+    func initialVisibleCount(totalCount: Int) -> Int {
+        guard let count else { return totalCount }
+        return min(count, totalCount)
+    }
+
+    func nextVisibleCount(from currentCount: Int, totalCount: Int) -> Int {
+        guard let count else { return totalCount }
+        return min(currentCount + count, totalCount)
     }
 }

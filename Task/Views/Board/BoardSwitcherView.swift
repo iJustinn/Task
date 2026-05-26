@@ -15,6 +15,7 @@ struct BoardSwitcherView: View {
     @State private var dragSessionEnded: Bool = false
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
+    @State private var deleteErrorMessage: String?
     /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
     /// user cancels the drag (releases outside any row, dismisses the sheet, or
     /// goes idle for 5 s) so dirty model mutations don't leak into the next save.
@@ -79,6 +80,14 @@ struct BoardSwitcherView: View {
                     deleteMode = false
                 }
                 .confirmationSheetPresentationStyle()
+            }
+            .alert("Delete Failed", isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if !$0 { deleteErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { deleteErrorMessage = nil }
+            } message: {
+                Text(deleteErrorMessage ?? "")
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
@@ -164,7 +173,14 @@ struct BoardSwitcherView: View {
                 delegate: ReorderDropDelegate<Board>(
                     target: board,
                     ordered: { boards },
-                    onCommit: { try? context.save() },
+                    onCommit: {
+                        do {
+                            try context.save()
+                            UpcomingSnapshotBuilder.writeConfigurationLists(from: context)
+                        } catch {
+                            context.rollback()
+                        }
+                    },
                     onBeginDrag: { captureReorderSnapshotIfNeeded() },
                     onTick: { rearmReorderWatchdogIfDragging() },
                     onCompleteDrag: { completeReorder() },
@@ -188,10 +204,12 @@ struct BoardSwitcherView: View {
                     .foregroundStyle(deleteMode ? .red : .primary)
 
                 HStack(spacing: 6) {
-                    Text(board.subtitle.isEmpty ? "\(taskCount) tasks" : board.subtitle)
-                    if !board.subtitle.isEmpty {
+                    if board.subtitle.isEmpty {
+                        Text("^[\(taskCount) task](inflect: true)")
+                    } else {
+                        Text(board.subtitle)
                         Text("·")
-                        Text("\(taskCount) tasks")
+                        Text("^[\(taskCount) task](inflect: true)")
                     }
                 }
                 .font(.subheadline)
@@ -224,17 +242,7 @@ struct BoardSwitcherView: View {
 
     private var deleteButton: some View {
         Button { deleteMode = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete a Board")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete a Board", systemName: "trash", tintColor: .red, fillsWidth: true)
         }
         .buttonStyle(.plain)
     }
@@ -255,12 +263,18 @@ struct BoardSwitcherView: View {
         guard boards.count > 1 else { return }
         let wasActive = board.id == activeBoardID
         let fallback = boards.first(where: { $0.id != board.id })
-        let tasks = board.tasks ?? []
-        for task in tasks {
+        let plannedCancellations = board.tasks ?? []
+        context.delete(board)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            deleteErrorMessage = String(localized: "Couldn't delete this board. Try again.")
+            return
+        }
+        for task in plannedCancellations {
             NotificationService.cancel(for: task)
         }
-        context.delete(board)
-        try? context.save()
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
         if wasActive, let fallback {
             onPickBoard(fallback.id)

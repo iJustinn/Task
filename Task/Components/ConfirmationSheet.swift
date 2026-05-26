@@ -3,10 +3,10 @@ import SwiftUI
 struct ConfirmationSheet: View {
     let icon: String
     let iconTint: Color
-    let title: String
-    let message: String
-    var confirmLabel: String = "Delete"
-    var cancelLabel: String = "Cancel"
+    let title: LocalizedStringKey
+    let message: LocalizedStringKey
+    var confirmLabel: LocalizedStringKey = "Delete"
+    var cancelLabel: LocalizedStringKey = "Cancel"
     var isDestructive: Bool = true
     let onConfirm: () -> Void
 
@@ -28,12 +28,12 @@ struct ConfirmationSheet: View {
 
                 VStack(spacing: 8) {
                     Text(title)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.primary)
                         .multilineTextAlignment(.center)
 
                     Text(message)
-                        .font(.system(.body, design: .rounded))
+                        .font(.system(.body))
                         .fontWeight(.medium)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
@@ -50,7 +50,7 @@ struct ConfirmationSheet: View {
                         }
                     } label: {
                         Text(confirmLabel)
-                            .font(.system(.headline, design: .rounded).weight(.bold))
+                            .font(.system(.headline).weight(.bold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity, minHeight: 48)
                             .background(
@@ -64,7 +64,7 @@ struct ConfirmationSheet: View {
                         dismiss()
                     } label: {
                         Text(cancelLabel)
-                            .font(.system(.headline, design: .rounded).weight(.semibold))
+                            .font(.system(.headline).weight(.semibold))
                             .foregroundColor(.primary)
                             .frame(maxWidth: .infinity, minHeight: 48)
                             .background(

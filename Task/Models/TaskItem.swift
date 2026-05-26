@@ -12,6 +12,8 @@ final class TaskItem {
     var dueDate: Date?
 
     var hasReminder: Bool = false
+    var showsCheckbox: Bool = false
+    var isChecked: Bool = false
     var repeatRuleRaw: String = ""
 
     var sortIndex: Int = 0
@@ -79,5 +81,36 @@ final class TaskItem {
 
     func touch() {
         updatedAt = Date()
+    }
+
+    @discardableResult
+    func toggleCheckboxChecked() -> Bool {
+        guard showsCheckbox else { return false }
+        isChecked.toggle()
+        let canceledReminder = clearReminderIfCheckedCheckbox()
+        touch()
+        return canceledReminder
+    }
+
+    @discardableResult
+    func clearReminderIfCheckedCheckbox() -> Bool {
+        guard showsCheckbox, isChecked, hasReminder else { return false }
+        hasReminder = false
+        return true
+    }
+
+    func duplicated(sortIndex: Int) -> TaskItem {
+        let copy = TaskItem(title: title, notes: notes, sortIndex: sortIndex)
+        copy.workingStart = workingStart
+        copy.workingEnd = workingEnd
+        copy.dueDate = dueDate
+        copy.hasReminder = hasReminder
+        copy.showsCheckbox = showsCheckbox
+        copy.isChecked = isChecked
+        copy.repeatRule = repeatRule
+        copy.board = board
+        copy.group = group
+        copy.tags = tags
+        return copy
     }
 }

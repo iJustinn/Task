@@ -28,7 +28,7 @@ struct GridTile: View {
                     Group {
                         if let iconText {
                             Text(iconText)
-                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .font(.system(size: 28, weight: .bold))
                                 .foregroundColor(tintColor)
                                 .minimumScaleFactor(0.6)
                                 .lineLimit(1)
@@ -61,13 +61,13 @@ struct GridTile: View {
 
             VStack(spacing: 2) {
                 Text(title)
-                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .font(.system(.headline).weight(.bold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .font(.system(.caption).weight(.semibold))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)

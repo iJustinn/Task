@@ -66,15 +66,18 @@ struct CalendarPicker: View {
     private var header: some View {
         HStack(spacing: 12) {
             Text(monthTitle)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.85)
             Spacer()
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                clearButton
                 todayButton
                 monthButton(systemName: "chevron.left", isEnabled: canMovePrev) { moveMonth(by: -1) }
                 monthButton(systemName: "chevron.right", isEnabled: canMoveNext) { moveMonth(by: 1) }
             }
+            .layoutPriority(1)
         }
     }
 
@@ -82,7 +85,7 @@ struct CalendarPicker: View {
         HStack(spacing: 0) {
             ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                 Text(symbol)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity)
             }
@@ -113,6 +116,7 @@ struct CalendarPicker: View {
         } label: {
             Text("Today")
                 .font(.system(size: 14, weight: .bold))
+                .lineLimit(1)
                 .foregroundColor(enabled ? .primary : .secondary.opacity(0.35))
                 .padding(.horizontal, 12)
                 .frame(height: 34)
@@ -121,6 +125,27 @@ struct CalendarPicker: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var clearButton: some View {
+        let enabled = hasSelection
+        return Button {
+            guard enabled else { return }
+            clearSelection()
+        } label: {
+            Text("Clear")
+                .font(.system(size: 14, weight: .bold))
+                .lineLimit(1)
+                .foregroundColor(enabled ? .primary : .secondary.opacity(0.35))
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .background(Color.primary.opacity(enabled ? 0.09 : 0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func jumpToToday() {
@@ -132,6 +157,24 @@ struct CalendarPicker: View {
         case .range(let startBinding, let endBinding):
             startBinding.wrappedValue = today
             endBinding.wrappedValue = nil
+        }
+    }
+
+    private var hasSelection: Bool {
+        switch mode {
+        case .single(let binding):
+            return binding.wrappedValue != nil
+        case .range(let startBinding, let endBinding):
+            return startBinding.wrappedValue != nil || endBinding.wrappedValue != nil
+        }
+    }
+
+    private func clearSelection() {
+        switch mode {
+        case .single(let binding):
+            CalendarPickerSelection.clear(selectedDate: binding)
+        case .range(let startBinding, let endBinding):
+            CalendarPickerSelection.clear(rangeStart: startBinding, rangeEnd: endBinding)
         }
     }
 
@@ -161,7 +204,7 @@ struct CalendarPicker: View {
             stripBackground(state: state)
             endpointBackground(state: state, isToday: isToday, isEnabled: isEnabled)
             Text("\(day)")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .bold))
                 .foregroundColor(textColor(state: state, isEnabled: isEnabled))
         }
         .frame(maxWidth: .infinity)
@@ -328,7 +371,7 @@ struct CalendarPicker: View {
     }
 
     private var monthTitle: String {
-        visibleMonthStart.formatted(.dateTime.month(.wide).year())
+        visibleMonthStart.formatted(.dateTime.month(.wide).year().locale(TaskDateFormat.locale))
     }
 
     private var canMovePrev: Bool {
@@ -373,5 +416,16 @@ struct CalendarPicker: View {
         let calendar = Calendar.current
         let comps = calendar.dateComponents([.year, .month], from: date)
         return calendar.date(from: comps) ?? calendar.startOfDay(for: date)
+    }
+}
+
+enum CalendarPickerSelection {
+    static func clear(selectedDate: Binding<Date?>) {
+        selectedDate.wrappedValue = nil
+    }
+
+    static func clear(rangeStart: Binding<Date?>, rangeEnd: Binding<Date?>) {
+        rangeStart.wrappedValue = nil
+        rangeEnd.wrappedValue = nil
     }
 }

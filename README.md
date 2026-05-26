@@ -6,14 +6,14 @@
 
 A privacy-focused iOS task manager with a Notion-style task editor and a Kanban board home. Multiple boards, multi-select tags, working dates and due dates, local notifications, and a home-screen widget — all on-device.
 
-Current app version: **0.4.6 (build 4)**
+Current app version: **0.4.7 (build 8)**
 
 ## Screenshots
 
 <p align="center">
-  <img src="Screenshots/01-v0.4.6.PNG" alt="Board home" width="32%"/>
+  <img src="Screenshots/01-v0.4.7.PNG" alt="Board home" width="32%"/>
   <img src="Screenshots/02-v0.4.6.PNG" alt="Board switcher" width="32%"/>
-  <img src="Screenshots/03-v0.4.6.PNG" alt="Task editor" width="32%"/>
+  <img src="Screenshots/03-v0.4.7.PNG" alt="Task editor" width="32%"/>
 </p>
 <p align="center">
   <img src="Screenshots/04-v0.4.6.PNG" alt="Calendar picker" width="32%"/>
@@ -44,6 +44,12 @@ Current app version: **0.4.6 (build 4)**
 1. Open `task.xcodeproj` in Xcode.
 2. Select the `Task` scheme.
 3. Build and run on an iPhone simulator or device.
+
+For command-line verification, use an iOS simulator destination and a disposable derived-data folder:
+
+```sh
+rtk xcodebuild test -project task.xcodeproj -scheme Task -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath /private/tmp/task-derived
+```
 
 The signing team ID lives in [`Config/Signing.xcconfig`](Config/Signing.xcconfig). Contributors can override it without touching the project file by creating `Config/Signing.local.xcconfig` (gitignored) containing `DEVELOPMENT_TEAM = YOUR_TEAM_ID`.
 

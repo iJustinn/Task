@@ -15,6 +15,7 @@ struct TagPickerSheet: View {
     @State private var draggingTagID: UUID?
     @State private var dragSessionEnded: Bool = false
     @State private var pendingDelete: TaskTag?
+    @State private var pendingEdit: TaskTag?
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
     /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
@@ -25,6 +26,10 @@ struct TagPickerSheet: View {
 
     private var canDelete: Bool { !board.orderedTags.isEmpty }
     private var isExpanded: Bool { selectedDetent == .large }
+    private var newTagPreviewName: String {
+        let trimmed = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Tag name" : trimmed
+    }
 
     var body: some View {
         NavigationStack {
@@ -51,9 +56,9 @@ struct TagPickerSheet: View {
                                 .padding(.vertical, 16)
                         }
 
-                        if isExpanded && canDelete && !deleteMode {
+                        if isExpanded && !deleteMode {
                             Spacer(minLength: 24)
-                            deleteButton
+                            bottomActionRow
                         }
                     }
                     .padding(.horizontal, 20)
@@ -62,11 +67,11 @@ struct TagPickerSheet: View {
                     .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle(deleteMode ? "Delete Tag" : "Choose Tags")
+            .navigationTitle(sheetTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(deleteMode ? "Cancel" : "Done") {
+                    Button("Cancel") {
                         if deleteMode {
                             deleteMode = false
                         } else {
@@ -75,8 +80,7 @@ struct TagPickerSheet: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add") { showAddTag = true }
-                        .disabled(deleteMode)
+                    Button("Done") { dismiss() }
                 }
             }
             .sheet(item: $pendingDelete) { tag in
@@ -91,6 +95,11 @@ struct TagPickerSheet: View {
                     deleteMode = false
                 }
                 .confirmationSheetPresentationStyle()
+            }
+            .sheet(item: $pendingEdit) { tag in
+                EditTagSheet(tag: tag)
+                    .presentationDetents([.fraction(0.6), .large])
+                    .presentationDragIndicator(.visible)
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
@@ -108,6 +117,11 @@ struct TagPickerSheet: View {
             reorderWatchdog?.cancel()
             reorderWatchdog = nil
         }
+    }
+
+    private var sheetTitle: LocalizedStringKey {
+        if deleteMode { return "Delete Tag" }
+        return "Choose Tags"
     }
 
     // MARK: - Reorder rollback
@@ -156,16 +170,19 @@ struct TagPickerSheet: View {
     }
 
     private func tagRow(_ tag: TaskTag) -> some View {
-        tagRowContent(tag)
+        SwipeToEditRow(isEnabled: !deleteMode, onEdit: { pendingEdit = tag }) {
+            tagRowContent(tag)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if deleteMode {
+                        pendingDelete = tag
+                        return
+                    }
+                    toggle(tag)
+                }
+        }
             .contentShape(Rectangle())
             .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .onTapGesture {
-                if deleteMode {
-                    pendingDelete = tag
-                    return
-                }
-                toggle(tag)
-            }
             .draggable(beginDragTag(tag)) {
                 tagRowContent(tag)
                     .dynamicTypeSize(settings.textSize.dynamicType)
@@ -189,20 +206,17 @@ struct TagPickerSheet: View {
     private func tagRowContent(_ tag: TaskTag) -> some View {
         let isSelected = selection.contains(where: { $0.id == tag.id })
         return HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "tag.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(deleteMode ? .red : tag.colorKey.foreground)
-                .frame(width: 34)
-
-            VStack(alignment: .leading, spacing: 5) {
+            if deleteMode {
                 Text(tag.name)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(deleteMode ? .red : .primary)
-
-                Text("\(tag.tasks?.count ?? 0) tasks")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.red)
+            } else {
+                TagChip(name: tag.name, colorKey: tag.colorKey)
             }
+
+            Text("^[\(tag.tasks?.count ?? 0) task](inflect: true)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             Spacer(minLength: 12)
 
@@ -216,7 +230,7 @@ struct TagPickerSheet: View {
                     .foregroundStyle(.accent)
             }
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, 20)
     }
 
     private func beginDragTag(_ tag: TaskTag) -> String {
@@ -228,19 +242,30 @@ struct TagPickerSheet: View {
         return tag.id.uuidString
     }
 
+    private var bottomActionRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
+                deleteButton
+                addButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+        }
+    }
+
     private var deleteButton: some View {
         Button { deleteMode = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete a Tag")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete a Tag", systemName: "trash", tintColor: .red)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canDelete)
+        .opacity(canDelete ? 1 : 0.35)
+    }
+
+    private var addButton: some View {
+        Button { showAddTag = true } label: {
+            SheetActionButtonLabel(title: "Add a Tag", systemName: "plus", tintColor: .accentColor)
         }
         .buttonStyle(.plain)
     }
@@ -248,15 +273,11 @@ struct TagPickerSheet: View {
     private var newTagSheet: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
-                    SettingsCardSection("New Tag") {
+                    SettingsCardSection {
                         VStack(alignment: .leading, spacing: 26) {
-                            HStack(spacing: 14) {
-                                SettingsIconTile(systemName: "tag.fill", color: newTagColor.foreground)
-                                TextField("Tag name", text: $newTagName)
-                                    .font(.system(.headline, design: .rounded))
-                            }
+                            newTagPreviewField
                             ColorSwatchPicker(selection: $newTagColor)
                         }
                         .padding(.horizontal, 16)
@@ -278,6 +299,25 @@ struct TagPickerSheet: View {
                 }
             }
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
+    }
+
+    private var newTagPreviewField: some View {
+        HStack {
+            Spacer(minLength: 0)
+            TagChip(name: newTagPreviewName, colorKey: newTagColor)
+                .overlay {
+                    TextField("", text: $newTagName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.clear)
+                        .tint(newTagColor.foreground)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.words)
+                        .accessibilityLabel("Tag name")
+                }
+            Spacer(minLength: 0)
+        }
     }
 
     private func toggle(_ tag: TaskTag) {
@@ -291,7 +331,12 @@ struct TagPickerSheet: View {
     private func addTag() {
         let trimmed = newTagName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        if board.orderedTags.contains(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+        if let existing = board.orderedTags.first(where: { $0.name.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            // Mirror StatusPickerSheet.addGroup: select the existing tag instead
+            // of silently dropping the user's input on a duplicate name.
+            if !selection.contains(where: { $0.id == existing.id }) {
+                selection.append(existing)
+            }
             newTagName = ""
             showAddTag = false
             return
@@ -309,6 +354,86 @@ struct TagPickerSheet: View {
     private func deleteTag(_ tag: TaskTag) {
         selection.removeAll(where: { $0.id == tag.id })
         context.delete(tag)
+        try? context.save()
+    }
+}
+
+private struct EditTagSheet: View {
+    let tag: TaskTag
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @EnvironmentObject private var settings: SettingsViewModel
+
+    @State private var name: String = ""
+    @State private var colorKey: ColorKey = .blue
+    @State private var didLoad: Bool = false
+
+    private var previewName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Tag name" : trimmed
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(.systemBackground).ignoresSafeArea()
+                ScrollView {
+                    SettingsCardSection {
+                        VStack(alignment: .leading, spacing: 26) {
+                            tagPreviewField
+                            ColorSwatchPicker(selection: $colorKey)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                }
+            }
+            .navigationTitle("Edit Tag")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") { save(); dismiss() }
+                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+            .onAppear {
+                guard !didLoad else { return }
+                name = tag.name
+                colorKey = tag.colorKey
+                didLoad = true
+            }
+        }
+        .dynamicTypeSize(settings.textSize.dynamicType)
+    }
+
+    private var tagPreviewField: some View {
+        HStack {
+            Spacer(minLength: 0)
+            TagChip(name: previewName, colorKey: colorKey)
+                .overlay {
+                    TextField("", text: $name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.clear)
+                        .tint(colorKey.foreground)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.words)
+                        .accessibilityLabel("Tag name")
+                }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func save() {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { tag.name = trimmed }
+        tag.colorKey = colorKey
         try? context.save()
     }
 }

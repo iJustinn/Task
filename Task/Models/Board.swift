@@ -64,6 +64,14 @@ final class Board {
         return all.first
     }
 
+    func setDefaultGroup(_ group: BoardGroup, enabled: Bool) {
+        if enabled {
+            defaultGroupUUID = group.id
+        } else if defaultGroup?.id == group.id {
+            defaultGroupUUID = orderedGroups.first { $0.id != group.id }?.id
+        }
+    }
+
     var cardSortField: CardSortField {
         get { CardSortField(rawValue: cardSortFieldRaw) ?? .manual }
         set { cardSortFieldRaw = newValue.rawValue }

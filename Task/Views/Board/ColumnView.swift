@@ -2,6 +2,11 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
+/// Drag payload prefix for a group header (the rest is the group's UUID
+/// string). Tasks drag the bare UUID; the column drop handler peels this
+/// prefix to disambiguate.
+private let groupDragPrefix = "group:"
+
 struct ColumnView: View {
     let group: BoardGroup
     var width: CGFloat = 220
@@ -9,6 +14,8 @@ struct ColumnView: View {
     let sortDirection: CardSortDirection
     let dateFilter: Date?
     let dateFilterTarget: AppDateFilterTarget
+    let isDefaultStatus: Bool
+    @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
     @Binding var draggingTaskID: UUID?
     @Binding var dragSessionEnded: Bool
@@ -19,11 +26,8 @@ struct ColumnView: View {
     var onGroupReorder: (BoardGroup) -> Void
     var onDragTick: () -> Void = {}
 
-    @State private var visibleCount: Int = 10
+    @State private var visibleCount: Int?
     @State private var animateIn: Bool = false
-
-    private let groupDragPrefix = "group:"
-    private let pageSize: Int = 10
 
     private var currentTasks: [TaskItem] {
         let tasks = group.sortedTasks(field: sortField, direction: sortDirection)
@@ -46,6 +50,7 @@ struct ColumnView: View {
                 name: group.name,
                 count: currentTasks.count,
                 colorKey: group.colorKey,
+                isDefaultStatus: isDefaultStatus,
                 onMenuTap: onMenuTap
             )
             .padding(.horizontal, 6)
@@ -64,11 +69,15 @@ struct ColumnView: View {
 
             LazyVStack(spacing: 8) {
                 let ordered = currentTasks
-                let visible = Array(ordered.prefix(visibleCount))
+                let limit = group.cardDisplayLimit
+                let count = visibleCount ?? limit.initialVisibleCount(totalCount: ordered.count)
+                let visible = Array(ordered.prefix(count))
                 let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)"
                 let _ = sortKey // forces dependency for re-render
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
-                    TaskCardView(task: task)
+                    TaskCardView(task: task) {
+                        toggleTaskChecked(task)
+                    }
                         .contentShape(Rectangle())
                         .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .onTapGesture { onTapTask(task) }
@@ -99,8 +108,8 @@ struct ColumnView: View {
                             value: animateIn
                         )
                 }
-                if ordered.count > visibleCount {
-                    moreButton(hidden: ordered.count - visibleCount)
+                if ordered.count > count {
+                    moreButton(hidden: ordered.count - count, visibleCount: count, totalCount: ordered.count)
                 }
                 if ordered.isEmpty {
                     emptyStatePlaceholder
@@ -108,7 +117,7 @@ struct ColumnView: View {
             }
             .padding(.horizontal, 6)
             .padding(.bottom, 8)
-            .id("\(sortField.rawValue)-\(sortDirection.rawValue)")
+            .id("\(sortField.rawValue)-\(sortDirection.rawValue)-\(group.cardDisplayLimitRaw)")
         }
         .frame(width: width)
         .background(
@@ -131,7 +140,10 @@ struct ColumnView: View {
             )
         )
         .onChange(of: refreshToken) { _, _ in
-            visibleCount = pageSize
+            visibleCount = nil
+        }
+        .onChange(of: group.cardDisplayLimitRaw) { _, _ in
+            visibleCount = nil
         }
         .onAppear {
             if !animateIn {
@@ -150,6 +162,24 @@ struct ColumnView: View {
             .padding(.horizontal, 8)
     }
 
+    private func toggleTaskChecked(_ task: TaskItem) {
+        guard task.showsCheckbox else { return }
+        var canceledReminder = false
+        withAnimation(.easeInOut(duration: 0.16)) {
+            canceledReminder = task.toggleCheckboxChecked()
+        }
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            return
+        }
+        if canceledReminder {
+            NotificationService.cancel(for: task)
+        }
+        UpcomingSnapshotBuilder.writeSnapshot(from: context)
+    }
+
     private var emptyStateText: String {
         switch group.name {
         case "Waiting": return String(localized: "Parked until you're ready")
@@ -161,10 +191,10 @@ struct ColumnView: View {
         }
     }
 
-    private func moreButton(hidden: Int) -> some View {
+    private func moreButton(hidden: Int, visibleCount: Int, totalCount: Int) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.18)) {
-                visibleCount += pageSize
+                self.visibleCount = group.cardDisplayLimit.nextVisibleCount(from: visibleCount, totalCount: totalCount)
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -261,8 +291,8 @@ private struct TaskRowDropDelegate: DropDelegate {
             DispatchQueue.main.async {
                 defer { cleanup() }
                 guard let raw = resolved else { return }
-                if raw.hasPrefix("group:") {
-                    let stripped = String(raw.dropFirst("group:".count))
+                if raw.hasPrefix(groupDragPrefix) {
+                    let stripped = String(raw.dropFirst(groupDragPrefix.count))
                     if let gid = UUID(uuidString: stripped),
                        let g = findGroup(gid),
                        g.id != targetGroup.id {

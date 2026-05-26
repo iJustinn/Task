@@ -15,6 +15,7 @@ struct StatusPickerSheet: View {
     @State private var draggingGroupID: UUID?
     @State private var dragSessionEnded: Bool = false
     @State private var pendingDelete: BoardGroup?
+    @State private var pendingEdit: BoardGroup?
     @State private var deleteMode: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
     /// Pre-drag `sortIndex` snapshot — captured on first hover, restored if the
@@ -25,6 +26,10 @@ struct StatusPickerSheet: View {
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
     private var isExpanded: Bool { selectedDetent == .large }
+    private var newGroupPreviewName: String {
+        let trimmed = newGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Status name" : trimmed
+    }
 
     var body: some View {
         NavigationStack {
@@ -43,9 +48,9 @@ struct StatusPickerSheet: View {
                             }
                         }
 
-                        if isExpanded && canDelete && !deleteMode {
+                        if isExpanded && !deleteMode {
                             Spacer(minLength: 24)
-                            deleteButton
+                            bottomActionRow
                         }
                     }
                     .padding(.horizontal, 20)
@@ -54,11 +59,11 @@ struct StatusPickerSheet: View {
                     .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle(deleteMode ? "Delete Status" : "Choose Status")
+            .navigationTitle(sheetTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(deleteMode ? "Cancel" : "Done") {
+                    Button("Cancel") {
                         if deleteMode {
                             deleteMode = false
                         } else {
@@ -67,8 +72,7 @@ struct StatusPickerSheet: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add") { showAddGroup = true }
-                        .disabled(deleteMode)
+                    Button("Done") { dismiss() }
                 }
             }
             .sheet(item: $pendingDelete) { group in
@@ -83,6 +87,9 @@ struct StatusPickerSheet: View {
                     deleteMode = false
                 }
                 .confirmationSheetPresentationStyle()
+            }
+            .sheet(item: $pendingEdit) { group in
+                GroupMenuSheet(group: group, board: board)
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
@@ -100,6 +107,11 @@ struct StatusPickerSheet: View {
             reorderWatchdog?.cancel()
             reorderWatchdog = nil
         }
+    }
+
+    private var sheetTitle: LocalizedStringKey {
+        if deleteMode { return "Delete Status" }
+        return "Choose Status"
     }
 
     // MARK: - Reorder rollback
@@ -148,19 +160,22 @@ struct StatusPickerSheet: View {
     }
 
     private func groupRow(_ group: BoardGroup) -> some View {
-        groupRowContent(group)
+        SwipeToEditRow(isEnabled: !deleteMode, onEdit: { pendingEdit = group }) {
+            groupRowContent(group)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if deleteMode {
+                        if canDelete {
+                            pendingDelete = group
+                        }
+                        return
+                    }
+                    selection = group
+                    dismiss()
+                }
+        }
             .contentShape(Rectangle())
             .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .onTapGesture {
-                if deleteMode {
-                    if canDelete {
-                        pendingDelete = group
-                    }
-                    return
-                }
-                selection = group
-                dismiss()
-            }
             .draggable(beginDragGroup(group)) {
                 groupRowContent(group)
                     .dynamicTypeSize(settings.textSize.dynamicType)
@@ -171,7 +186,14 @@ struct StatusPickerSheet: View {
                 delegate: ReorderDropDelegate<BoardGroup>(
                     target: group,
                     ordered: { board.orderedGroups },
-                    onCommit: { try? context.save() },
+                    onCommit: {
+                        do {
+                            try context.save()
+                            UpcomingSnapshotBuilder.writeConfigurationLists(from: context)
+                        } catch {
+                            context.rollback()
+                        }
+                    },
                     onBeginDrag: { captureReorderSnapshotIfNeeded() },
                     onTick: { rearmReorderWatchdogIfDragging() },
                     onCompleteDrag: { completeReorder() },
@@ -184,20 +206,17 @@ struct StatusPickerSheet: View {
     private func groupRowContent(_ group: BoardGroup) -> some View {
         let isSelected = selection?.id == group.id
         return HStack(alignment: .center, spacing: 12) {
-            Circle()
-                .fill(deleteMode ? Color.red : group.colorKey.dot)
-                .frame(width: 13, height: 13)
-                .frame(width: 34)
-
-            VStack(alignment: .leading, spacing: 5) {
+            if deleteMode {
                 Text(group.name)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(deleteMode ? .red : .primary)
-
-                Text("\(group.orderedTasks.count) tasks")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.red)
+            } else {
+                TagChip(name: group.name, colorKey: group.colorKey)
             }
+
+            Text("^[\(group.orderedTasks.count) task](inflect: true)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             Spacer(minLength: 12)
 
@@ -211,7 +230,7 @@ struct StatusPickerSheet: View {
                     .foregroundStyle(.accent)
             }
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, 20)
     }
 
     private func beginDragGroup(_ group: BoardGroup) -> String {
@@ -223,19 +242,30 @@ struct StatusPickerSheet: View {
         return group.id.uuidString
     }
 
+    private var bottomActionRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
+                deleteButton
+                addButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
+        }
+    }
+
     private var deleteButton: some View {
         Button { deleteMode = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete a Status")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete a Status", systemName: "trash", tintColor: .red)
+        }
+        .buttonStyle(.plain)
+        .disabled(!canDelete)
+        .opacity(canDelete ? 1 : 0.35)
+    }
+
+    private var addButton: some View {
+        Button { showAddGroup = true } label: {
+            SheetActionButtonLabel(title: "Add a Status", systemName: "plus", tintColor: .accentColor)
         }
         .buttonStyle(.plain)
     }
@@ -243,15 +273,11 @@ struct StatusPickerSheet: View {
     private var newGroupSheet: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
-                    SettingsCardSection("New Status") {
+                    SettingsCardSection {
                         VStack(alignment: .leading, spacing: 26) {
-                            HStack(spacing: 14) {
-                                SettingsIconTile(systemName: "circle.fill", color: newGroupColor.foreground)
-                                TextField("Status name", text: $newGroupName)
-                                    .font(.system(.headline, design: .rounded))
-                            }
+                            newGroupPreviewField
                             ColorSwatchPicker(selection: $newGroupColor)
                         }
                         .padding(.horizontal, 16)
@@ -273,6 +299,25 @@ struct StatusPickerSheet: View {
                 }
             }
         }
+        .dynamicTypeSize(settings.textSize.dynamicType)
+    }
+
+    private var newGroupPreviewField: some View {
+        HStack {
+            Spacer(minLength: 0)
+            TagChip(name: newGroupPreviewName, colorKey: newGroupColor)
+                .overlay {
+                    TextField("", text: $newGroupName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.clear)
+                        .tint(newGroupColor.foreground)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.words)
+                        .accessibilityLabel("Status name")
+                }
+            Spacer(minLength: 0)
+        }
     }
 
     private func addGroup() {
@@ -288,7 +333,13 @@ struct StatusPickerSheet: View {
         let group = BoardGroup(name: trimmed, colorKey: newGroupColor, sortIndex: sortIndex)
         group.board = board
         context.insert(group)
-        try? context.save()
+        do {
+            try context.save()
+            UpcomingSnapshotBuilder.writeConfigurationLists(from: context)
+        } catch {
+            context.rollback()
+            return
+        }
         selection = group
         newGroupName = ""
         showAddGroup = false

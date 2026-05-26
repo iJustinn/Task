@@ -15,7 +15,7 @@ private extension FlatSettingsChoice {
 }
 
 private struct FlatSettingsChoicePicker<Option: FlatSettingsChoice>: View {
-    let title: String
+    let title: LocalizedStringKey
     let options: [Option]
     @Binding var selection: Option
     @Environment(\.dismiss) private var dismiss
@@ -288,7 +288,7 @@ struct ReminderTimePickerSheet: View {
                     VStack(spacing: 4) {
                         previewLabel
                         Text(hintText)
-                            .font(.system(.footnote, design: .rounded).weight(.semibold))
+                            .font(.system(.footnote).weight(.semibold))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -339,13 +339,13 @@ struct ReminderTimePickerSheet: View {
     private var previewLabel: some View {
         if let components = parsedComponents {
             Text(TimeFormatting.format(hour: components.hour, minute: components.minute, uses24Hour: uses24Hour))
-                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .font(.system(size: 44, weight: .bold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         } else {
             Text(hasError ? "Invalid" : "Enter Time")
-                .font(.system(size: 54, weight: .heavy, design: .rounded))
+                .font(.system(size: 54, weight: .heavy))
                 .foregroundColor(hasError ? .red : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -378,7 +378,7 @@ struct ReminderTimePickerSheet: View {
                 if uses24Hour {
                     key(String(localized: "AM/PM"), isCompact: true, isDisabled: true) {}
                 } else {
-                    key(isPM ? "PM" : "AM", isCompact: true) { isPM.toggle() }
+                    key(isPM ? String(localized: "PM") : String(localized: "AM"), isCompact: true) { isPM.toggle() }
                 }
                 key(systemImage: "checkmark", isPrimary: true) { applyAndDismiss() }
             }
@@ -401,7 +401,7 @@ struct ReminderTimePickerSheet: View {
                         .font(.system(size: isPrimary ? 28 : 23, weight: .bold))
                 } else if let title {
                     Text(title)
-                        .font(.system(size: isCompact ? 18 : 28, weight: .bold, design: .rounded))
+                        .font(.system(size: isCompact ? 18 : 28, weight: .bold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.68)
                 }
@@ -468,15 +468,20 @@ struct ReminderTimePickerSheet: View {
         if changed {
             // Existing UNCalendarNotificationTriggers were anchored to the old hour/
             // minute at scheduling time. Re-schedule every active reminder on this
-            // board so they pick up the new time of day.
-            rescheduleReminders()
+            // board so they pick up the new time of day. Snapshot now and run the loop
+            // asynchronously so the sheet dismisses immediately even on a large board.
+            let pending = (board.tasks ?? []).filter(\.hasReminder)
+            Task { @MainActor in await rescheduleReminders(pending) }
         }
         dismiss()
     }
 
-    private func rescheduleReminders() {
-        for task in (board.tasks ?? []) where task.hasReminder {
+    private func rescheduleReminders(_ tasks: [TaskItem]) async {
+        for (idx, task) in tasks.enumerated() {
             NotificationService.schedule(for: task)
+            if idx % 50 == 49 {
+                await Task.yield()
+            }
         }
     }
 }

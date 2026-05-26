@@ -20,10 +20,10 @@ struct ProgressOverlay: View {
                 }
                 VStack(spacing: 6) {
                     Text(title)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.primary)
                     Text(message)
-                        .font(.system(.subheadline, design: .rounded).weight(.medium))
+                        .font(.system(.subheadline).weight(.medium))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)

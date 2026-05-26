@@ -8,7 +8,7 @@ struct UpcomingTasksWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: BoardConfigurationIntent.self, provider: UpcomingTasksProvider()) { entry in
             UpcomingTasksWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .widgetBackground(entry.configuration.background ?? .systemDefault)
         }
         .configurationDisplayName("Upcoming Tasks")
         .description("See tasks with a working or due date in the next seven days. Choose a board or show all of them.")
@@ -39,12 +39,12 @@ struct UpcomingTasksWidgetView: View {
                 taskRow(first, compact: true)
             } else {
                 Text("No upcoming")
-                    .font(.footnote)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             Text("\(entry.snapshot.entries.count) upcoming")
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 6)
@@ -57,7 +57,7 @@ struct UpcomingTasksWidgetView: View {
                 taskRow(task, compact: false)
             }
             if entry.snapshot.entries.isEmpty {
-                Text("No upcoming tasks").font(.footnote).foregroundStyle(.secondary)
+                Text("No upcoming tasks").font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -71,7 +71,7 @@ struct UpcomingTasksWidgetView: View {
                 taskRow(task, compact: false)
             }
             if entry.snapshot.entries.isEmpty {
-                Text("No upcoming tasks").font(.footnote).foregroundStyle(.secondary)
+                Text("No upcoming tasks").font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -79,11 +79,9 @@ struct UpcomingTasksWidgetView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "checklist")
-                .foregroundStyle(.tint)
+        HStack {
             Text(headerTitle)
-                .font(.subheadline.weight(.semibold))
+                .font(.headline.weight(.semibold))
                 .lineLimit(1)
             Spacer()
         }
@@ -107,19 +105,35 @@ struct UpcomingTasksWidgetView: View {
                 HStack(spacing: 4) {
                     if showBoardBadge, let emoji = task.boardEmoji, !emoji.isEmpty {
                         Text(emoji)
-                            .font(compact ? .caption2 : .footnote)
+                            .font(compact ? .footnote : .subheadline)
                     }
                     Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
-                        .font(compact ? .caption.weight(.semibold) : .footnote.weight(.semibold))
+                        .font(compact ? .footnote.weight(.semibold) : .subheadline.weight(.semibold))
                         .lineLimit(1)
                 }
                 if let date = task.primaryDate {
                     Text(date, style: .date)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func widgetBackground(_ style: WidgetBackgroundStyle) -> some View {
+        switch style {
+        case .systemDefault:
+            containerBackground(.fill.tertiary, for: .widget)
+        case .pureBlack:
+            containerBackground(Color.black, for: .widget)
+                .environment(\.colorScheme, .dark)
+        case .pureWhite:
+            containerBackground(Color.white, for: .widget)
+                .environment(\.colorScheme, .light)
         }
     }
 }

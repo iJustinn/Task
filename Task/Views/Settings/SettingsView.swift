@@ -19,6 +19,8 @@ struct SettingsView: View {
     @State private var isImporting = false
     @State private var isExporting = false
     @State private var isResetting = false
+    @State private var storageSummary: DataStorageSummary?
+    @State private var isCheckingStorage = false
     @State private var resultAlert: ResultAlert?
     @State private var importOrphanMessage: String? = nil
 
@@ -277,7 +279,7 @@ struct SettingsView: View {
         SettingsCardSection("Data") {
             SettingsRowLabel(
                 title: "iCloud Sync",
-                value: "Coming Soon",
+                value: String(localized: "Coming Soon"),
                 systemName: "icloud.fill",
                 tintColor: .blue,
                 dimmed: true
@@ -293,7 +295,27 @@ struct SettingsView: View {
                     .font(.system(.caption, weight: .bold))
                     .foregroundColor(.secondary.opacity(0.7))
             }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Storage Check",
+                systemName: "internaldrive.fill",
+                tintColor: .orange,
+                action: { checkStorage() }
+            ) {
+                Text(storageCheckValue)
+                    .font(.system(.subheadline))
+                    .fontWeight(.regular)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .multilineTextAlignment(.trailing)
+            }
         }
+    }
+
+    private var storageCheckValue: String {
+        if isCheckingStorage { return String(localized: "Checking...") }
+        return storageSummary?.displayText ?? String(localized: "Tap to check")
     }
 
     private var aboutSection: some View {
@@ -391,8 +413,8 @@ struct SettingsView: View {
     private func trailing(value: String) -> some View {
         HStack(spacing: 6) {
             Text(value)
-                .font(.system(.headline, design: .rounded))
-                .fontWeight(.semibold)
+                .font(.system(.subheadline))
+                .fontWeight(.regular)
                 .foregroundColor(.secondary)
             Image(systemName: "chevron.right")
                 .font(.system(.caption, weight: .bold))
@@ -505,21 +527,7 @@ struct SettingsView: View {
     }
 
     private func orphanMessage(for outcome: ImportResult) -> String? {
-        let summary = String(
-            localized: "Imported ^[\(outcome.boardCount) board](inflect: true) and ^[\(outcome.taskCount) task](inflect: true)."
-        )
-        let warnings = [
-            outcome.orphanTasks > 0 ? String(
-                localized: "^[\(outcome.orphanTasks) task](inflect: true) moved to the first group because their original group wasn't in the file."
-            ) : nil,
-            outcome.orphanTagRefs > 0 ? String(
-                localized: "^[\(outcome.orphanTagRefs) tag reference](inflect: true) couldn't be resolved and were dropped."
-            ) : nil
-        ].compactMap { $0 }
-        if warnings.isEmpty {
-            return summary
-        }
-        return summary + "\n\n" + warnings.joined(separator: "\n")
+        ImportResultMessageFormatter.successMessage(for: outcome)
     }
 
     private func performReset() {
@@ -531,6 +539,16 @@ struct SettingsView: View {
             if !ok {
                 resultAlert = .resetFailure
             }
+        }
+    }
+
+    private func checkStorage() {
+        guard !isCheckingStorage else { return }
+        isCheckingStorage = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            storageSummary = DataImportExport.storageSummary(context: context)
+            isCheckingStorage = false
         }
     }
 

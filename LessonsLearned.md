@@ -121,6 +121,16 @@ The iOS Simulator emits a flurry of system logs that look like errors but are no
 
 None of these appear on a real device. Filter the Xcode console with `Task[` to see only our app's output, or set `OS_ACTIVITY_MODE=disable` as a Debug-only environment variable to silence most of it.
 
+### xcodebuildmcp stop requires bundle ID
+
+`build_run_sim` reports the launched app bundle ID (`com.ijustin.task`), but `stop_app_sim` still requires that value in session defaults. If stop fails with `Missing required session defaults: bundleId is required`, run:
+
+```bash
+session-set-defaults { "bundleId": "com.ijustin.task" }
+```
+
+Then retry `stop_app_sim`.
+
 ## SwiftUI patterns
 
 ### Settings card UI
@@ -193,6 +203,10 @@ The working/due rows then each check `reminderAnchor == .working` / `.due` to de
 
 iOS convention bolds the trailing primary toolbar action (`.fontWeight(.bold)` on `Done` / `Save` / `Add`) and leaves the leading `Cancel` at default weight. In this app the visual mismatch was noticeable enough that 0.3.0 stripped the bold from all 23 trailing toolbar buttons (across 13 files) so paired Cancel/Done look identical. The disabled state and the action's blue tint still distinguish the primary action; that's enough emphasis here. Full-width *body* CTAs (`Add Tag`, `Add Group`, `Delete Task`) keep their bold weight — they aren't toolbar siblings and benefit from extra visual mass.
 
+### Bottom action clusters
+
+When a sheet has two bottom text actions, such as `Delete Task` / `Duplicate Task` or `Delete a Status` / `Add a Status`, treat them as one centered visual cluster. Use an outer full-width `HStack` with leading/trailing `Spacer(minLength: 0)` and an inner `.fixedSize(horizontal: true, vertical: false)` `HStack(spacing: 34)` for the actual buttons. Avoid `.frame(maxWidth: .infinity)` on each button label here, because that centers each action in its own half of the row instead of centering the pair as one piece. In picker management sheets, keep these bottom actions behind the large-detent gate (`isExpanded && !deleteMode`) so users do not see Delete/Add before swiping up.
+
 ### Picker tiles
 
 `GridTile` in `Task/Components/GridTile.swift` is the shared tile used by every grid picker. It handles three variants:
@@ -233,11 +247,17 @@ The symptom of breaking any one of these: a card with two short tags wraps "Exam
 
 ### Card pagination
 
-`ColumnView` caps each column at the first 10 tasks via `@State private var visibleCount: Int = 10`. When the group's `currentTasks.count > visibleCount`, a tinted "More +N" button appears at the bottom of the column and bumps the count by 10 (animated). The state is preserved across re-renders thanks to `ForEach`'s id-keyed identity, but reset to 10 on pull-to-refresh.
+`ColumnView` caps each column through `BoardGroup.cardDisplayLimit` (5 by default, plus 10/15/20/all). When the group's `currentTasks.count > visibleCount`, a tinted "More +N" button appears at the bottom of the column and bumps the count by the selected limit (animated). The state is preserved across re-renders thanks to `ForEach`'s id-keyed identity, but reset to the selected limit on pull-to-refresh or when the status setting changes.
 
 ### Pull-to-refresh as a recovery valve
 
-Each column's inner `ScrollView` has `.refreshable { …  visibleCount = 10 }`. Even when the live data should already be in sync, this is a free "fix anything stuck" gesture for users — when a sort change doesn't seem to apply, when the column shows fewer cards than expected, etc. Bonus: SwiftUI's standard spinner is familiar and self-explanatory.
+Each column's inner `ScrollView` has `.refreshable { …  visibleCount = nil }`, so the next render recomputes from `BoardGroup.cardDisplayLimit`. Even when the live data should already be in sync, this is a free "fix anything stuck" gesture for users — when a sort change doesn't seem to apply, when the column shows fewer cards than expected, etc. Bonus: SwiftUI's standard spinner is familiar and self-explanatory.
+
+### Notes editor indentation
+
+`MarkdownNotesEditor` parses markdown markers after leading spaces/tabs, but keeps the indentation on `NoteLine` and applies it as row padding in preview mode. This preserves user-entered indentation for plain text and `[]` checklist rows without breaking checkbox toggling, because `toggleTaskMarker(in:)` already rewrites markers at the first non-whitespace character.
+
+`TaskCardView` has a separate `cardNotesPreviewLines` parser for compact card previews. Keep its indentation behavior in sync with `MarkdownNotesEditor`; otherwise notes can look correct in the editor but flatten on cards. The live UIKit editor also needs an explicit app-sized body font from `TaskDetailView`, because SwiftUI `dynamicTypeSize` does not automatically size `UITextView` attributed text the same way the saved preview is sized.
 
 ### Calendar picker
 
@@ -245,6 +265,7 @@ Each column's inner `ScrollView` has `.refreshable { …  visibleCount = 10 }`. 
 
 - `.single(Binding<Date?>)` — tap to set, tap again to clear.
 - `.range(Binding<Date?>, Binding<Date?>)` — tap once for start, again later for end. After both set, tapping resets to a new single-day selection.
+- The header has "Clear" next to "Today"; Clear nils the selected single date or both range endpoints.
 
 Visual:
 - Endpoint cells (start / end / single) get a 38 pt filled rounded square.
@@ -317,7 +338,7 @@ Whenever enum cases are removed or merged, surface the migration explicitly. The
 2. **Name match** (groups and tags only, case-insensitive) — same name → update the existing record and remap the imported UUID to the existing object in the lookup dictionary so tasks in the same payload that reference the imported UUID resolve to the existing group/tag.
 3. **Insert** — neither match → create a new entity with the imported UUID.
 
-The name-based fallback is critical because on every fresh install, `SwiftDataManager.ensureSeed` creates the six default groups with **freshly-minted UUIDs**. Without a name match, importing a previously-exported board on a different device (or after Reset All Data) would create duplicate groups: original "Daily" with seed UUID + imported "Daily" with the export's UUID. The fallback collapses them.
+The name-based fallback is scoped to a single board and is critical because on every fresh install, `SwiftDataManager.ensureSeed` creates the five default groups with **freshly-minted UUIDs**. Without a name match, importing a previously-exported board on a different device (or after Reset All Data) would create duplicate groups: seed "Waiting" with its fresh UUID plus imported "Waiting" with the export's UUID. The fallback collapses them without mixing groups across boards.
 
 Tasks are still ID-only (no name fallback) since task names aren't unique and duplicates are a legitimate case.
 
@@ -329,11 +350,11 @@ When generating test data externally, due dates must be ≥ working dates (or wo
 
 `DataImportExport.importData(_:context:)` is non-destructive — entities not present in the imported file stay put. **Never wipe existing data on import** unless that's the explicit user gesture (Reset All Data).
 
-For the single board: if no ID matches but a board exists, reuse the existing board (preserving its ID) and overwrite its metadata. This avoids creating a duplicate board.
+Boards are ID-only in the v2 multi-board format. The decoder still accepts legacy v1 single-board payloads by wrapping them into a one-board v2 payload, but it does not reuse an unrelated existing board when the UUID differs.
 
 ### Notification re-scheduling on import
 
-When a task is updated via import, cancel its old pending notification first (`NotificationService.cancel(for: existing)`), then re-schedule based on the updated `hasReminder` value. Don't assume the old notification still matches the new dates.
+When a task is updated via import, queue cancellation of its old pending notification and queue re-scheduling based on the updated `hasReminder` value. Replay the queued notification plan only after the import save succeeds. Don't assume the old notification still matches the new dates, and don't cancel a real notification for an import that fails to commit.
 
 ### File round-trip
 
@@ -347,7 +368,7 @@ JSON uses `JSONEncoder().dateEncodingStrategy = .iso8601` and `.outputFormatting
 
 ### Reminder time-of-day comes from the user setting
 
-Tasks store a date only, never a time. When `NotificationService.schedule(for:)` builds the `UNCalendarNotificationTrigger`, it falls through to the user-configurable Reminder Time (Settings → Default → Reminder Time, default 9:00):
+Tasks store a date only, never a time. When `NotificationService.schedule(for:)` builds the `UNCalendarNotificationTrigger`, it falls through to the board's user-configurable Reminder Time (Settings → Board → Reminder Time, default 9:00):
 
 ```swift
 if components.hour == 0 && components.minute == 0 {
@@ -358,6 +379,10 @@ if components.hour == 0 && components.minute == 0 {
 ```
 
 The reminder identifier is `task.id.uuidString` so we can cancel cleanly.
+
+### Repeating reminders advance the card date, then schedule one notification
+
+Repeating task rules are date-advancement rules, not repeating `UNCalendarNotificationTrigger`s. On scene-active, `RootView.refreshRepeatReminders()` calls `NotificationService.advanceRepeatingReminderIfNeeded(for:)` for stale repeating reminders, advances every set task date by the rule until the resolved reminder time is in the future, saves once, writes the widget snapshot, then schedules the next one-shot notification. This keeps the card date, widget date, and reminder date aligned while still cancelling legacy `taskID@N` repeat batches.
 
 ### Don't share static config across a `@MainActor` boundary — extract it
 
@@ -531,6 +556,8 @@ The model-level companion is `Board.orderedTags` sorting by `sortIndex` then `cr
 
 `Localizable.xcstrings` covers English and Simplified Chinese. New strings added via `String(localized: "…")` or plain `Text("…")` get auto-extracted on build thanks to `LOCALIZATION_PREFERS_STRING_CATALOGS = YES`. Don't manually edit the JSON unless adding translations.
 
+When a reusable model stores user-facing SwiftUI text, use `LocalizedStringKey`, not `String`. A stored `String` rendered as `Text(value)` bypasses runtime catalog lookup and also prevents call-site literals from being extracted. `AboutInfoSection` and `AboutGuideSection` deliberately store titles/details as `LocalizedStringKey` for this reason.
+
 ## Multi-board (0.4.0)
 
 ### Default seed: three boards, not one
@@ -543,7 +570,7 @@ Default Status, Card Order, and Reminder Time were `UserDefaults`-scoped global 
 
 The one-shot `migrateLegacyBoardDefaultsIfNeeded` runs from `ensureSeed`; it reads the legacy `UserDefaults` keys (`task.defaultGroupID`, `task.cardSortField`, `task.cardSortDirection`, `task.reminderMinutesOfDay`) and copies them onto the first board (by `createdAt`), then flips `task.boardDefaultsMigrated` so it never re-fires. Users upgrading from 0.3.x keep their preferences on their existing board.
 
-`SettingsViewModel` only owns truly global preferences now (Theme, Language, Time Format, Text Size, Group Width, App Accent, App Icon). The per-board pickers (`DefaultStatusPickerSheet`, `CardOrderPickerSheet`, `ReminderTimePickerSheet`) take a `Board` and mutate it directly.
+`SettingsViewModel` only owns truly global preferences now (Theme, Language, Time Format, Text Size, Group Width, App Accent, App Icon). Card Order and Reminder Time still use board-scoped sheets (`CardOrderPickerSheet`, `ReminderTimePickerSheet`) that take a `Board` and mutate it directly. Default Status is board-scoped too, but it now lives inside `GroupMenuSheet` as "Default for New Tasks" so the board header does not need a separate flag button or default-status sheet.
 
 ### Active board tracking
 
@@ -567,11 +594,13 @@ Do not bring back drag-to-trash zones for these picker sheets. Reorder stays on 
 
 ### Multi-board widget configuration
 
-`UpcomingTasksWidget` switched from `StaticConfiguration` to `AppIntentConfiguration(intent: BoardConfigurationIntent.self, provider:)`. The provider is now an `AppIntentTimelineProvider`. The intent has a single `@Parameter var board: BoardEntity?` — `nil` means "All Boards".
+`UpcomingTasksWidget` switched from `StaticConfiguration` to `AppIntentConfiguration(intent: BoardConfigurationIntent.self, provider:)`. The provider is now an `AppIntentTimelineProvider`. The intent uses optional board/status/background parameters; `nil` means "All Boards" or "All Statuses" for filters.
 
-`BoardEntity` / `BoardEntityQuery` populate the picker by reading a `BoardListEntry[]` from the App Group's shared defaults. The app writes this list (id + title + iconEmoji) every time it writes the upcoming snapshot, so the widget edit sheet always shows current boards.
+All `WidgetConfigurationIntent` parameters must be optional, including fixed `AppEnum` choices. If adding a setting such as `@Parameter var background: WidgetBackgroundStyle?`, render `nil` as the default in the widget view. A non-optional parameter fails the AppIntents metadata export with "Encountered a non-optional type for parameter".
 
-Each snapshot entry now carries `boardID`, `boardEmoji`, and `boardTitle`. The provider filters entries by the configured board (or returns all). When "All Boards" is selected, the widget UI shows the board emoji on each row for disambiguation.
+`BoardEntity` / `BoardEntityQuery` populate the picker by reading a `BoardListEntry[]` from the App Group's shared defaults. `StatusEntity` / `StatusEntityQuery` do the same with `StatusListEntry[]`. The app writes these lists every time it writes the upcoming snapshot and also after board/status reorder or status creation via `UpcomingSnapshotBuilder.writeConfigurationLists(from:)`, so the widget edit sheet always shows current boards and statuses.
+
+Each snapshot entry now carries `boardID`, `boardEmoji`, `boardTitle`, and `groupID`. The provider filters entries by configured board and/or status, returning all when those parameters are empty. When "All Boards" is selected, the widget UI shows the board emoji on each row for disambiguation.
 
 ### Multi-board import/export
 
@@ -592,6 +621,22 @@ Board match is ID-only (no "reuse first existing board" fallback like v1 had —
 ### Board date slider
 
 For the inline board date filter, prefer a horizontal `ScrollView` + `LazyHStack` with `.scrollTargetLayout()` and `.scrollPosition(id:anchor:)` over `ScrollViewReader.scrollTo`. In simulator checks, `ScrollViewReader` sometimes opened at the start of the generated date window instead of centering today's tile. The app targets iOS 18, so scroll-position binding is available and reliably opens around the current day while still allowing swipe navigation.
+
+The generated day window must always include the current focus day when it is within range: the selected filter date when one exists, otherwise today. The hard cap is always plus/minus one calendar year around today, not around the selected date. Clip task-derived dates to that today-based range before building the contiguous day range; far-future or far-past task dates should not make the slider enormous.
+
+When recentering the date slider on reopen, drive it from a parent-owned open token and set the bound `scrollPosition` through `nil` before applying the target on the next main-queue tick. Reassigning the same `Date` target is a no-op for `.scrollPosition(id:anchor:)`, so SwiftUI can preserve the old horizontal offset instead of centering the focus day again.
+
+### Reminder side-effect ordering
+
+Only schedule or cancel notifications after the SwiftData save that owns the change succeeds. For destructive flows, capture the tasks to cancel, commit the deletion, then replay notification cancellations. For edits and checkbox completion, roll back on save failure and skip widget writes. This keeps notification state aligned with durable task state instead of with a failed in-memory mutation.
+
+### 2026-05-23 - Redirect raw JSON through rtk proxy
+
+- Context: Generating `TestData/testdata-02.json` from `TestData/testdata.json` with `jq`.
+- Symptom: `jq empty TestData/testdata-02.json` failed with `Invalid numeric literal` after a redirected `rtk jq` command.
+- Cause: RTK's filtered stdout wrote a truncation marker into the redirected JSON file.
+- Fix: Use `rtk proxy jq ... > file` for commands where stdout is the artifact, then validate with `rtk jq empty`.
+- Reuse: Any time a generated fixture, report, or source file is created from command stdout.
 
 ## Things to do later
 

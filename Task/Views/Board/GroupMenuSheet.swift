@@ -10,17 +10,27 @@ struct GroupMenuSheet: View {
 
     @State private var name: String = ""
     @State private var colorKey: ColorKey = .purple
+    @State private var isDefaultStatus: Bool = false
+    @State private var cardDisplayLimit: CardDisplayLimit = .five
     @State private var didLoad: Bool = false
     @State private var showDeleteConfirm: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
     private var isExpanded: Bool { selectedDetent == .large }
+    private var canChangeDefaultStatus: Bool { board.orderedGroups.count > 1 }
+    private var currentDefaultStatusName: String {
+        board.defaultGroup?.name ?? String(localized: "None")
+    }
+    private var previewName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Status name" : trimmed
+    }
 
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemGroupedBackground)
+                Color(.systemBackground)
                     .ignoresSafeArea()
 
                 ScrollView(.vertical, showsIndicators: false) {
@@ -37,7 +47,7 @@ struct GroupMenuSheet: View {
                     .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle("Status")
+            .navigationTitle("Edit Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
@@ -49,6 +59,8 @@ struct GroupMenuSheet: View {
                 if !didLoad {
                     name = group.name
                     colorKey = group.colorKey
+                    isDefaultStatus = board.defaultGroup?.id == group.id
+                    cardDisplayLimit = group.cardDisplayLimit
                     didLoad = true
                 }
             }
@@ -71,17 +83,65 @@ struct GroupMenuSheet: View {
     }
 
     private var nameAndColorSection: some View {
-        SettingsCardSection("Status") {
+        SettingsCardSection {
             VStack(alignment: .leading, spacing: 26) {
-                HStack(spacing: 14) {
-                    SettingsIconTile(systemName: "circle.fill", color: colorKey.foreground)
-                    TextField("Status name", text: $name)
-                        .font(.system(.headline, design: .rounded))
-                }
+                statusPreviewField
                 ColorSwatchPicker(selection: $colorKey)
+                Divider()
+                defaultStatusSection
+                Divider()
+                cardDisplayLimitSection
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
+        }
+    }
+
+    private var defaultStatusSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $isDefaultStatus) {
+                Text("Default for New Tasks")
+                    .font(.system(.headline))
+            }
+            .toggleStyle(.switch)
+            .disabled(!canChangeDefaultStatus)
+
+            Text("Current default: \(currentDefaultStatusName)")
+                .font(.system(.footnote))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var cardDisplayLimitSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Cards per Column")
+                .font(.system(.headline))
+
+            Picker("Cards per Column", selection: $cardDisplayLimit) {
+                ForEach(CardDisplayLimit.allCases) { limit in
+                    Text(limit.label).tag(limit)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(height: 32)
+        }
+    }
+
+    private var statusPreviewField: some View {
+        HStack {
+            Spacer(minLength: 0)
+            TagChip(name: previewName, colorKey: colorKey)
+                .overlay {
+                    TextField("", text: $name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.clear)
+                        .tint(colorKey.foreground)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .textInputAutocapitalization(.words)
+                        .accessibilityLabel("Status name")
+                }
+            Spacer(minLength: 0)
         }
     }
 
@@ -89,17 +149,7 @@ struct GroupMenuSheet: View {
         Button {
             showDeleteConfirm = true
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete Status")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundColor(.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete Status", systemName: "trash", tintColor: .red, fillsWidth: true)
         }
         .buttonStyle(.plain)
     }
@@ -108,6 +158,9 @@ struct GroupMenuSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty { group.name = trimmed }
         group.colorKey = colorKey
+        group.cardDisplayLimit = cardDisplayLimit
+        board.setDefaultGroup(group, enabled: isDefaultStatus)
+        board.updatedAt = Date()
         try? context.save()
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }

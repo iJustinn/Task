@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct RepeatPickerSheet: View {
+    let board: Board
     @Binding var selection: RepeatRule
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var settings: SettingsViewModel
 
-    private let options: [RepeatRule] = [.daily, .weekly, .monthly]
+    private let options: [RepeatRule] = [.daily, .weekly, .biweekly, .monthly, .quarterly, .annually]
 
     var body: some View {
         NavigationStack {
@@ -50,16 +51,11 @@ struct RepeatPickerSheet: View {
             dismiss()
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: icon(for: rule))
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(ColorKey.gray.foreground)
-                    .frame(width: 34)
+                TagChip(name: rule.displayName, colorKey: .gray)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(rule.displayName)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
+                Text("^[\(taskCount(for: rule)) task](inflect: true)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
 
                 Spacer(minLength: 12)
 
@@ -69,18 +65,13 @@ struct RepeatPickerSheet: View {
                         .foregroundStyle(.accent)
                 }
             }
-            .padding(.vertical, 16)
+            .padding(.vertical, 20)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 
-    private func icon(for rule: RepeatRule) -> String {
-        switch rule {
-        case .daily:   return "1.circle"
-        case .weekly:  return "7.circle"
-        case .monthly: return "calendar"
-        case .none:    return "arrow.clockwise"
-        }
+    private func taskCount(for rule: RepeatRule) -> Int {
+        (board.tasks ?? []).filter { $0.repeatRule == rule }.count
     }
 }

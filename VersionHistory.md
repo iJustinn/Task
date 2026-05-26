@@ -1,5 +1,119 @@
 # Version History
 
+## 0.4.7 (build 8) — 2026-05-26
+
+Persistence, reminders, import validation, widget configuration, and notes input polish.
+
+### Reminder and persistence consistency
+
+- Completing a checkbox task now clears its reminder and cancels the pending local notification after the save succeeds.
+- Task save failures now roll back edited fields and keep the editor open with an error alert instead of dismissing with dirty in-memory changes.
+- Board deletion now commits the SwiftData delete before cancelling task reminders or writing widget state.
+
+### Data and widget correctness
+
+- Imported board reminder times outside 0..<1440 are ignored so malformed backups keep the existing/default reminder time.
+- Date formatters now rebuild their localized pattern when the app language changes.
+- Widget board and status configuration lists refresh after board reorder, status reorder, and status creation.
+- App Group snapshot write failures now log diagnostic errors.
+
+### Notes and documentation
+
+- Live Markdown notes editing now avoids restyling while an input method is composing marked text.
+- README now documents the command-line `xcodebuild` verification command.
+- Import/export notes in LessonsLearned were updated to match the current v2 multi-board schema behavior.
+
+### Versioning
+
+- Build number bumped to `8` for version `0.4.7`.
+
+## 0.4.7 (build 7) — 2026-05-26
+
+Task board controls, repeat reminder reconciliation, date picker clearing, and notes polish.
+
+### Repeating reminders
+
+- Repeating reminders now auto-advance stale task dates when the app becomes active, then schedule the next reminder on the updated card date.
+- Legacy future reminder batches are still cleaned up so upgraded installs do not keep firing dates that no longer match the card.
+
+### Board and calendar controls
+
+- Edit Status now includes a **Cards per Column** segmented picker with 5, 10, 15, 20, and All choices.
+- Status columns default to 5 visible cards, with More expanding by the selected per-status limit.
+- Working and Due Date pickers now include a **Clear button** beside Today to remove the selected single date or range.
+
+### Notes and card previews
+
+- Notes indentation is preserved for leading spaces and tabs in the editor preview and card previews.
+- The live notes editor keeps the same body text size while typing longer notes or adding new lines.
+- Card note previews now keep indented plain text and checklist rows aligned with the saved note.
+
+### Accessibility and localization
+
+- Card footer repeat, notes, and reminder icons now have semantic VoiceOver labels.
+- About sheet titles and explanatory copy now use localizable keys instead of raw stored strings.
+- Storage Check now uses an inflected item-count key for pluralization.
+
+### Versioning
+
+- Build number bumped to `7` for version `0.4.7`.
+
+## 0.4.7 (build 6) — 2026-05-23
+
+Task editing, status/tag management, Markdown notes, and app-wide text polish.
+
+### Notes and card previews
+
+- Card note previews now render checklist rows with SF Symbols so checked and unchecked boxes share consistent shape and alignment.
+- Notes now support the shorter `[]` / `[x]` checklist syntax, while the existing `- []`, `- [ ]`, and `- [x]` forms continue to work.
+- The task notes editor now styles Markdown live while typing, keeping raw markers visible for headings, bold, italic, bullets, and checklist lines.
+- Notes preview and editor formatting now cover headings, bold, italic, bullets, checklist rows, and plain text with more consistent spacing.
+
+### Task detail actions
+
+- Edit Task gained a bottom **Duplicate Task** action beside **Delete Task**.
+- Duplicate uses the same confirmation-sheet pattern as destructive actions before creating the copy.
+- Delete / Duplicate bottom actions are centered as one visual group instead of being centered in separate equal-width areas.
+- Delete, Duplicate, Add, and Edit sheet actions now scale from the Settings → Text Size choice, with reduced action scaling so the labels do not overpower the sheet.
+- Task detail property-row labels, values, chips, and icons now honor the Settings → Text Size choice.
+
+### Choose Status and Choose Tags
+
+- Choose Status / Choose Tags now use top-left **Cancel** and top-right **Done** buttons.
+- The bottom management controls now show **Delete** beside **Add** in one centered row.
+- Bottom management controls stay hidden until the sheet is expanded so they do not peek into the compact detent.
+- Status and tag rows now show the real colored label chip followed immediately by the task count, instead of a separate dot/icon with right-aligned counts.
+- Status and tag label chips were slightly reduced in size after moving to the row treatment.
+- Swipe left on a status or tag row now slides the row to reveal Edit and opens the existing edit sheet.
+- Delete mode remains a separate confirmation-oriented flow.
+
+### Status and tag editing
+
+- Edit Status is now launched from the status-column header menu and renamed accordingly.
+- The current board's default status can now be set directly from Edit Status.
+- The board-level default-status flag button was removed from the home header, and the previous separate default-status page was deleted.
+- The current default status column now uses a flag icon in the status header instead of the normal three-dot menu.
+- Edit Status now includes a separator and a small line showing the current default status.
+- The "Default for New Tasks" row no longer shows a leading checkmark.
+- Edit Status, New Status, Edit Tag, and New Tag now use a centered colored-chip preview matching how the label will appear in the app.
+- New Status, Edit Status, New Tag, and Edit Tag use the same sheet background color and no longer show the large redundant "Status" / "Tag" section title.
+
+### Board date slider
+
+- The day slider now recenters when reopened instead of only on first presentation.
+- The slider range is capped to one year before and one year after today, even when board tasks exist outside that range.
+
+### About and typography
+
+- Removed remaining rounded-font usage so app text uses the regular system font consistently.
+- About sheets now use traditional bullet points instead of numbered icon badges.
+- Bullet text on About sheets now uses a smaller shared indentation so bullets and text move together without sitting too far from the left edge.
+- The How to Use copy was refreshed to mention the new Default Status flow and updated notes/checklist syntax.
+
+### Versioning
+
+- Build number bumped to `6` for version `0.4.7`.
+
 ## 0.4.6 (build 4) — 2026-05-22
 
 Multi-board support across the app, the settings, and the home-screen widget.
@@ -44,7 +158,7 @@ Multi-board support across the app, the settings, and the home-screen widget.
 
 ### Testdata
 
-- `TestData/testdata.json` regenerated for the three default boards (125 tasks each) with realistic date distribution (overdue / today / this week / later this month) and notes/reminder/tag mixes. Preserves board / group / tag IDs so re-imports update in place.
+- `TestData/testdata-01.json` and `TestData/testdata-02.json` cover the three default boards (125 tasks each) with realistic date distribution (overdue / today / this week / later this month) and notes/reminder/tag mixes. Preserves board / group / tag IDs so re-imports update in place.
 
 ## 0.3.0 (build 2) — 2026-05-20
 

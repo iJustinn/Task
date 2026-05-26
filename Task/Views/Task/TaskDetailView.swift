@@ -22,6 +22,8 @@ struct TaskDetailView: View {
     @State private var workingEnd: Date? = nil
     @State private var dueDate: Date? = nil
     @State private var hasReminder: Bool = false
+    @State private var showsCheckbox: Bool = false
+    @State private var isChecked: Bool = false
     @State private var repeatRule: RepeatRule = .none
     @State private var isWorkingRange: Bool = false
     @State private var didLoad: Bool = false
@@ -32,13 +34,12 @@ struct TaskDetailView: View {
     @State private var showDuePicker: Bool = false
     @State private var showRepeatPicker: Bool = false
     @State private var showDeleteConfirm: Bool = false
+    @State private var showDuplicateConfirm: Bool = false
+    @State private var saveErrorMessage: String?
 
     private enum ReminderAnchor { case working, due, none }
 
     private static let labelColumnWidth: CGFloat = 120
-    private static let taskTitleFontSize: CGFloat = 24
-    private static let propertyFontSize: CGFloat = 16
-    private static let chipFontSize: CGFloat = 16
 
     private var editingTask: TaskItem? {
         if case .edit(let task) = mode { return task }
@@ -73,7 +74,7 @@ struct TaskDetailView: View {
                             notesSection
                             if !isCreating {
                                 Spacer(minLength: 24)
-                                deleteButton
+                                bottomActionRow
                             }
                         }
                         .padding(.horizontal, 20)
@@ -99,6 +100,17 @@ struct TaskDetailView: View {
             .onChange(of: hasReminder) { _, isOn in
                 if isOn { Task { await requestNotificationPermissionIfNeeded() } }
             }
+            .onChange(of: showsCheckbox) { _, isOn in
+                if !isOn { isChecked = false }
+            }
+            .alert("Save Failed", isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { if !$0 { saveErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { saveErrorMessage = nil }
+            } message: {
+                Text(saveErrorMessage ?? "")
+            }
             .sheet(isPresented: $showStatusPicker) {
                 StatusPickerSheet(board: board, selection: $selectedGroup)
                     .presentationDetents([.fraction(0.6), .large])
@@ -120,7 +132,7 @@ struct TaskDetailView: View {
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showRepeatPicker) {
-                RepeatPickerSheet(selection: $repeatRule)
+                RepeatPickerSheet(board: board, selection: $repeatRule)
                     .presentationDetents([.fraction(0.6), .large])
                     .presentationDragIndicator(.visible)
             }
@@ -136,6 +148,19 @@ struct TaskDetailView: View {
                 }
                 .confirmationSheetPresentationStyle()
             }
+            .sheet(isPresented: $showDuplicateConfirm) {
+                ConfirmationSheet(
+                    icon: "doc.on.doc.fill",
+                    iconTint: .blue,
+                    title: "Duplicate Task?",
+                    message: "A copy of this task will be created in the same status.",
+                    confirmLabel: "Duplicate Task",
+                    isDestructive: false
+                ) {
+                    duplicate()
+                }
+                .confirmationSheetPresentationStyle()
+            }
         }
         .presentationDetents([.fraction(0.6), .large])
         .presentationDragIndicator(.visible)
@@ -146,7 +171,7 @@ struct TaskDetailView: View {
 
     private var titleField: some View {
         TextField("", text: $title, prompt: Text("Add title").foregroundStyle(.secondary), axis: .vertical)
-            .font(.system(size: Self.taskTitleFontSize, weight: .bold, design: .rounded))
+            .font(.system(size: settings.textSize.taskDetailTitleSize, weight: .bold))
             .lineLimit(1...3)
             .textInputAutocapitalization(.words)
     }
@@ -158,6 +183,7 @@ struct TaskDetailView: View {
             workingDateRow
             dueDateRow
             repeatRow
+            checkboxRow
             reminderRow
         }
     }
@@ -165,25 +191,34 @@ struct TaskDetailView: View {
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Notes")
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                .font(.system(.subheadline).weight(.semibold))
                 .foregroundStyle(.secondary)
-            MarkdownNotesEditor(text: $notes)
+            MarkdownNotesEditor(text: $notes, bodyFontSize: settings.textSize.taskDetailNotesSize)
+        }
+    }
+
+    private var bottomActionRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            HStack(spacing: 34) {
+                deleteButton
+                duplicateButton
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            Spacer(minLength: 0)
         }
     }
 
     private var deleteButton: some View {
         Button { showDeleteConfirm = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(.subheadline, weight: .bold))
-                Text("Delete Task")
-                    .font(.system(.headline, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            .foregroundStyle(.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            SheetActionButtonLabel(title: "Delete Task", systemName: "trash", tintColor: .red)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var duplicateButton: some View {
+        Button { showDuplicateConfirm = true } label: {
+            SheetActionButtonLabel(title: "Duplicate Task", systemName: "doc.on.doc", tintColor: .accentColor)
         }
         .buttonStyle(.plain)
     }
@@ -227,14 +262,14 @@ struct TaskDetailView: View {
                     let tint = dateTint(for: start)
                     HStack(alignment: .center, spacing: 8) {
                         Text(workingDateDisplay(start: start, end: workingEnd))
-                            .font(.system(size: Self.propertyFontSize, weight: .semibold, design: .rounded))
+                            .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .semibold))
                             .foregroundStyle(tint)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Spacer(minLength: 8)
                         if reminderAnchor == .working {
                             Image(systemName: "alarm")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: settings.textSize.taskDetailAccessoryIconSize, weight: .semibold))
                                 .foregroundStyle(tint)
                         }
                     }
@@ -262,12 +297,12 @@ struct TaskDetailView: View {
                     let tint = dateTint(for: due)
                     HStack(alignment: .center, spacing: 8) {
                         Text(TaskDateFormat.format(due, style: settings.dateFormat))
-                            .font(.system(size: Self.propertyFontSize, weight: .semibold, design: .rounded))
+                            .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .semibold))
                             .foregroundStyle(tint)
                         Spacer(minLength: 8)
                         if reminderAnchor == .due {
                             Image(systemName: "alarm")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: settings.textSize.taskDetailAccessoryIconSize, weight: .semibold))
                                 .foregroundStyle(tint)
                         }
                     }
@@ -287,18 +322,41 @@ struct TaskDetailView: View {
                     .disabled(workingStart == nil && dueDate == nil)
             }
             if hasReminder, settings.notificationsAuthorized == false {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                    Text("Notifications are off for Task. Enable them in iOS Settings or this reminder won't fire.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.leading, 32)
+                reminderWarning("Notifications are off for Task. Enable them in iOS Settings or this reminder won't fire.")
+            }
+            if hasReminder, reminderFireDateInPast {
+                reminderWarning("Reminder date/time has already passed — this reminder won't fire. Pick a future date or change Reminder Time in Settings.")
             }
         }
+    }
+
+    private var checkboxRow: some View {
+        propertyRow(icon: "checkmark.square", label: "Checkbox", valueAlignment: .trailing) {
+            Toggle("", isOn: $showsCheckbox)
+                .labelsHidden()
+        }
+    }
+
+    private func reminderWarning(_ message: LocalizedStringKey) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.leading, 32)
+    }
+
+    /// `true` when the reminder's resolved fire time (anchor + board reminder
+    /// hour/minute) is already in the past. Drives an inline warning so the silent
+    /// `hasReminder` clear in `save()` isn't a surprise.
+    private var reminderFireDateInPast: Bool {
+        guard hasReminder else { return false }
+        guard let fire = candidateFireDate() else { return false }
+        return fire <= Date()
     }
 
     private var repeatRow: some View {
@@ -330,7 +388,7 @@ struct TaskDetailView: View {
                     Spacer()
                     Button { advanceRepeatDates() } label: {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: settings.textSize.taskDetailAccessoryIconSize, weight: .bold))
                             .foregroundStyle(ColorKey.gray.foreground)
                             .frame(width: 62, height: 30)
                             .background(
@@ -339,7 +397,7 @@ struct TaskDetailView: View {
                             )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Reset to next occurrence"))
+                    .accessibilityLabel(Text("Advance to next occurrence"))
                 }
             }
         }
@@ -350,17 +408,17 @@ struct TaskDetailView: View {
     @ViewBuilder
     private func propertyRow<Content: View>(
         icon: String,
-        label: String,
+        label: LocalizedStringKey,
         valueAlignment: Alignment = .leading,
         @ViewBuilder value: () -> Content
     ) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: settings.textSize.taskDetailRowIconSize, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 20)
             Text(label)
-                .font(.system(size: Self.propertyFontSize, weight: .medium, design: .rounded))
+                .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: Self.labelColumnWidth, alignment: .leading)
             value()
@@ -372,13 +430,13 @@ struct TaskDetailView: View {
 
     private var emptyValueLabel: some View {
         Text("Empty")
-            .font(.system(size: Self.propertyFontSize, weight: .regular, design: .rounded))
+            .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .regular))
             .foregroundStyle(Color.secondary.opacity(0.6))
     }
 
     private func taskDetailChip(name: String, colorKey: ColorKey) -> some View {
         Text(name)
-            .font(.system(size: Self.chipFontSize, weight: .semibold, design: .rounded))
+            .font(.system(size: settings.textSize.taskDetailChipSize, weight: .semibold))
             .lineLimit(1)
             .foregroundStyle(colorKey.foreground)
             .padding(.horizontal, 9)
@@ -487,6 +545,8 @@ struct TaskDetailView: View {
             workingEnd = task.workingEnd
             dueDate = task.dueDate
             hasReminder = task.hasReminder
+            showsCheckbox = task.showsCheckbox
+            isChecked = task.isChecked
             repeatRule = task.repeatRule
             isWorkingRange = task.workingIsRange
         }
@@ -498,7 +558,6 @@ struct TaskDetailView: View {
         guard !trimmed.isEmpty, let group = selectedGroup else { return }
 
         let task: TaskItem
-        let isNewTask: Bool
         switch mode {
         case .create:
             let sortIndex = (group.orderedTasks.last?.sortIndex ?? -1) + 1
@@ -506,7 +565,6 @@ struct TaskDetailView: View {
             task.board = board
             task.group = group
             context.insert(task)
-            isNewTask = true
         case .edit(let existing):
             task = existing
             task.title = trimmed
@@ -515,22 +573,23 @@ struct TaskDetailView: View {
                 task.group = group
                 task.sortIndex = (group.orderedTasks.last?.sortIndex ?? -1) + 1
             }
-            isNewTask = false
         }
 
         task.tags = selectedTags
         task.workingStart = workingStart
         task.workingEnd = isWorkingRange ? workingEnd : nil
         task.dueDate = dueDate
+        task.showsCheckbox = showsCheckbox
+        task.isChecked = showsCheckbox && isChecked
         let intendsReminder = hasReminder && (workingStart != nil || dueDate != nil)
-        // For non-repeating tasks, a fire date in the past would never deliver a
-        // notification. Clear the flag so the card/editor don't show the alarm icon
-        // for a reminder that won't fire.
-        if intendsReminder, repeatRule == .none, let fire = candidateFireDate(), fire <= Date() {
+        // A fire date in the past would never deliver a notification. Clear the flag
+        // so the card/editor don't show the alarm icon for a reminder that won't fire.
+        if intendsReminder, let fire = candidateFireDate(), fire <= Date() {
             task.hasReminder = false
         } else {
             task.hasReminder = intendsReminder
         }
+        let canceledReminder = task.clearReminderIfCheckedCheckbox()
         task.repeatRule = repeatRule
         task.touch()
 
@@ -538,14 +597,16 @@ struct TaskDetailView: View {
             try context.save()
         } catch {
             // Save failed — don't schedule/cancel notifications or update the widget
-            // for state that didn't commit. Drop the new task from the context so a
-            // later unrelated save doesn't persist a half-built orphan.
-            if isNewTask { context.delete(task) }
-            dismiss()
+            // for state that didn't commit. Roll back the model object mutations so
+            // a later unrelated save doesn't persist a rejected edit.
+            context.rollback()
+            saveErrorMessage = String(localized: "Couldn't save this task. Try again.")
             return
         }
 
-        if task.hasReminder {
+        if canceledReminder {
+            NotificationService.cancel(for: task)
+        } else if task.hasReminder {
             NotificationService.schedule(for: task)
         } else {
             NotificationService.cancel(for: task)
@@ -602,6 +663,37 @@ struct TaskDetailView: View {
         dueDate = dueDate.map { repeatRule.advance($0) }
     }
 
+    private func duplicate() {
+        guard let task = editingTask else { return }
+        let group = task.group ?? selectedGroup
+        let insertSortIndex = task.sortIndex + 1
+
+        if let group {
+            for sibling in group.orderedTasks where sibling.id != task.id && sibling.sortIndex >= insertSortIndex {
+                sibling.sortIndex += 1
+            }
+        }
+
+        let copy = task.duplicated(sortIndex: insertSortIndex)
+        copy.board = task.board ?? board
+        copy.group = group
+        context.insert(copy)
+
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            dismiss()
+            return
+        }
+
+        if copy.hasReminder {
+            NotificationService.schedule(for: copy)
+        }
+        UpcomingSnapshotBuilder.writeSnapshot(from: context)
+        dismiss()
+    }
+
     private func delete() {
         guard let task = editingTask else { return }
         context.delete(task)
@@ -620,5 +712,61 @@ struct TaskDetailView: View {
         NotificationService.cancel(for: task)
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
         dismiss()
+    }
+}
+
+private extension AppTextSize {
+    var taskDetailTitleSize: CGFloat {
+        switch self {
+        case .small:      return 22
+        case .medium:     return 24
+        case .large:      return 26
+        case .extraLarge: return 28
+        }
+    }
+
+    var taskDetailPropertySize: CGFloat {
+        switch self {
+        case .small:      return 15
+        case .medium:     return 16
+        case .large:      return 17
+        case .extraLarge: return 18
+        }
+    }
+
+    var taskDetailNotesSize: CGFloat {
+        switch self {
+        case .small:      return 17
+        case .medium:     return 19
+        case .large:      return 21
+        case .extraLarge: return 23
+        }
+    }
+
+    var taskDetailChipSize: CGFloat {
+        switch self {
+        case .small:      return 15
+        case .medium:     return 16
+        case .large:      return 17
+        case .extraLarge: return 18
+        }
+    }
+
+    var taskDetailRowIconSize: CGFloat {
+        switch self {
+        case .small:      return 15
+        case .medium:     return 16
+        case .large:      return 17
+        case .extraLarge: return 18
+        }
+    }
+
+    var taskDetailAccessoryIconSize: CGFloat {
+        switch self {
+        case .small:      return 14
+        case .medium:     return 15
+        case .large:      return 16
+        case .extraLarge: return 17
+        }
     }
 }

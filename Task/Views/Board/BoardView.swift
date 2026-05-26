@@ -9,6 +9,7 @@ struct BoardView: View {
     @State private var editingGroup: BoardGroup?
     @State private var editingTask: TaskItem?
     @State private var showingDateFilter: Bool = false
+    @State private var dateFilterOpenToken: Int = 0
     @State private var selectedDateFilter: Date?
     @State private var draggingTaskID: UUID?
     @State private var dragSessionEnded: Bool = false
@@ -44,6 +45,7 @@ struct BoardView: View {
                                 sortDirection: board.cardSortDirection,
                                 dateFilter: selectedDateFilter,
                                 dateFilterTarget: settings.dateFilterTarget,
+                                isDefaultStatus: board.defaultGroup?.id == group.id,
                                 draggingTaskID: $draggingTaskID,
                                 dragSessionEnded: $dragSessionEnded,
                                 refreshToken: refreshToken,
@@ -83,9 +85,11 @@ struct BoardView: View {
     private var dateFilterSlider: some View {
         BoardDateSlider(
             selectedDate: $selectedDateFilter,
+            openToken: dateFilterOpenToken,
             dates: BoardDateSliderDayWindow.dates(
                 for: board.tasks ?? [],
-                target: settings.dateFilterTarget
+                target: settings.dateFilterTarget,
+                fallback: selectedDateFilter ?? Date()
             )
         )
             .background(Color(.systemBackground))
@@ -94,6 +98,9 @@ struct BoardView: View {
     private func toggleDateFilter() {
         withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
             showingDateFilter.toggle()
+            if showingDateFilter {
+                dateFilterOpenToken &+= 1
+            }
         }
     }
 
@@ -216,21 +223,31 @@ struct BoardDateSliderDayWindow {
         for tasks: [TaskItem],
         target: AppDateFilterTarget,
         fallback: Date = Date(),
+        today: Date = Date(),
         calendar: Calendar = .current
     ) -> [Date] {
-        let bounds: [Date]
+        let focusDay = calendar.startOfDay(for: fallback)
+        let todayDay = calendar.startOfDay(for: today)
+        let lowerCap = calendar.date(byAdding: .year, value: -1, to: todayDay) ?? todayDay
+        let upperCap = calendar.date(byAdding: .year, value: 1, to: todayDay) ?? todayDay
+
+        let candidateBounds: [Date]
         switch target {
         case .workingDate:
-            bounds = tasks.flatMap { task -> [Date] in
+            candidateBounds = tasks.flatMap { task -> [Date] in
                 guard let start = task.workingStart else { return [] }
                 return [start, task.workingEnd ?? start].map { calendar.startOfDay(for: $0) }
             }
         case .dueDate:
-            bounds = tasks.compactMap(\.dueDate).map { calendar.startOfDay(for: $0) }
+            candidateBounds = tasks.compactMap(\.dueDate).map { calendar.startOfDay(for: $0) }
         }
 
+        var bounds = candidateBounds.filter { $0 >= lowerCap && $0 <= upperCap }
+        if focusDay >= lowerCap && focusDay <= upperCap {
+            bounds.append(focusDay)
+        }
         guard let first = bounds.min(), let last = bounds.max() else {
-            return [calendar.startOfDay(for: fallback)]
+            return [todayDay]
         }
 
         var days: [Date] = []
@@ -246,6 +263,7 @@ struct BoardDateSliderDayWindow {
 
 private struct BoardDateSlider: View {
     @Binding var selectedDate: Date?
+    let openToken: Int
     let dates: [Date]
     @Environment(\.colorScheme) private var colorScheme
     @State private var scrollPosition: Date?
@@ -279,12 +297,23 @@ private struct BoardDateSlider: View {
         }
         .scrollPosition(id: $scrollPosition, anchor: .center)
         .onAppear {
-            scrollPosition = scrollTarget
+            recenter()
         }
         .onChange(of: dates) { _, _ in
-            scrollPosition = scrollTarget
+            recenter()
+        }
+        .onChange(of: openToken) { _, _ in
+            recenter()
         }
         .frame(height: tileHeight + 24)
+    }
+
+    private func recenter() {
+        let target = scrollTarget
+        scrollPosition = nil
+        DispatchQueue.main.async {
+            scrollPosition = target
+        }
     }
 
     private var scrollTarget: Date {
@@ -312,13 +341,13 @@ private struct BoardDateSlider: View {
             }
         } label: {
             VStack(spacing: 5) {
-                Text(day.formatted(.dateTime.month(.abbreviated)))
-                    .font(.system(.caption, design: .rounded).weight(.bold))
+                Text(day.formatted(.dateTime.month(.abbreviated).locale(TaskDateFormat.locale)))
+                    .font(.system(.caption).weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
-                Text(day.formatted(.dateTime.day()))
-                    .font(.system(.title2, design: .rounded).weight(.bold))
+                Text(day.formatted(.dateTime.day().locale(TaskDateFormat.locale)))
+                    .font(.system(.title2).weight(.bold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
@@ -338,7 +367,7 @@ private struct BoardDateSlider: View {
             .contentShape(RoundedRectangle(cornerRadius: tileCornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+        .accessibilityLabel(day.formatted(.dateTime.weekday(.wide).month(.wide).day().year().locale(TaskDateFormat.locale)))
         .accessibilityHint(isSelected ? Text("Show all tasks") : Text("Filter tasks by this date"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

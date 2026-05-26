@@ -33,8 +33,40 @@ struct GroupExport: Codable {
     var id: UUID
     var name: String
     var colorKey: String
+    var cardDisplayLimitRaw: String
     var sortIndex: Int
     var createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, colorKey, cardDisplayLimitRaw, sortIndex, createdAt
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        colorKey: String,
+        cardDisplayLimitRaw: String = CardDisplayLimit.five.rawValue,
+        sortIndex: Int,
+        createdAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.colorKey = colorKey
+        self.cardDisplayLimitRaw = CardDisplayLimit(rawValue: cardDisplayLimitRaw)?.rawValue ?? CardDisplayLimit.five.rawValue
+        self.sortIndex = sortIndex
+        self.createdAt = createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        colorKey = try c.decode(String.self, forKey: .colorKey)
+        let rawLimit = try c.decodeIfPresent(String.self, forKey: .cardDisplayLimitRaw) ?? CardDisplayLimit.five.rawValue
+        cardDisplayLimitRaw = CardDisplayLimit(rawValue: rawLimit)?.rawValue ?? CardDisplayLimit.five.rawValue
+        sortIndex = try c.decode(Int.self, forKey: .sortIndex)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+    }
 }
 
 struct TagExport: Codable {
@@ -74,6 +106,8 @@ struct TaskExport: Codable {
     var workingEnd: Date?
     var dueDate: Date?
     var hasReminder: Bool
+    var showsCheckbox: Bool
+    var isChecked: Bool
     var repeatRule: String?
     var sortIndex: Int
     var createdAt: Date
@@ -83,7 +117,7 @@ struct TaskExport: Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, notes, workingStart, workingEnd, dueDate, hasReminder
-        case repeatRule, sortIndex, createdAt, updatedAt, groupID, tagIDs
+        case showsCheckbox, isChecked, repeatRule, sortIndex, createdAt, updatedAt, groupID, tagIDs
     }
 
     init(
@@ -94,6 +128,8 @@ struct TaskExport: Codable {
         workingEnd: Date?,
         dueDate: Date?,
         hasReminder: Bool,
+        showsCheckbox: Bool = false,
+        isChecked: Bool = false,
         repeatRule: String?,
         sortIndex: Int,
         createdAt: Date,
@@ -108,6 +144,8 @@ struct TaskExport: Codable {
         self.workingEnd = workingEnd
         self.dueDate = dueDate
         self.hasReminder = hasReminder
+        self.showsCheckbox = showsCheckbox
+        self.isChecked = isChecked
         self.repeatRule = repeatRule
         self.sortIndex = sortIndex
         self.createdAt = createdAt
@@ -125,6 +163,8 @@ struct TaskExport: Codable {
         workingEnd = try c.decodeIfPresent(Date.self, forKey: .workingEnd)
         dueDate = try c.decodeIfPresent(Date.self, forKey: .dueDate)
         hasReminder = try c.decode(Bool.self, forKey: .hasReminder)
+        showsCheckbox = try c.decodeIfPresent(Bool.self, forKey: .showsCheckbox) ?? false
+        isChecked = try c.decodeIfPresent(Bool.self, forKey: .isChecked) ?? false
         repeatRule = try c.decodeIfPresent(String.self, forKey: .repeatRule)
         sortIndex = try c.decode(Int.self, forKey: .sortIndex)
         createdAt = try c.decode(Date.self, forKey: .createdAt)
@@ -154,6 +194,75 @@ struct ImportResult {
     static let failure = ImportResult(success: false)
 }
 
+enum ImportResultMessageFormatter {
+    static func successMessage(for outcome: ImportResult) -> String {
+        let summary = localizedFormat(
+            "Imported %1$lld %2$@ and %3$lld %4$@.",
+            outcome.boardCount,
+            unit(singular: "board", plural: "boards", count: outcome.boardCount),
+            outcome.taskCount,
+            unit(singular: "task", plural: "tasks", count: outcome.taskCount)
+        )
+        let warnings = [
+            orphanTaskMessage(count: outcome.orphanTasks),
+            orphanTagReferenceMessage(count: outcome.orphanTagRefs)
+        ].compactMap { $0 }
+
+        if warnings.isEmpty {
+            return summary
+        }
+        return summary + "\n\n" + warnings.joined(separator: "\n")
+    }
+
+    private static func orphanTaskMessage(count: Int) -> String? {
+        guard count > 0 else { return nil }
+        if count == 1 {
+            return localizedFormat(
+                "%lld task moved to the first group because its original group wasn't in the file.",
+                count
+            )
+        }
+        return localizedFormat(
+            "%lld tasks moved to the first group because their original groups weren't in the file.",
+            count
+        )
+    }
+
+    private static func orphanTagReferenceMessage(count: Int) -> String? {
+        guard count > 0 else { return nil }
+        if count == 1 {
+            return localizedFormat("%lld tag reference couldn't be resolved and was dropped.", count)
+        }
+        return localizedFormat("%lld tag references couldn't be resolved and were dropped.", count)
+    }
+
+    private static func unit(singular: String, plural: String, count: Int) -> String {
+        count == 1 ? singular : plural
+    }
+
+    private static func localizedFormat(_ key: String.LocalizationValue, _ arguments: CVarArg...) -> String {
+        String(format: String(localized: key), locale: .current, arguments: arguments)
+    }
+}
+
+struct DataStorageSummary: Equatable {
+    var itemCount: Int
+    var byteCount: Int
+
+    var displayText: String {
+        "\(String(localized: "^[\(itemCount) item](inflect: true)")) / \(Self.formatBytes(byteCount))"
+    }
+
+    private static func formatBytes(_ byteCount: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: Int64(byteCount))
+    }
+}
+
 enum DataImportExport {
     static func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
@@ -176,7 +285,14 @@ enum DataImportExport {
         let sortedBoards = boards.sorted { $0.sortIndex < $1.sortIndex }
         let entries = sortedBoards.map { board -> BoardExportEntry in
             let groups: [GroupExport] = board.orderedGroups.map { g in
-                GroupExport(id: g.id, name: g.name, colorKey: g.colorKeyRaw, sortIndex: g.sortIndex, createdAt: g.createdAt)
+                GroupExport(
+                    id: g.id,
+                    name: g.name,
+                    colorKey: g.colorKeyRaw,
+                    cardDisplayLimitRaw: g.cardDisplayLimitRaw,
+                    sortIndex: g.sortIndex,
+                    createdAt: g.createdAt
+                )
             }
             let tags: [TagExport] = board.orderedTags.map { t in
                 TagExport(id: t.id, name: t.name, colorKey: t.colorKeyRaw, sortIndex: t.sortIndex, createdAt: t.createdAt)
@@ -190,6 +306,8 @@ enum DataImportExport {
                     workingEnd: task.workingEnd,
                     dueDate: task.dueDate,
                     hasReminder: task.hasReminder,
+                    showsCheckbox: task.showsCheckbox,
+                    isChecked: task.isChecked,
                     repeatRule: task.repeatRuleRaw.isEmpty ? nil : task.repeatRuleRaw,
                     sortIndex: task.sortIndex,
                     createdAt: task.createdAt,
@@ -220,6 +338,19 @@ enum DataImportExport {
 
         let payload = MultiBoardExportPayload(boards: entries)
         return try? makeEncoder().encode(payload)
+    }
+
+    @MainActor
+    static func storageSummary(context: ModelContext) -> DataStorageSummary {
+        let boardCount = ((try? context.fetch(FetchDescriptor<Board>())) ?? []).count
+        let groupCount = ((try? context.fetch(FetchDescriptor<BoardGroup>())) ?? []).count
+        let tagCount = ((try? context.fetch(FetchDescriptor<TaskTag>())) ?? []).count
+        let taskCount = ((try? context.fetch(FetchDescriptor<TaskItem>())) ?? []).count
+        let byteCount = exportData(context: context)?.count ?? 0
+        return DataStorageSummary(
+            itemCount: boardCount + groupCount + tagCount + taskCount,
+            byteCount: byteCount
+        )
     }
 
     private static func decodePayload(_ data: Data) -> MultiBoardExportPayload? {
@@ -326,7 +457,7 @@ enum DataImportExport {
             if let gid = payloadBoard.defaultGroupID { existing.defaultGroupID = gid }
             if let sf = payloadBoard.cardSortFieldRaw { existing.cardSortFieldRaw = sf }
             if let sd = payloadBoard.cardSortDirectionRaw { existing.cardSortDirectionRaw = sd }
-            if let m = payloadBoard.reminderMinutesOfDay { existing.reminderMinutesOfDay = m }
+            if let m = sanitizedReminderMinutesOfDay(payloadBoard.reminderMinutesOfDay) { existing.reminderMinutesOfDay = m }
             existing.updatedAt = payloadBoard.updatedAt
             board = existing
         } else {
@@ -337,7 +468,7 @@ enum DataImportExport {
             if let gid = payloadBoard.defaultGroupID { newBoard.defaultGroupID = gid }
             if let sf = payloadBoard.cardSortFieldRaw { newBoard.cardSortFieldRaw = sf }
             if let sd = payloadBoard.cardSortDirectionRaw { newBoard.cardSortDirectionRaw = sd }
-            if let m = payloadBoard.reminderMinutesOfDay { newBoard.reminderMinutesOfDay = m }
+            if let m = sanitizedReminderMinutesOfDay(payloadBoard.reminderMinutesOfDay) { newBoard.reminderMinutesOfDay = m }
             newBoard.createdAt = payloadBoard.createdAt
             newBoard.updatedAt = payloadBoard.updatedAt
             context.insert(newBoard)
@@ -361,11 +492,13 @@ enum DataImportExport {
             if let existing = groupsByID[g.id] {
                 existing.name = g.name
                 existing.colorKeyRaw = g.colorKey
+                existing.cardDisplayLimitRaw = g.cardDisplayLimitRaw
                 existing.sortIndex = g.sortIndex
                 existing.board = board
                 groupsByName[g.name.lowercased()] = existing
             } else if let existing = groupsByName[g.name.lowercased()] {
                 existing.colorKeyRaw = g.colorKey
+                existing.cardDisplayLimitRaw = g.cardDisplayLimitRaw
                 existing.sortIndex = g.sortIndex
                 existing.board = board
                 groupsByID[g.id] = existing
@@ -376,6 +509,7 @@ enum DataImportExport {
                     sortIndex: g.sortIndex
                 )
                 group.id = g.id
+                group.cardDisplayLimitRaw = g.cardDisplayLimitRaw
                 group.createdAt = g.createdAt
                 group.board = board
                 context.insert(group)
@@ -455,6 +589,8 @@ enum DataImportExport {
                 existing.workingEnd = t.workingEnd
                 existing.dueDate = t.dueDate
                 existing.hasReminder = t.hasReminder
+                existing.showsCheckbox = t.showsCheckbox
+                existing.isChecked = t.isChecked
                 existing.repeatRuleRaw = t.repeatRule ?? ""
                 existing.sortIndex = t.sortIndex
                 existing.updatedAt = t.updatedAt
@@ -469,6 +605,8 @@ enum DataImportExport {
                 new.workingEnd = t.workingEnd
                 new.dueDate = t.dueDate
                 new.hasReminder = t.hasReminder
+                new.showsCheckbox = t.showsCheckbox
+                new.isChecked = t.isChecked
                 new.repeatRuleRaw = t.repeatRule ?? ""
                 new.createdAt = t.createdAt
                 new.updatedAt = t.updatedAt
@@ -488,6 +626,11 @@ enum DataImportExport {
         }
 
         return (orphanTasks, orphanTagRefs)
+    }
+
+    static func sanitizedReminderMinutesOfDay(_ value: Int?) -> Int? {
+        guard let value, (0..<(24 * 60)).contains(value) else { return nil }
+        return value
     }
 
     /// `true` when the destructive delete saved cleanly and the re-seed completed.
@@ -533,9 +676,12 @@ enum DataImportExport {
         return true
     }
 
-    static func defaultExportFileName() -> String {
+    static func defaultExportFileName(for date: Date = Date(), timeZone: TimeZone = .current) -> String {
         let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
         formatter.dateFormat = "yyyy-MM-dd-HHmm"
-        return "task-export-\(formatter.string(from: Date()))"
+        return "task-export-\(formatter.string(from: date))"
     }
 }

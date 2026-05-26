@@ -691,7 +691,8 @@ final class SettingsViewModel: ObservableObject {
     static let textSizeKey = "task.textSize"
     static let columnWidthKey = "task.columnWidth"
     static let dateFormatKey = "task.dateFormat"
-    static let notesPreviewKey = "task.notesPreviewEnabled"
+    static let notesPreviewKey = "task.notesPreview"
+    static let legacyNotesPreviewKey = "task.notesPreviewEnabled"
     static let dateFilterTargetKey = "task.dateFilterTarget"
 
     init() {
@@ -706,7 +707,10 @@ final class SettingsViewModel: ObservableObject {
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium
         let resolvedDateFormat = AppDateFormat(rawValue: d.string(forKey: SettingsViewModel.dateFormatKey) ?? "") ?? .shortText
         self.dateFormat = resolvedDateFormat
-        self.notesPreview = AppNotesPreview(rawValue: d.string(forKey: SettingsViewModel.notesPreviewKey) ?? "") ?? .none
+        let notesPreviewRaw = d.string(forKey: SettingsViewModel.notesPreviewKey)
+            ?? d.string(forKey: SettingsViewModel.legacyNotesPreviewKey)
+            ?? ""
+        self.notesPreview = AppNotesPreview(rawValue: notesPreviewRaw) ?? .none
         self.dateFilterTarget = AppDateFilterTarget(rawValue: d.string(forKey: SettingsViewModel.dateFilterTargetKey) ?? "") ?? .workingDate
         TaskDateFormat.locale = resolvedLanguage.locale
         TaskDateFormat.currentStyle = resolvedDateFormat
