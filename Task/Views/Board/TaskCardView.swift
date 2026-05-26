@@ -129,9 +129,11 @@ struct TaskCardView: View {
 
     @ViewBuilder
     private func notePreviewRow(_ line: CardNotesPreviewLine) -> some View {
+        let indentation = cardNoteIndentWidth(for: line.indentation)
         switch line.kind {
         case .text:
             previewText(line.text)
+                .padding(.leading, indentation)
         case .task(let checked):
             HStack(alignment: .center, spacing: 6) {
                 Image(systemName: checked ? "checkmark.square.fill" : "square")
@@ -142,6 +144,7 @@ struct TaskCardView: View {
                 previewText(line.text)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, indentation)
         }
     }
 
@@ -163,6 +166,7 @@ struct CardNotesPreviewLine {
 
     let kind: Kind
     let text: AttributedString
+    let indentation: String
 }
 
 func cardNotesPreviewLines(from raw: String, limit: Int) -> [CardNotesPreviewLine] {
@@ -170,14 +174,20 @@ func cardNotesPreviewLines(from raw: String, limit: Int) -> [CardNotesPreviewLin
     var lines: [CardNotesPreviewLine] = []
     for rawLine in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
         if lines.count >= limit { break }
-        let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { continue }
-        lines.append(renderCardNotesPreviewLine(trimmed))
+        let rawLineText = String(rawLine)
+        let indentation = String(rawLineText.prefix { $0 == " " || $0 == "\t" })
+        let trimmed = String(rawLineText.dropFirst(indentation.count))
+        guard !trimmed.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+        lines.append(renderCardNotesPreviewLine(trimmed, indentation: indentation))
     }
     return lines
 }
 
-private func renderCardNotesPreviewLine(_ line: String) -> CardNotesPreviewLine {
+func cardNoteIndentWidth(for indentation: String) -> CGFloat {
+    noteIndentWidth(for: indentation)
+}
+
+private func renderCardNotesPreviewLine(_ line: String, indentation: String) -> CardNotesPreviewLine {
     var content = line
     var prefix: String? = nil
     var kind: CardNotesPreviewLine.Kind = .text
@@ -199,9 +209,9 @@ private func renderCardNotesPreviewLine(_ line: String) -> CardNotesPreviewLine 
     let body = attributedCardPreviewText(content)
 
     if let prefix {
-        return CardNotesPreviewLine(kind: kind, text: AttributedString(prefix) + body)
+        return CardNotesPreviewLine(kind: kind, text: AttributedString(prefix) + body, indentation: indentation)
     }
-    return CardNotesPreviewLine(kind: kind, text: body)
+    return CardNotesPreviewLine(kind: kind, text: body, indentation: indentation)
 }
 
 private func attributedCardPreviewText(_ raw: String) -> AttributedString {

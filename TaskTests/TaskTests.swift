@@ -1,5 +1,6 @@
 import XCTest
 import SwiftData
+import SwiftUI
 import UIKit
 @testable import Task
 
@@ -55,6 +56,38 @@ final class TaskTests: XCTestCase {
             RepeatRule.annually.advance(start, calendar: calendar),
             try XCTUnwrap(calendar.date(from: DateComponents(year: 2027, month: 5, day: 23)))
         )
+    }
+
+    func testRepeatingReminderSchedulesOnlyCurrentCardDate() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let chosenDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26)))
+        let expectedFireDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26, hour: 8, minute: 15)))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 25, hour: 12)))
+        let board = Board(title: "Board")
+        board.reminderMinutesOfDay = 8 * 60 + 15
+        let task = TaskItem(title: "Repeat reminder", notes: "")
+        task.board = board
+        task.dueDate = chosenDay
+        task.hasReminder = true
+        task.repeatRule = .daily
+
+        let dates = NotificationService.fireDates(for: task, now: now, calendar: calendar)
+
+        XCTAssertEqual(dates, [expectedFireDate])
+    }
+
+    func testRepeatingReminderDoesNotAdvancePastCardDate() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let chosenDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 25, hour: 12)))
+        let task = TaskItem(title: "Stale repeat reminder", notes: "")
+        task.dueDate = chosenDay
+        task.hasReminder = true
+        task.repeatRule = .weekly
+
+        let dates = NotificationService.fireDates(for: task, now: now, calendar: calendar)
+
+        XCTAssertTrue(dates.isEmpty)
     }
 
     func testTaskDuplicateCopiesEditableFieldsAndRelationships() throws {
@@ -135,6 +168,78 @@ final class TaskTests: XCTestCase {
         let current = try DataImportExport.makeDecoder().decode(TaskExport.self, from: Data(currentJSON.utf8))
         XCTAssertTrue(current.showsCheckbox)
         XCTAssertTrue(current.isChecked)
+    }
+
+    func testBoardGroupCardDisplayLimitDefaultsToFiveAndSupportsAllChoices() {
+        let group = BoardGroup(name: "Waiting")
+
+        XCTAssertEqual(group.cardDisplayLimit, .five)
+        XCTAssertEqual(group.cardDisplayLimit.initialVisibleCount(totalCount: 23), 5)
+
+        let expectations: [(CardDisplayLimit, String, Int?)] = [
+            (.five, "5", 5),
+            (.ten, "10", 10),
+            (.fifteen, "15", 15),
+            (.twenty, "20", 20),
+            (.all, "all", nil)
+        ]
+
+        for (limit, rawValue, count) in expectations {
+            group.cardDisplayLimit = limit
+
+            XCTAssertEqual(group.cardDisplayLimitRaw, rawValue)
+            XCTAssertEqual(group.cardDisplayLimit.count, count)
+        }
+
+        group.cardDisplayLimit = .all
+        XCTAssertEqual(group.cardDisplayLimit.initialVisibleCount(totalCount: 23), 23)
+    }
+
+    func testCalendarPickerClearSingleDateSelection() {
+        var selected: Date? = Date()
+        let binding = Binding<Date?>(
+            get: { selected },
+            set: { selected = $0 }
+        )
+
+        CalendarPickerSelection.clear(selectedDate: binding)
+
+        XCTAssertNil(selected)
+    }
+
+    func testCalendarPickerClearRangeSelection() {
+        var start: Date? = Date()
+        var end: Date? = Calendar.current.date(byAdding: .day, value: 2, to: start!)
+        let startBinding = Binding<Date?>(
+            get: { start },
+            set: { start = $0 }
+        )
+        let endBinding = Binding<Date?>(
+            get: { end },
+            set: { end = $0 }
+        )
+
+        CalendarPickerSelection.clear(rangeStart: startBinding, rangeEnd: endBinding)
+
+        XCTAssertNil(start)
+        XCTAssertNil(end)
+    }
+
+    func testGroupExportDefaultsLegacyCardDisplayLimitToFive() throws {
+        let id = UUID()
+        let legacyJSON = """
+        {
+          "id": "\(id.uuidString)",
+          "name": "Waiting",
+          "colorKey": "blue",
+          "sortIndex": 0,
+          "createdAt": "2026-05-23T00:00:00Z"
+        }
+        """
+
+        let group = try DataImportExport.makeDecoder().decode(GroupExport.self, from: Data(legacyJSON.utf8))
+
+        XCTAssertEqual(group.cardDisplayLimitRaw, CardDisplayLimit.five.rawValue)
     }
 
     func testImportSuccessMessageDoesNotExposeInflectionMarkup() {
@@ -484,7 +589,7 @@ final class TaskTests: XCTestCase {
         let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
 
         let requiredKeys = [
-            "Reminder time has already passed today — this reminder won't fire. Pick a future date or change Reminder Time in Settings."
+            "Reminder date/time has already passed — this reminder won't fire. Pick a future date or change Reminder Time in Settings."
         ]
 
         for key in requiredKeys {
@@ -572,6 +677,21 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(String(lines[2].text.characters), "plain note")
     }
 
+    func testCardNotesPreviewPreservesLeadingIndentationForTextAndTasks() {
+        let lines = cardNotesPreviewLines(from: "  plain note\n\t[] indented task", limit: 2)
+
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertEqual(lines[0].indentation, "  ")
+        XCTAssertEqual(cardNoteIndentWidth(for: lines[0].indentation), 10)
+        XCTAssertEqual(lines[0].kind, .text)
+        XCTAssertEqual(String(lines[0].text.characters), "plain note")
+
+        XCTAssertEqual(lines[1].indentation, "\t")
+        XCTAssertEqual(cardNoteIndentWidth(for: lines[1].indentation), 24)
+        XCTAssertEqual(lines[1].kind, .task(checked: false))
+        XCTAssertEqual(String(lines[1].text.characters), "indented task")
+    }
+
     func testNotesEditorParsesBareBracketTaskLines() {
         let lines = parseNoteLines(
             """
@@ -595,6 +715,31 @@ final class TaskTests: XCTestCase {
         }
         XCTAssertTrue(secondChecked)
         XCTAssertEqual(secondContent, "payment")
+    }
+
+    func testNotesEditorPreservesLeadingIndentationForTextAndTasks() {
+        let lines = parseNoteLines("  plain note\n\t[] indented task")
+
+        XCTAssertEqual(lines.count, 2)
+        XCTAssertEqual(lines[0].indentation, "  ")
+        let twoSpaceIndentWidth = noteIndentWidth(for: lines[0].indentation)
+        XCTAssertGreaterThan(twoSpaceIndentWidth, 0)
+
+        guard case let .plain(firstContent) = lines[0].kind else {
+            XCTFail("Expected first line to parse as plain text")
+            return
+        }
+        XCTAssertEqual(firstContent, "plain note")
+
+        XCTAssertEqual(lines[1].indentation, "\t")
+        XCTAssertGreaterThan(noteIndentWidth(for: lines[1].indentation), twoSpaceIndentWidth)
+
+        guard case let .task(isChecked, secondContent) = lines[1].kind else {
+            XCTFail("Expected second line to parse as an unchecked task")
+            return
+        }
+        XCTAssertFalse(isChecked)
+        XCTAssertEqual(secondContent, "indented task")
     }
 
     func testNotesEditorTogglesBareBracketTaskMarkers() {
@@ -625,6 +770,24 @@ final class TaskTests: XCTestCase {
 
         let italicFont = try XCTUnwrap(styled.attribute(.font, at: raw.utf16Offset(of: "italic"), effectiveRange: nil) as? UIFont)
         XCTAssertTrue(italicFont.fontDescriptor.symbolicTraits.contains(.traitItalic))
+    }
+
+    func testLiveMarkdownEditingStyleKeepsBodyFontSizeAcrossLongAndMultilineText() throws {
+        let bodyFont = UIFont.systemFont(ofSize: 20)
+        let raw = """
+        First line
+        Second line
+        \(String(repeating: "Long text ", count: 20))
+        """
+        let styled = markdownEditingAttributedText(raw, bodyFont: bodyFont)
+
+        for phrase in ["First", "Second", "Long"] {
+            let font = try XCTUnwrap(styled.attribute(.font, at: raw.utf16Offset(of: phrase), effectiveRange: nil) as? UIFont)
+            XCTAssertEqual(font.pointSize, bodyFont.pointSize)
+        }
+
+        let typingFont = try XCTUnwrap(markdownEditingTypingAttributes(bodyFont: bodyFont)[.font] as? UIFont)
+        XCTAssertEqual(typingFont.pointSize, bodyFont.pointSize)
     }
 
     func testSwipeToEditMetricsMoveRowsOnlyForHorizontalLeftSwipes() {

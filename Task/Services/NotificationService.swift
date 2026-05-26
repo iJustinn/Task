@@ -13,53 +13,15 @@ enum NotificationService {
         await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 
-    /// How many upcoming occurrences to schedule for a repeating reminder. iOS caps
-    /// total pending notifications at 64 per app, so this is a safe per-task batch.
-    /// Subsequent occurrences are re-scheduled the next time the task is saved.
-    static let repeatBatchSize = 16
+    /// Previous versions scheduled repeat reminders as a fixed batch of one-shots.
+    /// Keep cancelling those legacy identifiers so upgrading users don't keep
+    /// receiving future repeat notifications for a date they have not moved.
+    static let legacyRepeatBatchSize = 16
 
     static func schedule(for task: TaskItem) {
         cancel(for: task)
-        guard task.hasReminder, let anchor = task.primaryReminderDate else { return }
-
-        var components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
-        // Tasks only carry a date; the time-of-day comes from the board's Reminder Time setting.
-        if components.hour == 0 && components.minute == 0 {
-            let minutes = task.board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
-            components.hour = minutes / 60
-            components.minute = minutes % 60
-        }
-        guard let resolvedAnchor = Calendar.current.date(from: components) else { return }
-
-        let rule = task.repeatRule
-
-        // Build the list of upcoming fire dates. `UNCalendarNotificationTrigger` with
-        // `repeats: true` can't express "fire daily *starting* on date X", so we
-        // schedule a batch of one-shots instead. The batch is refreshed on app
-        // launch / scene-active (see RootView.refreshRepeatReminders) so a task
-        // whose original anchor is far in the past still gets future occurrences.
-        let fireDates: [Date]
-        if rule == .none {
-            fireDates = [resolvedAnchor]
-        } else {
-            // Advance the cursor past now first, so a stale anchor (Daily reminder
-            // set last month, never re-saved) starts scheduling from the next live
-            // occurrence instead of producing 16 past dates that all get skipped.
-            let now = Date()
-            var cursor = resolvedAnchor
-            while cursor <= now {
-                let next = rule.advance(cursor)
-                if next <= cursor { break } // safety: never loop on a no-op advance
-                cursor = next
-            }
-            var dates: [Date] = []
-            dates.reserveCapacity(Self.repeatBatchSize)
-            for _ in 0..<Self.repeatBatchSize {
-                dates.append(cursor)
-                cursor = rule.advance(cursor)
-            }
-            fireDates = dates
-        }
+        let fireDates = Self.fireDates(for: task)
+        guard !fireDates.isEmpty else { return }
 
         let content = UNMutableNotificationContent()
         content.title = task.title.isEmpty ? String(localized: "Task reminder") : task.title
@@ -76,22 +38,36 @@ enum NotificationService {
         content.sound = .default
 
         let center = UNUserNotificationCenter.current()
-        for (offset, fire) in fireDates.enumerated() {
-            // Skip occurrences already in the past — they'd never deliver.
-            if fire <= Date() { continue }
+        for fire in fireDates {
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fire)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-            let identifier = offset == 0 ? task.id.uuidString : "\(task.id.uuidString)@\(offset)"
+            let identifier = task.id.uuidString
             let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
             center.add(request, withCompletionHandler: nil)
         }
     }
 
+    static func fireDates(for task: TaskItem, now: Date = Date(), calendar: Calendar = .current) -> [Date] {
+        guard task.hasReminder, let anchor = task.primaryReminderDate else { return [] }
+
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
+        // Tasks only carry a date; the time-of-day comes from the board's Reminder Time setting.
+        if components.hour == 0 && components.minute == 0 {
+            let minutes = task.board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
+            components.hour = minutes / 60
+            components.minute = minutes % 60
+        }
+        guard let resolvedAnchor = calendar.date(from: components), resolvedAnchor > now else { return [] }
+
+        // Repeat controls date advancement on the task card, not notification recurrence.
+        return [resolvedAnchor]
+    }
+
     static func cancel(for task: TaskItem) {
-        // Cover both the single-shot identifier and every repeat-batch index so a
-        // task that previously had a Daily repeat can be cleanly turned off.
+        // Cover both the current single-shot identifier and legacy repeat-batch
+        // identifiers so old Daily/Weekly reminders can be cleanly turned off.
         var identifiers = [task.id.uuidString]
-        for i in 1..<Self.repeatBatchSize {
+        for i in 1..<Self.legacyRepeatBatchSize {
             identifiers.append("\(task.id.uuidString)@\(i)")
         }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)

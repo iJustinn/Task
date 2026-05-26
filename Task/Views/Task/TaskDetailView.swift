@@ -184,7 +184,7 @@ struct TaskDetailView: View {
             Text("Notes")
                 .font(.system(.subheadline).weight(.semibold))
                 .foregroundStyle(.secondary)
-            MarkdownNotesEditor(text: $notes)
+            MarkdownNotesEditor(text: $notes, bodyFontSize: settings.textSize.taskDetailNotesSize)
         }
     }
 
@@ -316,7 +316,7 @@ struct TaskDetailView: View {
                 reminderWarning("Notifications are off for Task. Enable them in iOS Settings or this reminder won't fire.")
             }
             if hasReminder, reminderFireDateInPast {
-                reminderWarning("Reminder time has already passed today — this reminder won't fire. Pick a future date or change Reminder Time in Settings.")
+                reminderWarning("Reminder date/time has already passed — this reminder won't fire. Pick a future date or change Reminder Time in Settings.")
             }
         }
     }
@@ -341,13 +341,11 @@ struct TaskDetailView: View {
         .padding(.leading, 32)
     }
 
-    /// `true` when a non-repeating reminder's resolved fire time (anchor +
-    /// board reminder hour/minute) is already in the past. Drives an inline
-    /// warning so the silent `hasReminder` clear in `save()` isn't a
-    /// surprise — the user sees, before tapping Save, that today won't
-    /// deliver.
+    /// `true` when the reminder's resolved fire time (anchor + board reminder
+    /// hour/minute) is already in the past. Drives an inline warning so the silent
+    /// `hasReminder` clear in `save()` isn't a surprise.
     private var reminderFireDateInPast: Bool {
-        guard hasReminder, repeatRule == .none else { return false }
+        guard hasReminder else { return false }
         guard let fire = candidateFireDate() else { return false }
         return fire <= Date()
     }
@@ -578,10 +576,9 @@ struct TaskDetailView: View {
         task.showsCheckbox = showsCheckbox
         task.isChecked = showsCheckbox && isChecked
         let intendsReminder = hasReminder && (workingStart != nil || dueDate != nil)
-        // For non-repeating tasks, a fire date in the past would never deliver a
-        // notification. Clear the flag so the card/editor don't show the alarm icon
-        // for a reminder that won't fire.
-        if intendsReminder, repeatRule == .none, let fire = candidateFireDate(), fire <= Date() {
+        // A fire date in the past would never deliver a notification. Clear the flag
+        // so the card/editor don't show the alarm icon for a reminder that won't fire.
+        if intendsReminder, let fire = candidateFireDate(), fire <= Date() {
             task.hasReminder = false
         } else {
             task.hasReminder = intendsReminder
@@ -725,6 +722,15 @@ private extension AppTextSize {
         case .medium:     return 16
         case .large:      return 17
         case .extraLarge: return 18
+        }
+    }
+
+    var taskDetailNotesSize: CGFloat {
+        switch self {
+        case .small:      return 17
+        case .medium:     return 19
+        case .large:      return 21
+        case .extraLarge: return 23
         }
     }
 

@@ -30,8 +30,8 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             // The user may have changed notification permission in iOS Settings while
             // the app was backgrounded; re-read so TaskDetailView's warning is accurate.
-            // Also re-batch repeating reminders so Daily/Weekly tasks don't go silent
-            // after their 16-occurrence batch runs out.
+            // Also reconcile repeating reminders so legacy future batches are
+            // removed and only the task card's current date remains scheduled.
             if phase == .active {
                 Task { await settings.refreshNotificationAuthorization() }
                 refreshRepeatReminders()
@@ -58,10 +58,9 @@ struct RootView: View {
         }
     }
 
-    /// Re-schedule every repeating task's reminder batch. `NotificationService.schedule`
-    /// advances the cursor past now before laying down 16 one-shots, so a task whose
-    /// anchor is in the past picks up future occurrences. Called on scene-active so
-    /// a Daily reminder set last month doesn't fall off after its initial 16-day batch.
+    /// Re-schedule every repeating task's reminder request. This keeps old
+    /// repeat-batch identifiers cleaned up after upgrades without creating new
+    /// future occurrences unless the task card's own date was moved forward.
     private func refreshRepeatReminders() {
         let descriptor = FetchDescriptor<TaskItem>(
             predicate: #Predicate { $0.hasReminder && !$0.repeatRuleRaw.isEmpty }

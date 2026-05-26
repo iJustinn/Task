@@ -4,6 +4,7 @@ import UIKit
 struct MarkdownNotesEditor: View {
     @Binding var text: String
     var placeholder: String = String(localized: "Add notes")
+    var bodyFontSize: CGFloat = UIFont.preferredFont(forTextStyle: .body).pointSize
 
     @State private var isEditing: Bool = false
     @State private var editorFocused: Bool = false
@@ -14,7 +15,12 @@ struct MarkdownNotesEditor: View {
 
     var body: some View {
         if showsEditor {
-            LiveMarkdownTextView(text: $text, placeholder: placeholder, isFocused: $editorFocused)
+            LiveMarkdownTextView(
+                text: $text,
+                placeholder: placeholder,
+                bodyFont: editorBodyFont,
+                isFocused: $editorFocused
+            )
                 .frame(minHeight: 84)
                 .onAppear {
                     if isEditing { editorFocused = true }
@@ -25,6 +31,10 @@ struct MarkdownNotesEditor: View {
         } else {
             preview
         }
+    }
+
+    private var editorBodyFont: UIFont {
+        UIFont.systemFont(ofSize: bodyFontSize)
     }
 
     private var preview: some View {
@@ -39,6 +49,7 @@ struct MarkdownNotesEditor: View {
 
     @ViewBuilder
     private func row(for line: NoteLine) -> some View {
+        let indentation = noteIndentWidth(for: line.indentation)
         switch line.kind {
         case .heading(let level, let content):
             tappableText {
@@ -46,14 +57,18 @@ struct MarkdownNotesEditor: View {
                     .font(headingFont(level: level))
                     .fontWeight(.semibold)
             }
+            .padding(.leading, indentation)
         case .bullet(let content):
             HStack(alignment: .top, spacing: 8) {
                 Text("•")
+                    .font(.system(size: bodyFontSize))
                     .foregroundStyle(.secondary)
                 tappableText {
                     Text(attributed(content))
+                        .font(.system(size: bodyFontSize))
                 }
             }
+            .padding(.leading, indentation)
         case .task(let checked, let content):
             HStack(alignment: .center, spacing: 10) {
                 Button {
@@ -68,19 +83,24 @@ struct MarkdownNotesEditor: View {
 
                 tappableText {
                     Text(attributed(content))
+                        .font(.system(size: bodyFontSize))
                         .strikethrough(checked, color: .secondary)
                         .foregroundStyle(checked ? Color.secondary : Color.primary)
                 }
             }
+            .padding(.leading, indentation)
         case .blank:
             Color.clear
                 .frame(height: 8)
+                .padding(.leading, indentation)
                 .contentShape(Rectangle())
                 .onTapGesture { beginEditing() }
         case .plain(let content):
             tappableText {
                 Text(attributed(content))
+                    .font(.system(size: bodyFontSize))
             }
+            .padding(.leading, indentation)
         }
     }
 
@@ -109,9 +129,9 @@ struct MarkdownNotesEditor: View {
 
     private func headingFont(level: Int) -> Font {
         switch level {
-        case 1: return .system(.title2)
-        case 2: return .system(.title3)
-        default: return .system(.headline)
+        case 1: return .system(size: bodyFontSize + 7)
+        case 2: return .system(size: bodyFontSize + 4)
+        default: return .system(size: bodyFontSize + 2)
         }
     }
 
@@ -126,10 +146,11 @@ struct MarkdownNotesEditor: View {
 private struct LiveMarkdownTextView: UIViewRepresentable {
     @Binding var text: String
     let placeholder: String
+    let bodyFont: UIFont
     @Binding var isFocused: Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, isFocused: $isFocused)
+        Coordinator(text: $text, isFocused: $isFocused, bodyFont: bodyFont)
     }
 
     func makeUIView(context: Context) -> MarkdownUITextView {
@@ -137,20 +158,25 @@ private struct LiveMarkdownTextView: UIViewRepresentable {
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
         textView.isScrollEnabled = false
-        textView.adjustsFontForContentSizeCategory = true
+        textView.adjustsFontForContentSizeCategory = false
+        textView.font = bodyFont
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.keyboardDismissMode = .interactive
         textView.placeholderLabel.text = placeholder
+        textView.placeholderLabel.font = bodyFont
         context.coordinator.apply(text, to: textView)
         return textView
     }
 
     func updateUIView(_ textView: MarkdownUITextView, context: Context) {
+        context.coordinator.bodyFont = bodyFont
         textView.placeholderLabel.text = placeholder
+        textView.placeholderLabel.font = bodyFont
         textView.placeholderLabel.isHidden = !text.isEmpty
 
-        if textView.text != text {
+        if textView.text != text || textView.font?.pointSize != bodyFont.pointSize {
+            textView.font = bodyFont
             context.coordinator.apply(text, to: textView)
         }
 
@@ -171,11 +197,13 @@ private struct LiveMarkdownTextView: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         @Binding var text: String
         @Binding var isFocused: Bool
+        var bodyFont: UIFont
         private var isApplying = false
 
-        init(text: Binding<String>, isFocused: Binding<Bool>) {
+        init(text: Binding<String>, isFocused: Binding<Bool>, bodyFont: UIFont) {
             _text = text
             _isFocused = isFocused
+            self.bodyFont = bodyFont
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
@@ -195,8 +223,8 @@ private struct LiveMarkdownTextView: UIViewRepresentable {
         func apply(_ raw: String, to textView: UITextView) {
             isApplying = true
             let selectedRange = textView.selectedRange
-            textView.attributedText = markdownEditingAttributedText(raw)
-            textView.typingAttributes = markdownEditingTypingAttributes()
+            textView.attributedText = markdownEditingAttributedText(raw, bodyFont: bodyFont)
+            textView.typingAttributes = markdownEditingTypingAttributes(bodyFont: bodyFont)
             textView.selectedRange = NSRange(
                 location: min(selectedRange.location, (raw as NSString).length),
                 length: min(selectedRange.length, max(0, (raw as NSString).length - selectedRange.location))
@@ -231,8 +259,10 @@ final class MarkdownUITextView: UITextView {
     }
 }
 
-func markdownEditingAttributedText(_ raw: String) -> NSAttributedString {
-    let bodyFont = UIFont.preferredFont(forTextStyle: .body)
+func markdownEditingAttributedText(
+    _ raw: String,
+    bodyFont: UIFont = UIFont.preferredFont(forTextStyle: .body)
+) -> NSAttributedString {
     let attributed = NSMutableAttributedString(
         string: raw,
         attributes: [
@@ -245,9 +275,11 @@ func markdownEditingAttributedText(_ raw: String) -> NSAttributedString {
     return attributed
 }
 
-func markdownEditingTypingAttributes() -> [NSAttributedString.Key: Any] {
+func markdownEditingTypingAttributes(
+    bodyFont: UIFont = UIFont.preferredFont(forTextStyle: .body)
+) -> [NSAttributedString.Key: Any] {
     [
-        .font: UIFont.preferredFont(forTextStyle: .body),
+        .font: bodyFont,
         .foregroundColor: UIColor.label
     ]
 }
@@ -264,11 +296,11 @@ private func applyLineMarkdownStyles(to attributed: NSMutableAttributedString, b
 
         if !trimmed.isEmpty {
             if trimmed.hasPrefix("# ") {
-                attributed.addAttributes([.font: UIFont.preferredFont(forTextStyle: .title2)], range: lineRange)
+                attributed.addAttributes([.font: UIFont.systemFont(ofSize: bodyFont.pointSize + 7)], range: lineRange)
             } else if trimmed.hasPrefix("## ") {
-                attributed.addAttributes([.font: UIFont.preferredFont(forTextStyle: .title3)], range: lineRange)
+                attributed.addAttributes([.font: UIFont.systemFont(ofSize: bodyFont.pointSize + 4)], range: lineRange)
             } else if trimmed.hasPrefix("### ") {
-                attributed.addAttributes([.font: UIFont.preferredFont(forTextStyle: .headline)], range: lineRange)
+                attributed.addAttributes([.font: UIFont.systemFont(ofSize: bodyFont.pointSize + 2)], range: lineRange)
             } else if let markerLength = taskMarkerLength(in: trimmed) {
                 let markerRange = NSRange(location: location + trimmedOffset, length: markerLength)
                 attributed.addAttributes([
@@ -335,7 +367,14 @@ struct NoteLine {
         case plain(content: String)
     }
     let kind: Kind
+    let indentation: String
     let originalIndex: Int
+}
+
+func noteIndentWidth(for indentation: String) -> CGFloat {
+    indentation.reduce(CGFloat.zero) { width, character in
+        width + (character == "\t" ? 24 : 5)
+    }
 }
 
 func parseNoteLines(_ text: String) -> [NoteLine] {
@@ -345,29 +384,30 @@ func parseNoteLines(_ text: String) -> [NoteLine] {
     result.reserveCapacity(rawLines.count)
 
     for (index, raw) in rawLines.enumerated() {
-        let trimmed = raw.drop(while: { $0 == " " || $0 == "\t" })
+        let indentation = String(raw.prefix { $0 == " " || $0 == "\t" })
+        let trimmed = raw.dropFirst(indentation.count)
 
         if trimmed.isEmpty {
-            result.append(NoteLine(kind: .blank, originalIndex: index))
+            result.append(NoteLine(kind: .blank, indentation: indentation, originalIndex: index))
             continue
         }
 
         if let headingKind = matchHeading(trimmed) {
-            result.append(NoteLine(kind: headingKind, originalIndex: index))
+            result.append(NoteLine(kind: headingKind, indentation: indentation, originalIndex: index))
             continue
         }
 
         if let taskKind = matchBareTask(trimmed) {
-            result.append(NoteLine(kind: taskKind, originalIndex: index))
+            result.append(NoteLine(kind: taskKind, indentation: indentation, originalIndex: index))
             continue
         }
 
         if let listKind = matchBulletOrTask(trimmed) {
-            result.append(NoteLine(kind: listKind, originalIndex: index))
+            result.append(NoteLine(kind: listKind, indentation: indentation, originalIndex: index))
             continue
         }
 
-        result.append(NoteLine(kind: .plain(content: String(trimmed)), originalIndex: index))
+        result.append(NoteLine(kind: .plain(content: String(trimmed)), indentation: indentation, originalIndex: index))
     }
     return result
 }

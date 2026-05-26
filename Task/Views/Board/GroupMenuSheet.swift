@@ -11,6 +11,7 @@ struct GroupMenuSheet: View {
     @State private var name: String = ""
     @State private var colorKey: ColorKey = .purple
     @State private var isDefaultStatus: Bool = false
+    @State private var cardDisplayLimit: CardDisplayLimit = .five
     @State private var didLoad: Bool = false
     @State private var showDeleteConfirm: Bool = false
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
@@ -59,6 +60,7 @@ struct GroupMenuSheet: View {
                     name = group.name
                     colorKey = group.colorKey
                     isDefaultStatus = board.defaultGroup?.id == group.id
+                    cardDisplayLimit = group.cardDisplayLimit
                     didLoad = true
                 }
             }
@@ -86,21 +88,42 @@ struct GroupMenuSheet: View {
                 statusPreviewField
                 ColorSwatchPicker(selection: $colorKey)
                 Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle(isOn: $isDefaultStatus) {
-                        Text("Default for New Tasks")
-                            .font(.system(.headline))
-                    }
-                    .toggleStyle(.switch)
-                    .disabled(!canChangeDefaultStatus)
-
-                    Text("Current default: \(currentDefaultStatusName)")
-                        .font(.system(.footnote))
-                        .foregroundStyle(.secondary)
-                }
+                defaultStatusSection
+                Divider()
+                cardDisplayLimitSection
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
+        }
+    }
+
+    private var defaultStatusSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $isDefaultStatus) {
+                Text("Default for New Tasks")
+                    .font(.system(.headline))
+            }
+            .toggleStyle(.switch)
+            .disabled(!canChangeDefaultStatus)
+
+            Text("Current default: \(currentDefaultStatusName)")
+                .font(.system(.footnote))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var cardDisplayLimitSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Cards per Column")
+                .font(.system(.headline))
+
+            Picker("Cards per Column", selection: $cardDisplayLimit) {
+                ForEach(CardDisplayLimit.allCases) { limit in
+                    Text(limit.label).tag(limit)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(height: 32)
         }
     }
 
@@ -135,6 +158,7 @@ struct GroupMenuSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty { group.name = trimmed }
         group.colorKey = colorKey
+        group.cardDisplayLimit = cardDisplayLimit
         board.setDefaultGroup(group, enabled: isDefaultStatus)
         board.updatedAt = Date()
         try? context.save()

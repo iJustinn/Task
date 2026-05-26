@@ -26,10 +26,8 @@ struct ColumnView: View {
     var onGroupReorder: (BoardGroup) -> Void
     var onDragTick: () -> Void = {}
 
-    @State private var visibleCount: Int = 10
+    @State private var visibleCount: Int?
     @State private var animateIn: Bool = false
-
-    private let pageSize: Int = 10
 
     private var currentTasks: [TaskItem] {
         let tasks = group.sortedTasks(field: sortField, direction: sortDirection)
@@ -71,7 +69,9 @@ struct ColumnView: View {
 
             LazyVStack(spacing: 8) {
                 let ordered = currentTasks
-                let visible = Array(ordered.prefix(visibleCount))
+                let limit = group.cardDisplayLimit
+                let count = visibleCount ?? limit.initialVisibleCount(totalCount: ordered.count)
+                let visible = Array(ordered.prefix(count))
                 let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)"
                 let _ = sortKey // forces dependency for re-render
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
@@ -108,8 +108,8 @@ struct ColumnView: View {
                             value: animateIn
                         )
                 }
-                if ordered.count > visibleCount {
-                    moreButton(hidden: ordered.count - visibleCount)
+                if ordered.count > count {
+                    moreButton(hidden: ordered.count - count, visibleCount: count, totalCount: ordered.count)
                 }
                 if ordered.isEmpty {
                     emptyStatePlaceholder
@@ -117,7 +117,7 @@ struct ColumnView: View {
             }
             .padding(.horizontal, 6)
             .padding(.bottom, 8)
-            .id("\(sortField.rawValue)-\(sortDirection.rawValue)")
+            .id("\(sortField.rawValue)-\(sortDirection.rawValue)-\(group.cardDisplayLimitRaw)")
         }
         .frame(width: width)
         .background(
@@ -140,7 +140,10 @@ struct ColumnView: View {
             )
         )
         .onChange(of: refreshToken) { _, _ in
-            visibleCount = pageSize
+            visibleCount = nil
+        }
+        .onChange(of: group.cardDisplayLimitRaw) { _, _ in
+            visibleCount = nil
         }
         .onAppear {
             if !animateIn {
@@ -180,10 +183,10 @@ struct ColumnView: View {
         }
     }
 
-    private func moreButton(hidden: Int) -> some View {
+    private func moreButton(hidden: Int, visibleCount: Int, totalCount: Int) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.18)) {
-                visibleCount += pageSize
+                self.visibleCount = group.cardDisplayLimit.nextVisibleCount(from: visibleCount, totalCount: totalCount)
             }
         } label: {
             HStack(alignment: .firstTextBaseline, spacing: 6) {

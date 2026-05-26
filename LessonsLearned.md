@@ -247,11 +247,17 @@ The symptom of breaking any one of these: a card with two short tags wraps "Exam
 
 ### Card pagination
 
-`ColumnView` caps each column at the first 10 tasks via `@State private var visibleCount: Int = 10`. When the group's `currentTasks.count > visibleCount`, a tinted "More +N" button appears at the bottom of the column and bumps the count by 10 (animated). The state is preserved across re-renders thanks to `ForEach`'s id-keyed identity, but reset to 10 on pull-to-refresh.
+`ColumnView` caps each column through `BoardGroup.cardDisplayLimit` (5 by default, plus 10/15/20/all). When the group's `currentTasks.count > visibleCount`, a tinted "More +N" button appears at the bottom of the column and bumps the count by the selected limit (animated). The state is preserved across re-renders thanks to `ForEach`'s id-keyed identity, but reset to the selected limit on pull-to-refresh or when the status setting changes.
 
 ### Pull-to-refresh as a recovery valve
 
-Each column's inner `ScrollView` has `.refreshable { …  visibleCount = 10 }`. Even when the live data should already be in sync, this is a free "fix anything stuck" gesture for users — when a sort change doesn't seem to apply, when the column shows fewer cards than expected, etc. Bonus: SwiftUI's standard spinner is familiar and self-explanatory.
+Each column's inner `ScrollView` has `.refreshable { …  visibleCount = nil }`, so the next render recomputes from `BoardGroup.cardDisplayLimit`. Even when the live data should already be in sync, this is a free "fix anything stuck" gesture for users — when a sort change doesn't seem to apply, when the column shows fewer cards than expected, etc. Bonus: SwiftUI's standard spinner is familiar and self-explanatory.
+
+### Notes editor indentation
+
+`MarkdownNotesEditor` parses markdown markers after leading spaces/tabs, but keeps the indentation on `NoteLine` and applies it as row padding in preview mode. This preserves user-entered indentation for plain text and `[]` checklist rows without breaking checkbox toggling, because `toggleTaskMarker(in:)` already rewrites markers at the first non-whitespace character.
+
+`TaskCardView` has a separate `cardNotesPreviewLines` parser for compact card previews. Keep its indentation behavior in sync with `MarkdownNotesEditor`; otherwise notes can look correct in the editor but flatten on cards. The live UIKit editor also needs an explicit app-sized body font from `TaskDetailView`, because SwiftUI `dynamicTypeSize` does not automatically size `UITextView` attributed text the same way the saved preview is sized.
 
 ### Calendar picker
 
@@ -259,6 +265,7 @@ Each column's inner `ScrollView` has `.refreshable { …  visibleCount = 10 }`. 
 
 - `.single(Binding<Date?>)` — tap to set, tap again to clear.
 - `.range(Binding<Date?>, Binding<Date?>)` — tap once for start, again later for end. After both set, tapping resets to a new single-day selection.
+- The header has "Clear" next to "Today"; Clear nils the selected single date or both range endpoints.
 
 Visual:
 - Endpoint cells (start / end / single) get a 38 pt filled rounded square.

@@ -150,7 +150,7 @@ struct HowToUseSheet: View {
             steps: [
                 "Long-press a task card to lift it, then drag up/down within a column to reorder, or sideways onto another column to change its status.",
                 "Long-press a group's colored pill header and drag it onto another column's header to swap their positions.",
-                "Pull a column down to refresh — it resets the Top 10 view and re-renders that column."
+                "Pull a column down to refresh — it resets that status's card limit and re-renders the column."
             ]
         ),
         AboutGuideSection(

@@ -33,8 +33,40 @@ struct GroupExport: Codable {
     var id: UUID
     var name: String
     var colorKey: String
+    var cardDisplayLimitRaw: String
     var sortIndex: Int
     var createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, colorKey, cardDisplayLimitRaw, sortIndex, createdAt
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        colorKey: String,
+        cardDisplayLimitRaw: String = CardDisplayLimit.five.rawValue,
+        sortIndex: Int,
+        createdAt: Date
+    ) {
+        self.id = id
+        self.name = name
+        self.colorKey = colorKey
+        self.cardDisplayLimitRaw = CardDisplayLimit(rawValue: cardDisplayLimitRaw)?.rawValue ?? CardDisplayLimit.five.rawValue
+        self.sortIndex = sortIndex
+        self.createdAt = createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        colorKey = try c.decode(String.self, forKey: .colorKey)
+        let rawLimit = try c.decodeIfPresent(String.self, forKey: .cardDisplayLimitRaw) ?? CardDisplayLimit.five.rawValue
+        cardDisplayLimitRaw = CardDisplayLimit(rawValue: rawLimit)?.rawValue ?? CardDisplayLimit.five.rawValue
+        sortIndex = try c.decode(Int.self, forKey: .sortIndex)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+    }
 }
 
 struct TagExport: Codable {
@@ -254,7 +286,14 @@ enum DataImportExport {
         let sortedBoards = boards.sorted { $0.sortIndex < $1.sortIndex }
         let entries = sortedBoards.map { board -> BoardExportEntry in
             let groups: [GroupExport] = board.orderedGroups.map { g in
-                GroupExport(id: g.id, name: g.name, colorKey: g.colorKeyRaw, sortIndex: g.sortIndex, createdAt: g.createdAt)
+                GroupExport(
+                    id: g.id,
+                    name: g.name,
+                    colorKey: g.colorKeyRaw,
+                    cardDisplayLimitRaw: g.cardDisplayLimitRaw,
+                    sortIndex: g.sortIndex,
+                    createdAt: g.createdAt
+                )
             }
             let tags: [TagExport] = board.orderedTags.map { t in
                 TagExport(id: t.id, name: t.name, colorKey: t.colorKeyRaw, sortIndex: t.sortIndex, createdAt: t.createdAt)
@@ -454,11 +493,13 @@ enum DataImportExport {
             if let existing = groupsByID[g.id] {
                 existing.name = g.name
                 existing.colorKeyRaw = g.colorKey
+                existing.cardDisplayLimitRaw = g.cardDisplayLimitRaw
                 existing.sortIndex = g.sortIndex
                 existing.board = board
                 groupsByName[g.name.lowercased()] = existing
             } else if let existing = groupsByName[g.name.lowercased()] {
                 existing.colorKeyRaw = g.colorKey
+                existing.cardDisplayLimitRaw = g.cardDisplayLimitRaw
                 existing.sortIndex = g.sortIndex
                 existing.board = board
                 groupsByID[g.id] = existing
@@ -469,6 +510,7 @@ enum DataImportExport {
                     sortIndex: g.sortIndex
                 )
                 group.id = g.id
+                group.cardDisplayLimitRaw = g.cardDisplayLimitRaw
                 group.createdAt = g.createdAt
                 group.board = board
                 context.insert(group)
