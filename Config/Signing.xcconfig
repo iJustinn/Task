@@ -6,5 +6,7 @@
 // it up automatically if present.
 
 DEVELOPMENT_TEAM = U6KN3BQL72
+DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO
+PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*] = com.ijustin.task
 
 #include? "Signing.local.xcconfig"

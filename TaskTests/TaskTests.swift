@@ -424,6 +424,12 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(board.defaultGroup?.id, waiting.id)
     }
 
+    func testMacSidebarTaskCountTextInflectsTaskCounts() {
+        XCTAssertEqual(MacSidebarBoardLabel.taskCountText(for: 0), "0 tasks")
+        XCTAssertEqual(MacSidebarBoardLabel.taskCountText(for: 1), "1 task")
+        XCTAssertEqual(MacSidebarBoardLabel.taskCountText(for: 12), "12 tasks")
+    }
+
     func testTaskDateFilterCanTargetWorkingRangeOrDueDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let may10 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 10)))

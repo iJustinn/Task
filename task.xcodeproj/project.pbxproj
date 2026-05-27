@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		B0010001000000000000A001 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B0010001000000000000F001 /* SwiftUI.framework */; };
 		B0010001000000000000A002 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B0010001000000000000F002 /* WidgetKit.framework */; };
-		B0010001000000000000A003 /* TaskWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B0010001000000000000E002 /* TaskWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B0010001000000000000A003 /* TaskWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B0010001000000000000E002 /* TaskWidgetExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -227,9 +227,13 @@
 				TargetAttributes = {
 					B0010001000000000000T001 = {
 						CreatedOnToolsVersion = 16.0;
+						DevelopmentTeam = U6KN3BQL72;
+						ProvisioningStyle = Automatic;
 					};
 					B0010001000000000000T002 = {
 						CreatedOnToolsVersion = 16.0;
+						DevelopmentTeam = U6KN3BQL72;
+						ProvisioningStyle = Automatic;
 					};
 					B0010001000000000000T003 = {
 						CreatedOnToolsVersion = 16.0;
@@ -310,6 +314,7 @@
 /* Begin PBXTargetDependency section */
 		B0010001000000000000D001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = B0010001000000000000T002 /* TaskWidgetExtension */;
 			targetProxy = B0010001000000000000C001 /* PBXContainerItemProxy */;
 		};
@@ -451,8 +456,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Task/Task.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				DEVELOPMENT_TEAM = U6KN3BQL72;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -468,14 +476,16 @@
 				);
 				MARKETING_VERSION = 0.4.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ijustin.task;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]" = com.ijustin.task;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2,6";
 			};
 			name = Debug;
 		};
@@ -488,8 +498,11 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Task/Task.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 8;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO;
+				DEVELOPMENT_TEAM = U6KN3BQL72;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -505,14 +518,16 @@
 				);
 				MARKETING_VERSION = 0.4.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.ijustin.task;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]" = com.ijustin.task;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = YES;
 				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2,6";
 			};
 			name = Release;
 		};
