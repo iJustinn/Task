@@ -15,6 +15,7 @@ struct ColumnView: View {
     let sortDirection: CardSortDirection
     let dateFilter: Date?
     let dateFilterTarget: AppDateFilterTarget
+    let searchQuery: String
     let isDefaultStatus: Bool
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
@@ -31,9 +32,14 @@ struct ColumnView: View {
     @State private var animateIn: Bool = false
 
     private var currentTasks: [TaskItem] {
-        let tasks = group.sortedTasks(field: sortField, direction: sortDirection)
-        guard let dateFilter else { return tasks }
-        return tasks.filter { $0.matchesDateFilter(dateFilter, target: dateFilterTarget) }
+        var tasks = group.sortedTasks(field: sortField, direction: sortDirection)
+        if let dateFilter {
+            tasks = tasks.filter { $0.matchesDateFilter(dateFilter, target: dateFilterTarget) }
+        }
+        if isSearchFilterActive {
+            tasks = tasks.filter { $0.matchesSearchQuery(searchQuery) }
+        }
+        return tasks
     }
 
     private func beginDragTask(_ task: TaskItem) -> String {
@@ -71,7 +77,9 @@ struct ColumnView: View {
             LazyVStack(spacing: 8) {
                 let ordered = currentTasks
                 let limit = group.cardDisplayLimit
-                let count = visibleCount ?? limit.initialVisibleCount(totalCount: ordered.count)
+                let count = isSearchFilterActive
+                    ? ordered.count
+                    : visibleCount ?? limit.initialVisibleCount(totalCount: ordered.count)
                 let visible = Array(ordered.prefix(count))
                 let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)"
                 let _ = sortKey // forces dependency for re-render
@@ -160,6 +168,9 @@ struct ColumnView: View {
         .onChange(of: group.cardDisplayLimitRaw) { _, _ in
             visibleCount = nil
         }
+        .onChange(of: searchFilterKey) { _, _ in
+            visibleCount = nil
+        }
         .onAppear {
             if !animateIn {
                 animateIn = true
@@ -216,7 +227,19 @@ struct ColumnView: View {
         layoutStyle == .mac ? 10 : 12
     }
 
+    private var searchFilterKey: String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private var isSearchFilterActive: Bool {
+        !searchFilterKey.isEmpty
+    }
+
     private var emptyStateText: String {
+        if isSearchFilterActive {
+            return String(localized: "No matching tasks")
+        }
+
         switch group.name {
         case "Waiting": return String(localized: "Parked until you're ready")
         case "Doing":   return String(localized: "What you're on right now")

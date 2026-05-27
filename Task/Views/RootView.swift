@@ -219,60 +219,44 @@ struct RootView: View {
     }
 
     private func macDetail(board: Board) -> some View {
-        ZStack {
-            BoardView(board: board, layoutStyle: .mac)
-                .id(board.id)
-                .opacity(hasSearchQuery ? 0 : 1)
-                .allowsHitTesting(!hasSearchQuery)
-                .transition(.opacity)
+        BoardView(board: board, layoutStyle: .mac, searchQuery: searchText)
+            .id(board.id)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button {
+                        showingAddTask = true
+                    } label: {
+                        Label("New Task", systemImage: "plus")
+                            .frame(width: 36, height: 36)
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .buttonBorderShape(.circle)
+                    .help("New Task")
+                    .keyboardShortcut("n", modifiers: .command)
 
-            if hasSearchQuery {
-                SearchView(boards: boards, activeBoardID: board.id, queryText: searchText) { task in
-                    editingTaskFromSearch = task
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                            .frame(width: 36, height: 36)
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .buttonBorderShape(.circle)
+                    .help("Settings")
+                    .keyboardShortcut(",", modifiers: .command)
                 }
-                .transition(.opacity)
             }
-        }
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showingAddTask = true
-                } label: {
-                    Label("New Task", systemImage: "plus")
-                        .frame(width: 36, height: 36)
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .buttonBorderShape(.circle)
-                .help("New Task")
-                .keyboardShortcut("n", modifiers: .command)
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                        .frame(width: 36, height: 36)
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .buttonBorderShape(.circle)
-                .help("Settings")
-                .keyboardShortcut(",", modifiers: .command)
-            }
-        }
-        .searchable(text: $searchText, placement: .toolbar, prompt: "Search")
-        .animation(.easeInOut(duration: 0.18), value: hasSearchQuery)
-        .animation(.easeInOut(duration: 0.32), value: board.id)
+            .searchable(text: $searchText, placement: .toolbar, prompt: "Search")
+            .animation(.easeInOut(duration: 0.18), value: searchText)
+            .animation(.easeInOut(duration: 0.32), value: board.id)
     }
 
     private var isSearchActive: Bool {
         searchFocused || !searchText.isEmpty
-    }
-
-    private var hasSearchQuery: Bool {
-        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

@@ -35,6 +35,20 @@ final class TaskTests: XCTestCase {
         XCTAssertFalse(task.workingIsRange)
     }
 
+    func testTaskSearchQueryMatchesTitleNotesGroupAndTags() {
+        let group = BoardGroup(name: "Waiting")
+        let tag = TaskTag(name: "Project")
+        let task = TaskItem(title: "Refresh Resume", notes: "Career fair prep")
+        task.group = group
+        task.tags = [tag]
+
+        XCTAssertTrue(task.matchesSearchQuery("resume"))
+        XCTAssertTrue(task.matchesSearchQuery("CAREER"))
+        XCTAssertTrue(task.matchesSearchQuery("waiting"))
+        XCTAssertTrue(task.matchesSearchQuery("project"))
+        XCTAssertFalse(task.matchesSearchQuery("budget"))
+    }
+
     func testBiweeklyRepeatAdvancesByTwoWeeks() throws {
         let calendar = Calendar(identifier: .gregorian)
         let start = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))

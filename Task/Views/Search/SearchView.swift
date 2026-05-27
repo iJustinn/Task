@@ -93,11 +93,7 @@ struct SearchView: View {
         guard !query.isEmpty else { return [] }
         return orderedBoards.compactMap { board in
             let matches = (board.tasks ?? []).filter { task in
-                if task.title.lowercased().contains(query) { return true }
-                if task.notes.lowercased().contains(query) { return true }
-                if let group = task.group, group.name.lowercased().contains(query) { return true }
-                if let tags = task.tags, tags.contains(where: { $0.name.lowercased().contains(query) }) { return true }
-                return false
+                task.matchesSearchQuery(query)
             }
             .sorted { $0.updatedAt > $1.updatedAt }
             return matches.isEmpty ? nil : ResultGroup(board: board, tasks: matches)
