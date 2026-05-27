@@ -6,19 +6,19 @@
 
 A privacy-focused iOS task manager with a Notion-style task editor and a Kanban board home. Multiple boards, multi-select tags, working dates and due dates, local notifications, and a home-screen widget — all on-device.
 
-Current app version: **0.4.7 (build 8)**
+Current app version: **0.5.0 (build 1)**
 
 ## Screenshots
 
 <p align="center">
-  <img src="Screenshots/01-v0.4.7.PNG" alt="Board home" width="32%"/>
-  <img src="Screenshots/02-v0.4.6.PNG" alt="Board switcher" width="32%"/>
-  <img src="Screenshots/03-v0.4.7.PNG" alt="Task editor" width="32%"/>
+  <img src="Screenshots/01-v0.7.0.PNG" alt="Board home" width="32%"/>
+  <img src="Screenshots/02-v0.7.0.PNG" alt="Board switcher" width="32%"/>
+  <img src="Screenshots/03-v0.7.0.PNG" alt="Task editor" width="32%"/>
 </p>
 <p align="center">
-  <img src="Screenshots/04-v0.4.6.PNG" alt="Calendar picker" width="32%"/>
-  <img src="Screenshots/05-v0.4.6.PNG" alt="Settings" width="32%"/>
-  <img src="Screenshots/06-v0.4.6.PNG" alt="Widget" width="32%"/>
+  <img src="Screenshots/04-v0.7.0.PNG" alt="Calendar picker" width="32%"/>
+  <img src="Screenshots/05-v0.7.0.PNG" alt="Settings" width="32%"/>
+  <img src="Screenshots/06-v0.7.0.PNG" alt="Widget" width="32%"/>
 </p>
 
 ## Highlights
