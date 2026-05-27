@@ -2,11 +2,13 @@ import SwiftUI
 
 struct TaskCardView: View {
     let task: TaskItem
+    var layoutStyle: BoardLayoutStyle = .mobile
     var onToggleChecked: (() -> Void)? = nil
     @EnvironmentObject private var settings: SettingsViewModel
+    @State private var isHovered: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: layoutStyle == .mac ? 7 : 6) {
             titleRow
 
             if let tags = task.tags, !tags.isEmpty {
@@ -71,17 +73,24 @@ struct TaskCardView: View {
                 .padding(.top, 2)
             }
         }
-        .padding(10)
+        .padding(layoutStyle == .mac ? 11 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
+            RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+                .fill(cardFill)
+                .shadow(color: cardShadowColor, radius: isHovered ? 7 : 2, x: 0, y: isHovered ? 3 : 1)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color(uiColor: .systemGray5), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+                .strokeBorder(cardBorder, lineWidth: 0.5)
         )
+        .scaleEffect(isHovered && layoutStyle == .mac ? 1.006 : 1)
+        .animation(.easeOut(duration: 0.12), value: isHovered)
+        .onHover { hovering in
+            if layoutStyle == .mac {
+                isHovered = hovering
+            }
+        }
     }
 
     private var titleRow: some View {
@@ -91,7 +100,7 @@ struct TaskCardView: View {
             }
 
             Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
-                .font(.subheadline.weight(.semibold))
+                .font(titleFont)
                 .foregroundStyle(isVisiblyChecked ? .secondary : .primary)
                 .strikethrough(isVisiblyChecked, color: .secondary)
                 .multilineTextAlignment(.leading)
@@ -128,6 +137,26 @@ struct TaskCardView: View {
         Rectangle()
             .fill(Color(uiColor: .separator))
             .frame(height: 0.5)
+    }
+
+    private var titleFont: Font {
+        layoutStyle == .mac ? .callout.weight(.semibold) : .subheadline.weight(.semibold)
+    }
+
+    private var cardCornerRadius: CGFloat {
+        layoutStyle == .mac ? 7 : 10
+    }
+
+    private var cardFill: Color {
+        layoutStyle == .mac ? Color(uiColor: .systemBackground) : Color(uiColor: .secondarySystemGroupedBackground)
+    }
+
+    private var cardBorder: Color {
+        layoutStyle == .mac ? Color(uiColor: .separator).opacity(isHovered ? 0.5 : 0.28) : Color(uiColor: .systemGray5)
+    }
+
+    private var cardShadowColor: Color {
+        layoutStyle == .mac ? Color.black.opacity(isHovered ? 0.08 : 0.025) : Color.black.opacity(0.04)
     }
 
     @ViewBuilder

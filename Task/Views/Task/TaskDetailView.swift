@@ -39,14 +39,20 @@ struct TaskDetailView: View {
 
     private enum ReminderAnchor { case working, due, none }
 
-    private static let labelColumnWidth: CGFloat = 120
-
     private var editingTask: TaskItem? {
         if case .edit(let task) = mode { return task }
         return nil
     }
 
     private var isCreating: Bool { editingTask == nil }
+
+    private var sheetTitle: LocalizedStringKey {
+        isCreating ? "New Task" : "Edit Task"
+    }
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespaces).isEmpty && selectedGroup != nil
+    }
 
     /// Mirrors `TaskItem.primaryReminderDate`: when both dates are set the
     /// notification fires for the earlier one, so the alarm icon sits on
@@ -61,37 +67,48 @@ struct TaskDetailView: View {
         }
     }
 
+    private var isMacLayout: Bool {
+        PlatformLayout.prefersMacInterface
+    }
+
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
                 ZStack {
-                    Color(.systemBackground).ignoresSafeArea()
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 22) {
-                            titleField
-                            propertyList
-                            Divider()
-                            notesSection
-                            if !isCreating {
-                                Spacer(minLength: 24)
-                                bottomActionRow
-                            }
+                    detailBackground.ignoresSafeArea()
+                    VStack(spacing: 0) {
+                        if isMacLayout {
+                            macSheetHeader
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                        .padding(.bottom, 24)
-                        .frame(minHeight: proxy.size.height, alignment: .topLeading)
+                        ScrollView(.vertical, showsIndicators: false) {
+                            VStack(alignment: .leading, spacing: sectionSpacing) {
+                                titleField
+                                propertyList
+                                Divider()
+                                notesSection
+                                if !isCreating {
+                                    Spacer(minLength: 24)
+                                    bottomActionRow
+                                }
+                            }
+                            .padding(.horizontal, horizontalPadding)
+                            .padding(.top, topPadding)
+                            .padding(.bottom, bottomPadding)
+                            .frame(minHeight: proxy.size.height - (isMacLayout ? 64 : 0), alignment: .topLeading)
+                        }
+                        .scrollDismissesKeyboard(.interactively)
                     }
-                    .scrollDismissesKeyboard(.interactively)
                 }
             }
-            .navigationTitle(isCreating ? "New Task" : "Edit Task")
+            .navigationTitle(isMacLayout ? "" : sheetTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(isCreating ? "Add" : "Save") { save() }
-                        .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || selectedGroup == nil)
+                if !isMacLayout {
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(isCreating ? "Add" : "Save") { save() }
+                            .disabled(!canSave)
+                    }
                 }
             }
             .onAppear { load() }
@@ -113,28 +130,27 @@ struct TaskDetailView: View {
             }
             .sheet(isPresented: $showStatusPicker) {
                 StatusPickerSheet(board: board, selection: $selectedGroup)
-                    .presentationDetents([.fraction(0.6), .large])
-                    .presentationDragIndicator(.visible)
+                    .environmentObject(settings)
             }
             .sheet(isPresented: $showTagPicker) {
                 TagPickerSheet(board: board, selection: $selectedTags)
-                    .presentationDetents([.fraction(0.6), .large])
-                    .presentationDragIndicator(.visible)
+                    .environmentObject(settings)
             }
             .sheet(isPresented: $showWorkingPicker) {
                 workingDateSheet
-                    .presentationDetents([.fraction(0.7), .large])
-                    .presentationDragIndicator(.visible)
+                    .taskMacSheetFrame(width: 560, minHeight: 500)
+                    .taskSheetPresentation(detents: [.fraction(0.7), .large], macHeight: 560)
             }
             .sheet(isPresented: $showDuePicker) {
                 dueDateSheet
-                    .presentationDetents([.fraction(0.6), .large])
-                    .presentationDragIndicator(.visible)
+                    .taskMacSheetFrame(width: 540, minHeight: 460)
+                    .taskSheetPresentation(macHeight: 520)
             }
             .sheet(isPresented: $showRepeatPicker) {
                 RepeatPickerSheet(board: board, selection: $repeatRule)
-                    .presentationDetents([.fraction(0.6), .large])
-                    .presentationDragIndicator(.visible)
+                    .environmentObject(settings)
+                    .taskMacSheetFrame(width: 540, minHeight: 430)
+                    .taskSheetPresentation(macHeight: 500)
             }
             .sheet(isPresented: $showDeleteConfirm) {
                 ConfirmationSheet(
@@ -146,6 +162,7 @@ struct TaskDetailView: View {
                 ) {
                     delete()
                 }
+                .environmentObject(settings)
                 .confirmationSheetPresentationStyle()
             }
             .sheet(isPresented: $showDuplicateConfirm) {
@@ -159,25 +176,49 @@ struct TaskDetailView: View {
                 ) {
                     duplicate()
                 }
+                .environmentObject(settings)
                 .confirmationSheetPresentationStyle()
             }
         }
-        .presentationDetents([.fraction(0.6), .large])
-        .presentationDragIndicator(.visible)
+        .frame(minWidth: isMacLayout ? 680 : nil, minHeight: isMacLayout ? 620 : nil)
+        .presentationDetents(taskDetailDetents)
+        .presentationDragIndicator(isMacLayout ? .hidden : .visible)
         .dynamicTypeSize(settings.textSize.dynamicType)
     }
 
     // MARK: - Sections
 
+    private var macSheetHeader: some View {
+        ZStack {
+            Text(sheetTitle)
+                .font(.headline)
+                .lineLimit(1)
+
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.borderless)
+
+                Spacer(minLength: 0)
+
+                Button(isCreating ? "Add" : "Save") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSave)
+            }
+        }
+        .padding(.horizontal, horizontalPadding)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
+    }
+
     private var titleField: some View {
         TextField("", text: $title, prompt: Text("Add title").foregroundStyle(.secondary), axis: .vertical)
-            .font(.system(size: settings.textSize.taskDetailTitleSize, weight: .bold))
+            .font(.system(size: titleFontSize, weight: .bold))
             .lineLimit(1...3)
             .textInputAutocapitalization(.words)
     }
 
     private var propertyList: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: propertyRowSpacing) {
             statusRow
             tagsRow
             workingDateRow
@@ -186,6 +227,42 @@ struct TaskDetailView: View {
             checkboxRow
             reminderRow
         }
+    }
+
+    private var taskDetailDetents: Set<PresentationDetent> {
+        isMacLayout ? [.large] : [.fraction(0.6), .large]
+    }
+
+    private var detailBackground: Color {
+        isMacLayout ? Color(uiColor: .systemGroupedBackground) : Color(uiColor: .systemBackground)
+    }
+
+    private var sectionSpacing: CGFloat {
+        isMacLayout ? 18 : 22
+    }
+
+    private var propertyRowSpacing: CGFloat {
+        isMacLayout ? 10 : 14
+    }
+
+    private var horizontalPadding: CGFloat {
+        isMacLayout ? 32 : 20
+    }
+
+    private var topPadding: CGFloat {
+        isMacLayout ? 8 : 8
+    }
+
+    private var bottomPadding: CGFloat {
+        isMacLayout ? 28 : 24
+    }
+
+    private var titleFontSize: CGFloat {
+        isMacLayout ? min(settings.textSize.taskDetailTitleSize, 30) : settings.textSize.taskDetailTitleSize
+    }
+
+    private var labelColumnWidth: CGFloat {
+        isMacLayout ? 104 : 120
     }
 
     private var notesSection: some View {
@@ -420,11 +497,11 @@ struct TaskDetailView: View {
             Text(label)
                 .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: Self.labelColumnWidth, alignment: .leading)
+                .frame(width: labelColumnWidth, alignment: .leading)
             value()
                 .frame(maxWidth: .infinity, alignment: valueAlignment)
         }
-        .frame(minHeight: 42)
+        .frame(minHeight: isMacLayout ? 38 : 42)
         .contentShape(Rectangle())
     }
 
@@ -459,25 +536,25 @@ struct TaskDetailView: View {
     private var workingDateSheet: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: isMacLayout ? 18 : 22) {
                         rangeToggleRow
                         Divider()
                         workingCalendar
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
+                    .padding(.horizontal, isMacLayout ? 24 : 20)
+                    .padding(.top, isMacLayout ? 16 : 8)
+                    .padding(.bottom, isMacLayout ? 28 : 24)
                 }
             }
             .navigationTitle("Working Date")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { showWorkingPicker = false }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { showWorkingPicker = false }
                 }
             }
@@ -496,23 +573,23 @@ struct TaskDetailView: View {
     private var dueDateSheet: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: isMacLayout ? 18 : 22) {
                         CalendarPicker(selectedDate: $dueDate)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
+                    .padding(.horizontal, isMacLayout ? 24 : 20)
+                    .padding(.top, isMacLayout ? 16 : 8)
+                    .padding(.bottom, isMacLayout ? 28 : 24)
                 }
             }
             .navigationTitle("Due Date")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { showDuePicker = false }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { showDuePicker = false }
                 }
             }

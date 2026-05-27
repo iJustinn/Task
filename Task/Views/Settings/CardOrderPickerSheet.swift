@@ -5,21 +5,22 @@ struct CardOrderPickerSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var settings: SettingsViewModel
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
 
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemBackground)
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground)
                     .ignoresSafeArea()
 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: isMacLayout ? 18 : 24) {
                         sortBySection
                         orderSection
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
+                    .padding(.horizontal, isMacLayout ? 24 : 20)
+                    .padding(.top, isMacLayout ? 16 : 8)
+                    .padding(.bottom, isMacLayout ? 28 : 24)
                     .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
@@ -32,12 +33,13 @@ struct CardOrderPickerSheet: View {
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
+        .taskMacSheetFrame(width: 560, minHeight: 460)
     }
 
     private var sortBySection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Sort By")
-                .font(.system(size: 29, weight: .bold))
+                .font(.system(size: isMacLayout ? 20 : 29, weight: .bold))
                 .foregroundColor(.primary)
             LazyVStack(spacing: 0) {
                 ForEach(Array(CardSortField.allCases.enumerated()), id: \.element.id) { index, field in
@@ -53,7 +55,7 @@ struct CardOrderPickerSheet: View {
     private var orderSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Order")
-                .font(.system(size: 29, weight: .bold))
+                .font(.system(size: isMacLayout ? 20 : 29, weight: .bold))
                 .foregroundColor(.primary)
             LazyVStack(spacing: 0) {
                 ForEach(Array(CardSortDirection.allCases.enumerated()), id: \.element.id) { index, direction in

@@ -23,49 +23,55 @@ struct BoardSwitcherView: View {
     @State private var reorderWatchdog: Task<Void, Never>?
 
     private var canDelete: Bool { boards.count > 1 }
-    private var isExpanded: Bool { selectedDetent == .large }
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
+    private var isExpanded: Bool { isMacLayout || selectedDetent == .large }
 
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemBackground)
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground)
                     .ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(boards.enumerated()), id: \.element.id) { index, board in
-                                boardRow(board)
-                                if index < boards.count - 1 {
-                                    Divider()
+
+                VStack(spacing: 0) {
+                    if isMacLayout {
+                        macSheetHeader
+                    }
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(boards.enumerated()), id: \.element.id) { index, board in
+                                    boardRow(board)
+                                    if index < boards.count - 1 {
+                                        Divider()
+                                    }
                                 }
                             }
+                            if isExpanded && canDelete && !deleteMode {
+                                Spacer(minLength: 24)
+                                deleteButton
+                            }
                         }
-                        if isExpanded && canDelete && !deleteMode {
-                            Spacer(minLength: 24)
-                            deleteButton
-                        }
+                        .padding(.horizontal, isMacLayout ? 24 : 20)
+                        .padding(.top, isMacLayout ? 10 : 8)
+                        .padding(.bottom, isMacLayout ? 28 : 24)
+                        .frame(minHeight: proxy.size.height - (isMacLayout ? 62 : 0), alignment: .topLeading)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
-                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle(deleteMode ? "Delete Board" : "Boards")
+            .navigationTitle(isMacLayout ? "" : (deleteMode ? "Delete Board" : "Boards"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(deleteMode ? "Cancel" : "Done") {
-                        if deleteMode {
-                            deleteMode = false
-                        } else {
-                            dismiss()
+                if !isMacLayout {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(deleteMode ? "Cancel" : "Done") {
+                            closeOrExitDeleteMode()
                         }
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add") { addBoard() }
-                        .disabled(deleteMode)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Add") { addBoard() }
+                            .disabled(deleteMode)
+                    }
                 }
             }
             .sheet(item: $pendingDelete) { board in
@@ -91,8 +97,8 @@ struct BoardSwitcherView: View {
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
-        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
-        .presentationDragIndicator(.visible)
+        .taskMacSheetFrame(width: 540, minHeight: 430)
+        .taskSheetPresentation(selection: $selectedDetent, macHeight: 500)
         .onDisappear {
             // Sheet dismissed mid-drag: roll back any uncommitted reorder so the
             // dirty `sortIndex` doesn't ride along with the next unrelated save.
@@ -105,6 +111,39 @@ struct BoardSwitcherView: View {
     }
 
     // MARK: - Reorder rollback
+
+    private var macSheetHeader: some View {
+        HStack {
+            Button(deleteMode ? "Cancel" : "Done") {
+                closeOrExitDeleteMode()
+            }
+            .frame(width: 82, alignment: .leading)
+
+            Spacer(minLength: 12)
+
+            Text(deleteMode ? "Delete Board" : "Boards")
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 12)
+
+            Button("Add") { addBoard() }
+                .disabled(deleteMode)
+                .frame(width: 82, alignment: .trailing)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private func closeOrExitDeleteMode() {
+        if deleteMode {
+            deleteMode = false
+        } else {
+            dismiss()
+        }
+    }
 
     private func captureReorderSnapshotIfNeeded() {
         guard preDragSortIndex.isEmpty else { return }

@@ -25,7 +25,8 @@ struct TagPickerSheet: View {
     @State private var reorderWatchdog: Task<Void, Never>?
 
     private var canDelete: Bool { !board.orderedTags.isEmpty }
-    private var isExpanded: Bool { selectedDetent == .large }
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
+    private var isExpanded: Bool { isMacLayout || selectedDetent == .large }
     private var newTagPreviewName: String {
         let trimmed = newTagName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Tag name" : trimmed
@@ -34,53 +35,57 @@ struct TagPickerSheet: View {
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemBackground)
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground)
                     .ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(board.orderedTags.enumerated()), id: \.element.id) { index, tag in
-                                tagRow(tag)
-                                if index < board.orderedTags.count - 1 {
-                                    Divider()
+                VStack(spacing: 0) {
+                    if isMacLayout {
+                        macSheetHeader
+                    }
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(board.orderedTags.enumerated()), id: \.element.id) { index, tag in
+                                    tagRow(tag)
+                                    if index < board.orderedTags.count - 1 {
+                                        Divider()
+                                    }
                                 }
                             }
-                        }
 
-                        if board.orderedTags.isEmpty {
-                            Text("Tap Add to create your first tag.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.vertical, 16)
-                        }
+                            if board.orderedTags.isEmpty {
+                                Text("Tap Add to create your first tag.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.vertical, 16)
+                            }
 
-                        if isExpanded && !deleteMode {
-                            Spacer(minLength: 24)
-                            bottomActionRow
+                            if isExpanded && !deleteMode {
+                                Spacer(minLength: 24)
+                                bottomActionRow
+                            }
                         }
+                        .padding(.horizontal, isMacLayout ? 24 : 20)
+                        .padding(.top, isMacLayout ? 10 : 8)
+                        .padding(.bottom, isMacLayout ? 28 : 24)
+                        .frame(minHeight: proxy.size.height - (isMacLayout ? 62 : 0), alignment: .topLeading)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
-                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle(sheetTitle)
+            .navigationTitle(isMacLayout ? "" : sheetTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        if deleteMode {
-                            deleteMode = false
-                        } else {
-                            dismiss()
+                if !isMacLayout {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") {
+                            closeOrExitDeleteMode()
                         }
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
             .sheet(item: $pendingDelete) { tag in
@@ -98,17 +103,18 @@ struct TagPickerSheet: View {
             }
             .sheet(item: $pendingEdit) { tag in
                 EditTagSheet(tag: tag)
-                    .presentationDetents([.fraction(0.6), .large])
-                    .presentationDragIndicator(.visible)
+                    .environmentObject(settings)
+                    .taskMacSheetFrame(width: 520, minHeight: 420)
+                    .taskSheetPresentation(macHeight: 480)
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
-        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
-        .presentationDragIndicator(.visible)
+        .taskMacSheetFrame(width: 540, minHeight: 430)
+        .taskSheetPresentation(selection: $selectedDetent, macHeight: 500)
         .sheet(isPresented: $showAddTag) {
             newTagSheet
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+                .taskMacSheetFrame(width: 520, minHeight: 420)
+                .taskSheetPresentation(macHeight: 480)
         }
         .onDisappear {
             if !preDragSortIndex.isEmpty {
@@ -122,6 +128,36 @@ struct TagPickerSheet: View {
     private var sheetTitle: LocalizedStringKey {
         if deleteMode { return "Delete Tag" }
         return "Choose Tags"
+    }
+
+    private var macSheetHeader: some View {
+        HStack {
+            Button("Cancel") { closeOrExitDeleteMode() }
+                .frame(width: 82, alignment: .leading)
+
+            Spacer(minLength: 12)
+
+            Text(sheetTitle)
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 12)
+
+            Button("Done") { dismiss() }
+                .frame(width: 82, alignment: .trailing)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private func closeOrExitDeleteMode() {
+        if deleteMode {
+            deleteMode = false
+        } else {
+            dismiss()
+        }
     }
 
     // MARK: - Reorder rollback

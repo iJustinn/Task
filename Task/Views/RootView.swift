@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
@@ -90,25 +93,28 @@ struct RootView: View {
     @ViewBuilder
     private func content(board: Board) -> some View {
         Group {
-            #if targetEnvironment(macCatalyst)
-            macContent(board: board)
-            #else
-            mobileContent(board: board)
-            #endif
+            if PlatformLayout.prefersMacInterface {
+                macContent(board: board)
+            } else {
+                mobileContent(board: board)
+            }
         }
         .sheet(isPresented: $showingAddTask) {
             TaskDetailView(board: board, mode: .create(defaultGroup: board.defaultGroup))
+                .environmentObject(settings)
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsView(board: board)
+            settingsSheet(board: board)
         }
         .sheet(isPresented: $showingBoardSwitcher) {
             BoardSwitcherView(activeBoardID: board.id) { picked in
                 activeBoardIDString = picked.uuidString
             }
+            .environmentObject(settings)
         }
         .sheet(item: $editingTaskFromSearch) { task in
             TaskDetailView(board: task.board ?? board, mode: .edit(task))
+                .environmentObject(settings)
         }
         .task {
             // Permission is requested only when the user opts in to a reminder
@@ -119,9 +125,21 @@ struct RootView: View {
         }
     }
 
+    @ViewBuilder
+    private func settingsSheet(board: Board) -> some View {
+        if PlatformLayout.prefersMacInterface {
+            SettingsView(board: board)
+                .environmentObject(settings)
+                .taskSheetPresentation(macHeight: 680)
+        } else {
+            SettingsView(board: board)
+                .environmentObject(settings)
+        }
+    }
+
     private func mobileContent(board: Board) -> some View {
         ZStack {
-            BoardView(board: board)
+            BoardView(board: board, layoutStyle: .mobile)
                 .id(board.id)
                 .opacity(isSearchActive ? 0 : 1)
                 .allowsHitTesting(!isSearchActive)
@@ -147,7 +165,6 @@ struct RootView: View {
         }
     }
 
-    #if targetEnvironment(macCatalyst)
     private func macContent(board: Board) -> some View {
         NavigationSplitView(columnVisibility: $macColumnVisibility) {
             List(selection: macSidebarSelection) {
@@ -159,7 +176,9 @@ struct RootView: View {
                 }
             }
             .listStyle(.sidebar)
-            .navigationTitle("Task")
+            .navigationSplitViewColumnWidth(min: 220, ideal: 248, max: 280)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -167,11 +186,24 @@ struct RootView: View {
                     } label: {
                         Label("Manage Boards", systemImage: "rectangle.stack")
                     }
+                    .keyboardShortcut("b", modifiers: [.command, .shift])
                 }
             }
         } detail: {
             macDetail(board: board)
         }
+        .frame(minWidth: 980, minHeight: 680)
+        .background(macWindowTitleSuppressor)
+    }
+
+    @ViewBuilder
+    private var macWindowTitleSuppressor: some View {
+        #if canImport(UIKit)
+        MacWindowTitleSuppressor()
+            .frame(width: 0, height: 0)
+        #else
+        EmptyView()
+        #endif
     }
 
     private var macSidebarSelection: Binding<UUID?> {
@@ -188,7 +220,7 @@ struct RootView: View {
 
     private func macDetail(board: Board) -> some View {
         ZStack {
-            BoardView(board: board)
+            BoardView(board: board, layoutStyle: .mac)
                 .id(board.id)
                 .opacity(hasSearchQuery ? 0 : 1)
                 .allowsHitTesting(!hasSearchQuery)
@@ -201,27 +233,39 @@ struct RootView: View {
                 .transition(.opacity)
             }
         }
-        .navigationTitle(board.title)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     showingAddTask = true
                 } label: {
                     Label("New Task", systemImage: "plus")
+                        .frame(width: 36, height: 36)
                 }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .buttonBorderShape(.circle)
+                .help("New Task")
+                .keyboardShortcut("n", modifiers: .command)
 
                 Button {
                     showingSettings = true
                 } label: {
                     Label("Settings", systemImage: "gearshape")
+                        .frame(width: 36, height: 36)
                 }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .buttonBorderShape(.circle)
+                .help("Settings")
+                .keyboardShortcut(",", modifiers: .command)
             }
         }
         .searchable(text: $searchText, placement: .toolbar, prompt: "Search")
         .animation(.easeInOut(duration: 0.18), value: hasSearchQuery)
         .animation(.easeInOut(duration: 0.32), value: board.id)
     }
-    #endif
 
     private var isSearchActive: Bool {
         searchFocused || !searchText.isEmpty
@@ -238,7 +282,6 @@ enum MacSidebarBoardLabel {
     }
 }
 
-#if targetEnvironment(macCatalyst)
 private struct MacSidebarBoardRow: View {
     let board: Board
 
@@ -259,6 +302,30 @@ private struct MacSidebarBoardRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+#if canImport(UIKit)
+private struct MacWindowTitleSuppressor: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        clearTitle(from: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        clearTitle(from: uiView)
+    }
+
+    private func clearTitle(from view: UIView) {
+        guard PlatformLayout.prefersMacInterface else { return }
+        DispatchQueue.main.async {
+            guard let windowScene = view.window?.windowScene else { return }
+            windowScene.title = ""
+            #if targetEnvironment(macCatalyst)
+            windowScene.titlebar?.titleVisibility = .hidden
+            #endif
+        }
     }
 }
 #endif

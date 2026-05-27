@@ -18,6 +18,7 @@ usage() {
 
 stop_existing_app() {
   pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  pkill -f "/$APP_NAME.app/Contents/MacOS/$APP_NAME" >/dev/null 2>&1 || true
 }
 
 build_app() {

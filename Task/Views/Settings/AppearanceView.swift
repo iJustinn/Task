@@ -20,42 +20,74 @@ private struct FlatSettingsChoicePicker<Option: FlatSettingsChoice>: View {
     @Binding var selection: Option
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var settings: SettingsViewModel
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
 
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemBackground)
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground)
                     .ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
-                                optionRow(option)
-                                if index < options.count - 1 {
-                                    Divider()
+                VStack(spacing: 0) {
+                    if isMacLayout {
+                        macSheetHeader
+                    }
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                                    optionRow(option)
+                                    if index < options.count - 1 {
+                                        Divider()
+                                    }
                                 }
                             }
                         }
+                        .padding(.horizontal, isMacLayout ? 24 : 20)
+                        .padding(.top, isMacLayout ? 10 : 8)
+                        .padding(.bottom, isMacLayout ? 28 : 24)
+                        .frame(minHeight: proxy.size.height - (isMacLayout ? 62 : 0), alignment: .topLeading)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
-                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle(title)
+            .navigationTitle(isMacLayout ? "" : title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                if !isMacLayout {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
+        .taskMacSheetFrame(width: 560, minHeight: 460)
+    }
+
+    private var macSheetHeader: some View {
+        HStack {
+            Button("Cancel") { dismiss() }
+                .frame(width: 82, alignment: .leading)
+
+            Spacer(minLength: 12)
+
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 12)
+
+            Button("Done") { dismiss() }
+                .frame(width: 82, alignment: .trailing)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
     }
 
     private func optionRow(_ option: Option) -> some View {

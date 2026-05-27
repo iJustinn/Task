@@ -6,6 +6,7 @@ struct BoardIconPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var pendingIcon: String = ""
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 5)
 
@@ -24,38 +25,71 @@ struct BoardIconPickerSheet: View {
         NavigationStack {
             ZStack {
                 Color(.systemGroupedBackground).ignoresSafeArea()
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(icons, id: \.self) { emoji in
-                            Button {
-                                pendingIcon = emoji
-                            } label: {
-                                cell(for: emoji)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                VStack(spacing: 0) {
+                    if isMacLayout {
+                        macSheetHeader
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 30)
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(icons, id: \.self) { emoji in
+                                Button {
+                                    pendingIcon = emoji
+                                } label: {
+                                    cell(for: emoji)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, isMacLayout ? 24 : 16)
+                        .padding(.top, isMacLayout ? 10 : 6)
+                        .padding(.bottom, 30)
+                    }
                 }
             }
-            .navigationTitle("Board Icon")
+            .navigationTitle(isMacLayout ? "" : "Board Icon")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        if pendingIcon != currentIcon { onSelect(pendingIcon) }
-                        dismiss()
+                if !isMacLayout {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { dismiss() }
                     }
-                    .disabled(pendingIcon == currentIcon)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { commitAndDismiss() }
+                            .disabled(pendingIcon == currentIcon)
+                    }
                 }
             }
             .onAppear { pendingIcon = currentIcon }
         }
+    }
+
+    private var macSheetHeader: some View {
+        HStack {
+            Button("Cancel") { dismiss() }
+                .frame(width: 82, alignment: .leading)
+
+            Spacer(minLength: 12)
+
+            Text("Board Icon")
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 12)
+
+            Button("Done") { commitAndDismiss() }
+                .disabled(pendingIcon == currentIcon)
+                .frame(width: 82, alignment: .trailing)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private func commitAndDismiss() {
+        if pendingIcon != currentIcon { onSelect(pendingIcon) }
+        dismiss()
     }
 
     private func cell(for emoji: String) -> some View {

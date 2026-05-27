@@ -3,6 +3,7 @@ import SwiftData
 
 struct BoardView: View {
     let board: Board
+    var layoutStyle: BoardLayoutStyle = .mobile
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
 
@@ -25,22 +26,28 @@ struct BoardView: View {
         VStack(spacing: 0) {
             ProjectHeaderView(
                 board: board,
+                layoutStyle: layoutStyle,
                 isDateFilterActive: selectedDateFilter != nil,
                 onDateFilterTap: toggleDateFilter
             )
-            Divider().opacity(0.4)
+            if layoutStyle == .mobile {
+                Divider().opacity(0.4)
+            }
             if showingDateFilter {
                 dateFilterSlider
                     .transition(.move(edge: .top).combined(with: .opacity))
-                Divider().opacity(0.4)
+                if layoutStyle == .mobile {
+                    Divider().opacity(0.4)
+                }
             }
             GeometryReader { geo in
                 ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: columnSpacing) {
                         ForEach(board.orderedGroups, id: \.id) { group in
                             ColumnView(
                                 group: group,
-                                width: settings.columnWidth.width,
+                                layoutStyle: layoutStyle,
+                                width: columnWidth,
                                 sortField: board.cardSortField,
                                 sortDirection: board.cardSortDirection,
                                 dateFilter: selectedDateFilter,
@@ -57,9 +64,9 @@ struct BoardView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 112)
+                    .padding(.horizontal, boardHorizontalPadding)
+                    .padding(.top, boardTopPadding)
+                    .padding(.bottom, boardBottomPadding)
                     .frame(minHeight: geo.size.height, alignment: .topLeading)
                 }
                 .refreshable {
@@ -67,13 +74,16 @@ struct BoardView: View {
                     refreshToken &+= 1
                 }
             }
-            .ignoresSafeArea(.container, edges: .bottom)
+            .ignoresSafeArea(.container, edges: layoutStyle == .mobile ? .bottom : [])
         }
+        .background(boardBackground.ignoresSafeArea())
         .sheet(item: $editingGroup) { group in
             GroupMenuSheet(group: group, board: board)
+                .environmentObject(settings)
         }
         .sheet(item: $editingTask) { task in
             TaskDetailView(board: board, mode: .edit(task))
+                .environmentObject(settings)
         }
         .onChange(of: board.id) { _, _ in
             selectedDateFilter = nil
@@ -93,6 +103,35 @@ struct BoardView: View {
             )
         )
             .background(Color(.systemBackground))
+    }
+
+    private var columnWidth: CGFloat {
+        switch layoutStyle {
+        case .mobile:
+            settings.columnWidth.width
+        case .mac:
+            max(settings.columnWidth.width, 260)
+        }
+    }
+
+    private var columnSpacing: CGFloat {
+        layoutStyle == .mac ? 14 : 12
+    }
+
+    private var boardHorizontalPadding: CGFloat {
+        layoutStyle == .mac ? 32 : 12
+    }
+
+    private var boardTopPadding: CGFloat {
+        layoutStyle == .mac ? 14 : 10
+    }
+
+    private var boardBottomPadding: CGFloat {
+        layoutStyle == .mac ? 40 : 112
+    }
+
+    private var boardBackground: Color {
+        Color(uiColor: .systemBackground)
     }
 
     private func toggleDateFilter() {

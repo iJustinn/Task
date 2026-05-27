@@ -25,7 +25,8 @@ struct StatusPickerSheet: View {
     @State private var reorderWatchdog: Task<Void, Never>?
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
-    private var isExpanded: Bool { selectedDetent == .large }
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
+    private var isExpanded: Bool { isMacLayout || selectedDetent == .large }
     private var newGroupPreviewName: String {
         let trimmed = newGroupName.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Status name" : trimmed
@@ -34,45 +35,49 @@ struct StatusPickerSheet: View {
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemBackground)
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground)
                     .ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(board.orderedGroups.enumerated()), id: \.element.id) { index, group in
-                                groupRow(group)
-                                if index < board.orderedGroups.count - 1 {
-                                    Divider()
+                VStack(spacing: 0) {
+                    if isMacLayout {
+                        macSheetHeader
+                    }
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(board.orderedGroups.enumerated()), id: \.element.id) { index, group in
+                                    groupRow(group)
+                                    if index < board.orderedGroups.count - 1 {
+                                        Divider()
+                                    }
                                 }
                             }
-                        }
 
-                        if isExpanded && !deleteMode {
-                            Spacer(minLength: 24)
-                            bottomActionRow
+                            if isExpanded && !deleteMode {
+                                Spacer(minLength: 24)
+                                bottomActionRow
+                            }
                         }
+                        .padding(.horizontal, isMacLayout ? 24 : 20)
+                        .padding(.top, isMacLayout ? 10 : 8)
+                        .padding(.bottom, isMacLayout ? 28 : 24)
+                        .frame(minHeight: proxy.size.height - (isMacLayout ? 62 : 0), alignment: .topLeading)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
-                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
                 }
             }
-            .navigationTitle(sheetTitle)
+            .navigationTitle(isMacLayout ? "" : sheetTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        if deleteMode {
-                            deleteMode = false
-                        } else {
-                            dismiss()
+                if !isMacLayout {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") {
+                            closeOrExitDeleteMode()
                         }
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
             .sheet(item: $pendingDelete) { group in
@@ -90,15 +95,16 @@ struct StatusPickerSheet: View {
             }
             .sheet(item: $pendingEdit) { group in
                 GroupMenuSheet(group: group, board: board)
+                    .environmentObject(settings)
             }
         }
         .dynamicTypeSize(settings.textSize.dynamicType)
-        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
-        .presentationDragIndicator(.visible)
+        .taskMacSheetFrame(width: 540, minHeight: 430)
+        .taskSheetPresentation(selection: $selectedDetent, macHeight: 500)
         .sheet(isPresented: $showAddGroup) {
             newGroupSheet
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+                .taskMacSheetFrame(width: 520, minHeight: 420)
+                .taskSheetPresentation(macHeight: 480)
         }
         .onDisappear {
             if !preDragSortIndex.isEmpty {
@@ -112,6 +118,36 @@ struct StatusPickerSheet: View {
     private var sheetTitle: LocalizedStringKey {
         if deleteMode { return "Delete Status" }
         return "Choose Status"
+    }
+
+    private var macSheetHeader: some View {
+        HStack {
+            Button("Cancel") { closeOrExitDeleteMode() }
+                .frame(width: 82, alignment: .leading)
+
+            Spacer(minLength: 12)
+
+            Text(sheetTitle)
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 12)
+
+            Button("Done") { dismiss() }
+                .frame(width: 82, alignment: .trailing)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+    }
+
+    private func closeOrExitDeleteMode() {
+        if deleteMode {
+            deleteMode = false
+        } else {
+            dismiss()
+        }
     }
 
     // MARK: - Reorder rollback

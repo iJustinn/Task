@@ -13,11 +13,24 @@ struct SettingsCardSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 10) {
             if let title {
                 Text(title)
-                    .font(.system(.title).weight(.bold))
+                    .font(.system(PlatformLayout.prefersMacInterface ? .title3 : .title).weight(.bold))
                     .foregroundColor(.primary)
             }
             VStack(spacing: 0) {
                 content
+            }
+            .background {
+                if PlatformLayout.prefersMacInterface {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: PlatformLayout.prefersMacInterface ? 8 : 0, style: .continuous))
+            .overlay {
+                if PlatformLayout.prefersMacInterface {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
             }
         }
     }
@@ -26,7 +39,7 @@ struct SettingsCardSection<Content: View>: View {
 struct SettingsRowDivider: View {
     var body: some View {
         Divider()
-            .padding(.leading, 8)
+            .padding(.leading, PlatformLayout.prefersMacInterface ? 54 : 8)
             .padding(.trailing, 8)
     }
 }
@@ -37,9 +50,12 @@ struct SettingsIconTile: View {
 
     var body: some View {
         Image(systemName: systemName)
-            .font(.system(size: 21, weight: .semibold))
+            .font(.system(size: PlatformLayout.prefersMacInterface ? 17 : 21, weight: .semibold))
             .foregroundColor(color)
-            .frame(width: 44, height: 44)
+            .frame(
+                width: PlatformLayout.prefersMacInterface ? 32 : 44,
+                height: PlatformLayout.prefersMacInterface ? 32 : 44
+            )
     }
 }
 
@@ -61,11 +77,11 @@ struct SettingsRowLabel: View {
     var dimmed: Bool = false
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: PlatformLayout.prefersMacInterface ? 12 : 14) {
             SettingsIconTile(systemName: systemName, color: tintColor)
 
             Text(title)
-                .font(.system(.headline))
+                .font(.system(PlatformLayout.prefersMacInterface ? .body : .headline))
                 .fontWeight(.semibold)
                 .foregroundColor(dimmed ? .secondary : .primary)
                 .lineLimit(1)
@@ -85,9 +101,9 @@ struct SettingsRowLabel: View {
 
             accessoryView
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 14)
-        .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+        .padding(.horizontal, PlatformLayout.prefersMacInterface ? 10 : 8)
+        .padding(.vertical, PlatformLayout.prefersMacInterface ? 7 : 14)
+        .frame(maxWidth: .infinity, minHeight: PlatformLayout.prefersMacInterface ? 46 : 70, alignment: .leading)
         .contentShape(Rectangle())
     }
 
@@ -116,18 +132,18 @@ struct SettingsButtonRow<Trailing: View>: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
+            HStack(spacing: PlatformLayout.prefersMacInterface ? 12 : 14) {
                 SettingsIconTile(systemName: systemName, color: tintColor)
                 Text(title)
-                    .font(.system(.headline))
+                    .font(.system(PlatformLayout.prefersMacInterface ? .body : .headline))
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
                 Spacer(minLength: 8)
                 trailing()
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+            .padding(.horizontal, PlatformLayout.prefersMacInterface ? 10 : 8)
+            .padding(.vertical, PlatformLayout.prefersMacInterface ? 7 : 14)
+            .frame(maxWidth: .infinity, minHeight: PlatformLayout.prefersMacInterface ? 46 : 70, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

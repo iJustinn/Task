@@ -39,21 +39,23 @@ struct SettingsView: View {
         var id: String { rawValue }
     }
 
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
+
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground)
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground)
                     .ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: isMacLayout ? 18 : 22) {
                         appearanceSection
                         boardSection
                         dataSection
                         aboutSection
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 60)
+                    .padding(.horizontal, isMacLayout ? 28 : 16)
+                    .padding(.top, isMacLayout ? 18 : 10)
+                    .padding(.bottom, isMacLayout ? 32 : 60)
                 }
                 if isImporting {
                     ProgressOverlay(title: "Importing Data", message: "Restoring your tasks, tags, and groups…")
@@ -88,8 +90,9 @@ struct SettingsView: View {
                     onImport: { showingImportPicker = true },
                     onReset: { performReset() }
                 )
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+                .environmentObject(settings)
+                .taskMacSheetFrame(width: 560, minHeight: 460)
+                .taskSheetPresentation(macHeight: 500)
             }
             .fileExporter(
                 isPresented: $showingExportPicker,
@@ -146,6 +149,7 @@ struct SettingsView: View {
         }
         .preferredColorScheme(settings.theme.colorScheme)
         .dynamicTypeSize(settings.textSize.dynamicType)
+        .taskMacSheetFrame(width: 680, minHeight: 620)
     }
 
     // MARK: - Sections
@@ -388,25 +392,15 @@ struct SettingsView: View {
     private func aboutSheetContent(for sheet: AboutSheet) -> some View {
         switch sheet {
         case .howToUse:
-            HowToUseSheet()
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            settingsInfoSheet(HowToUseSheet())
         case .feedback:
-            FeedbackSheet()
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            settingsInfoSheet(FeedbackSheet())
         case .privacy:
-            PrivacySheet()
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            settingsInfoSheet(PrivacySheet())
         case .disclaimer:
-            DisclaimerSheet()
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            settingsInfoSheet(DisclaimerSheet())
         case .copyright:
-            CopyrightSheet()
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            settingsInfoSheet(CopyrightSheet())
         }
     }
 
@@ -428,61 +422,57 @@ struct SettingsView: View {
     private func sheetContent(for sheet: AppearanceSheet) -> some View {
         switch sheet {
         case .theme:
-            ThemePickerSheet()
+            settingsInfoSheet(ThemePickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .language:
-            LanguagePickerSheet()
+            settingsInfoSheet(LanguagePickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .textSize:
-            TextSizePickerSheet()
+            settingsInfoSheet(TextSizePickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .columnWidth:
-            ColumnWidthPickerSheet()
+            settingsInfoSheet(ColumnWidthPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .accent:
-            AccentPickerSheet()
+            settingsInfoSheet(AccentPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .icon:
-            IconPickerSheet()
+            settingsInfoSheet(IconPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .timeFormat:
-            TimeFormatPickerSheet()
+            settingsInfoSheet(TimeFormatPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .dateFormat:
-            DateFormatPickerSheet()
+            settingsInfoSheet(DateFormatPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .notesPreview:
-            NotesPreviewPickerSheet()
+            settingsInfoSheet(NotesPreviewPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .dateFilterTarget:
-            DateFilterTargetPickerSheet()
+            settingsInfoSheet(DateFilterTargetPickerSheet()
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         case .reminderTime:
-            ReminderTimePickerSheet(board: board)
+            settingsInfoSheet(ReminderTimePickerSheet(board: board)
                 .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            )
         }
+    }
+
+    @ViewBuilder
+    private func settingsInfoSheet<Content: View>(_ content: Content) -> some View {
+        content
+            .taskMacSheetFrame(width: 560, minHeight: 460)
+            .taskSheetPresentation(macHeight: 520)
     }
 
     // MARK: - Data actions

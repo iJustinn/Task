@@ -9,6 +9,7 @@ private let groupDragPrefix = "group:"
 
 struct ColumnView: View {
     let group: BoardGroup
+    var layoutStyle: BoardLayoutStyle = .mobile
     var width: CGFloat = 220
     let sortField: CardSortField
     let sortDirection: CardSortDirection
@@ -45,7 +46,7 @@ struct ColumnView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: layoutStyle == .mac ? 8 : 10) {
             GroupHeaderPill(
                 name: group.name,
                 count: currentTasks.count,
@@ -53,8 +54,8 @@ struct ColumnView: View {
                 isDefaultStatus: isDefaultStatus,
                 onMenuTap: onMenuTap
             )
-            .padding(.horizontal, 6)
-            .padding(.top, 8)
+            .padding(.horizontal, layoutStyle == .mac ? 8 : 6)
+            .padding(.top, layoutStyle == .mac ? 10 : 8)
             .contentShape(Rectangle())
             .contentShape(.dragPreview, Capsule(style: .continuous))
             .draggable("\(groupDragPrefix)\(group.id.uuidString)") {
@@ -75,16 +76,26 @@ struct ColumnView: View {
                 let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)"
                 let _ = sortKey // forces dependency for re-render
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
-                    TaskCardView(task: task) {
+                    TaskCardView(task: task, layoutStyle: layoutStyle) {
                         toggleTaskChecked(task)
                     }
                         .contentShape(Rectangle())
                         .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .onTapGesture { onTapTask(task) }
+                        .contextMenu {
+                            Button("Edit Task") {
+                                onTapTask(task)
+                            }
+                            if task.showsCheckbox {
+                                Button(isTaskChecked(task) ? "Mark Not Done" : "Mark Done") {
+                                    toggleTaskChecked(task)
+                                }
+                            }
+                        }
                         .draggable(beginDragTask(task)) {
-                            TaskCardView(task: task)
+                            TaskCardView(task: task, layoutStyle: layoutStyle)
                                 .environmentObject(settings)
-                                .frame(width: 240)
+                                .frame(width: layoutStyle == .mac ? width : 240)
                         }
                         .onDrop(
                             of: StringMoveDropDelegate.acceptedTypes,
@@ -115,14 +126,18 @@ struct ColumnView: View {
                     emptyStatePlaceholder
                 }
             }
-            .padding(.horizontal, 6)
-            .padding(.bottom, 8)
+            .padding(.horizontal, layoutStyle == .mac ? 8 : 6)
+            .padding(.bottom, layoutStyle == .mac ? 10 : 8)
             .id("\(sortField.rawValue)-\(sortDirection.rawValue)-\(group.cardDisplayLimitRaw)")
         }
         .frame(width: width)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(group.colorKey.background.opacity(0.45))
+            RoundedRectangle(cornerRadius: columnCornerRadius, style: .continuous)
+                .fill(columnBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: columnCornerRadius, style: .continuous)
+                .strokeBorder(columnBorder, lineWidth: layoutStyle == .mac ? 0.5 : 0)
         )
         .onDrop(
             of: StringMoveDropDelegate.acceptedTypes,
@@ -180,6 +195,27 @@ struct ColumnView: View {
         UpcomingSnapshotBuilder.writeSnapshot(from: context)
     }
 
+    private func isTaskChecked(_ task: TaskItem) -> Bool {
+        task.showsCheckbox && task.isChecked
+    }
+
+    private var columnBackground: Color {
+        switch layoutStyle {
+        case .mobile:
+            group.colorKey.background.opacity(0.45)
+        case .mac:
+            group.colorKey.background.opacity(0.42)
+        }
+    }
+
+    private var columnBorder: Color {
+        layoutStyle == .mac ? Color(uiColor: .separator).opacity(0.35) : .clear
+    }
+
+    private var columnCornerRadius: CGFloat {
+        layoutStyle == .mac ? 10 : 12
+    }
+
     private var emptyStateText: String {
         switch group.name {
         case "Waiting": return String(localized: "Parked until you're ready")
@@ -210,7 +246,7 @@ struct ColumnView: View {
             .foregroundStyle(group.colorKey.foreground)
             .frame(maxWidth: .infinity, minHeight: 40)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: columnCornerRadius, style: .continuous)
                     .fill(group.colorKey.background.opacity(0.7))
             )
             .contentShape(Rectangle())

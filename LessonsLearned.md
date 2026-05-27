@@ -638,6 +638,46 @@ Only schedule or cancel notifications after the SwiftData save that owns the cha
 - Fix: Use `rtk proxy jq ... > file` for commands where stdout is the artifact, then validate with `rtk jq empty`.
 - Reuse: Any time a generated fixture, report, or source file is created from command stdout.
 
+### 2026-05-27 - Runtime Mac layout detection for Catalyst
+
+- Context: Enabling the desktop shell for the Mac Catalyst build.
+- Symptom: The build launched as a Mac app, but relying on `#if targetEnvironment(macCatalyst)` made it too easy for the wrong layout path to be inspected or missed during local verification.
+- Cause: The same app can be evaluated through compile-time Catalyst checks and runtime Mac signals (`UIDevice`, `ProcessInfo`) depending on where the code is compiled and how the bundle is launched.
+- Fix: Centralize platform selection in `PlatformLayout.prefersMacInterface`, combining compile-time Catalyst/macOS checks with `UIDevice.current.userInterfaceIdiom == .mac`, `ProcessInfo.isMacCatalystApp`, and `isiOSAppOnMac`.
+- Reuse: Any future UI branch that needs to distinguish phone/tablet layout from Mac-style layout.
+
+### 2026-05-27 - Explicit sheet environments on Catalyst
+
+- Context: Opening the New Task sheet from the Mac toolbar.
+- Symptom: The app crashed in `EnvironmentObject.error()` because `TaskDetailView` could not find `SettingsViewModel`.
+- Cause: Catalyst sheet presentation boundaries did not reliably inherit the ancestor `@EnvironmentObject`.
+- Fix: Inject `.environmentObject(settings)` directly on sheet root views and nested sheet content that reads `SettingsViewModel`.
+- Reuse: Any `.sheet` or drag preview whose root view reads `@EnvironmentObject`.
+
+### 2026-05-27 - Avoid leading toolbar controls in Catalyst sheets
+
+- Context: Board management and settings picker sheets after widening them for macOS.
+- Symptom: Leading toolbar buttons such as `Done` or `Cancel` rendered clipped as `D...` / `C...` near the rounded sheet edge.
+- Cause: Catalyst sheet toolbar placement can clip leading toolbar items even when the sheet content has a wider explicit frame.
+- Fix: Hide native sheet toolbar buttons on the Mac layout and render a fixed in-content header row with balanced leading, centered title, and trailing actions.
+- Reuse: Any Mac-style sheet that needs cancel/done/save controls.
+
+### 2026-05-27 - Mac Catalyst tests need test target signing
+
+- Context: Running `xcodebuild test` for `platform=macOS,variant=Mac Catalyst`.
+- Symptom: The build failed with `Signing for "TaskTests" requires a development team`.
+- Cause: The app target had Mac Catalyst signing/platform settings, but the test target still lacked the matching Mac Catalyst team and bundle settings.
+- Fix: Mirror the relevant Mac Catalyst signing and platform settings onto `TaskTests`.
+- Reuse: Any time a target is extended to Mac Catalyst and tests need to run locally.
+
+### 2026-05-27 - Verify the exact local Mac app bundle
+
+- Context: Inspecting the task app after building into `/private/tmp/task-mac-run`.
+- Symptom: Generic app lookup could relaunch or inspect an older DerivedData `Task.app`, hiding the current build's UI.
+- Cause: Multiple installed/launched bundles had the same app name.
+- Fix: Target `/private/tmp/task-mac-run/Build/Products/Debug-maccatalyst/Task.app` explicitly in Computer Use and have the run script kill existing app processes by executable path as well as app name.
+- Reuse: Any local verification with duplicate bundle names or multiple build output directories.
+
 ## Things to do later
 
 - **iCloud sync** — enable `cloudKitDatabase: .private` on `ModelConfiguration` and add the CloudKit entitlement. Schema is already compatible.

@@ -17,7 +17,8 @@ struct GroupMenuSheet: View {
     @State private var selectedDetent: PresentationDetent = .fraction(0.6)
 
     private var canDelete: Bool { board.orderedGroups.count > 1 }
-    private var isExpanded: Bool { selectedDetent == .large }
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
+    private var isExpanded: Bool { isMacLayout || selectedDetent == .large }
     private var canChangeDefaultStatus: Bool { board.orderedGroups.count > 1 }
     private var currentDefaultStatusName: String {
         board.defaultGroup?.name ?? String(localized: "None")
@@ -30,29 +31,37 @@ struct GroupMenuSheet: View {
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
-                Color(.systemBackground)
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground)
                     .ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        nameAndColorSection
-                        if isExpanded && canDelete {
-                            Spacer(minLength: 24)
-                            deleteSection
-                        }
+                VStack(spacing: 0) {
+                    if isMacLayout {
+                        macSheetHeader
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 24)
-                    .frame(minHeight: proxy.size.height, alignment: .topLeading)
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: isMacLayout ? 18 : 22) {
+                            nameAndColorSection
+                            if isExpanded && canDelete {
+                                Spacer(minLength: 24)
+                                deleteSection
+                            }
+                        }
+                        .padding(.horizontal, isMacLayout ? 24 : 16)
+                        .padding(.top, isMacLayout ? 10 : 10)
+                        .padding(.bottom, isMacLayout ? 28 : 24)
+                        .frame(minHeight: proxy.size.height - (isMacLayout ? 62 : 0), alignment: .topLeading)
+                    }
                 }
             }
-            .navigationTitle("Edit Status")
+            .navigationTitle(isMacLayout ? "" : "Edit Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") { save(); dismiss() }
+                if !isMacLayout {
+                    ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Save") { save(); dismiss() }
+                    }
                 }
             }
             .onAppear {
@@ -77,9 +86,31 @@ struct GroupMenuSheet: View {
                 .confirmationSheetPresentationStyle()
             }
         }
-        .presentationDetents([.fraction(0.6), .large], selection: $selectedDetent)
-        .presentationDragIndicator(.visible)
+        .taskMacSheetFrame(width: 540, minHeight: 460)
+        .taskSheetPresentation(selection: $selectedDetent, macHeight: 520)
         .dynamicTypeSize(settings.textSize.dynamicType)
+    }
+
+    private var macSheetHeader: some View {
+        HStack {
+            Button("Cancel") { dismiss() }
+                .frame(width: 82, alignment: .leading)
+
+            Spacer(minLength: 12)
+
+            Text("Edit Status")
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 12)
+
+            Button("Save") { save(); dismiss() }
+                .frame(width: 82, alignment: .trailing)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 24)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
     }
 
     private var nameAndColorSection: some View {

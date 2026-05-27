@@ -31,11 +31,12 @@ struct ManualControlSheet: View {
     let onReset: () -> Void
 
     @State private var showingResetConfirmation = false
+    private var isMacLayout: Bool { PlatformLayout.prefersMacInterface }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+                Color(isMacLayout ? .systemGroupedBackground : .systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     SettingsCardSection {
                         exportRow
@@ -44,9 +45,9 @@ struct ManualControlSheet: View {
                         SettingsRowDivider()
                         resetRow
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
+                    .padding(.horizontal, isMacLayout ? 24 : 20)
+                    .padding(.top, isMacLayout ? 16 : 8)
+                    .padding(.bottom, isMacLayout ? 28 : 24)
                 }
             }
             .navigationTitle("Manual Control")
@@ -106,17 +107,17 @@ struct ManualControlSheet: View {
         Button {
             showingResetConfirmation = true
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: isMacLayout ? 12 : 14) {
                 SettingsIconTile(systemName: "trash.fill", color: .red)
                 Text("Reset All Data")
-                    .font(.system(.headline))
+                    .font(.system(isMacLayout ? .body : .headline))
                     .fontWeight(.semibold)
                     .foregroundColor(.red)
                 Spacer()
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
+            .padding(.horizontal, isMacLayout ? 10 : 8)
+            .padding(.vertical, isMacLayout ? 7 : 14)
+            .frame(maxWidth: .infinity, minHeight: isMacLayout ? 46 : 70, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
