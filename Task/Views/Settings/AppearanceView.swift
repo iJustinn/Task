@@ -177,6 +177,13 @@ extension AppDateFilterTarget: FlatSettingsChoice {
     fileprivate var pickerTintColor: Color { tintColor }
 }
 
+extension AppSearchMode: FlatSettingsChoice {
+    fileprivate var pickerTitle: String { label }
+    fileprivate var pickerSubtitle: String? { descriptor }
+    fileprivate var pickerSystemImage: String? { systemImage }
+    fileprivate var pickerTintColor: Color { tintColor }
+}
+
 struct ThemePickerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
     var body: some View {
@@ -208,7 +215,7 @@ struct TextSizePickerSheet: View {
 struct ColumnWidthPickerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
     var body: some View {
-        FlatSettingsChoicePicker(title: "Group Width", options: AppColumnWidth.allCases, selection: $settings.columnWidth)
+        FlatSettingsChoicePicker(title: "Status Width", options: AppColumnWidth.allCases, selection: $settings.columnWidth)
     }
 }
 
@@ -237,6 +244,13 @@ struct DateFilterTargetPickerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
     var body: some View {
         FlatSettingsChoicePicker(title: "Date Filter", options: AppDateFilterTarget.allCases, selection: $settings.dateFilterTarget)
+    }
+}
+
+struct SearchModePickerSheet: View {
+    @EnvironmentObject private var settings: SettingsViewModel
+    var body: some View {
+        FlatSettingsChoicePicker(title: "Search Mode", options: AppSearchMode.allCases, selection: $settings.searchMode)
     }
 }
 

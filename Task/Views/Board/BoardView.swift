@@ -3,6 +3,7 @@ import SwiftData
 
 struct BoardView: View {
     let board: Board
+    var searchQuery: String = ""
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
 
@@ -45,6 +46,7 @@ struct BoardView: View {
                                 sortDirection: board.cardSortDirection,
                                 dateFilter: selectedDateFilter,
                                 dateFilterTarget: settings.dateFilterTarget,
+                                searchQuery: searchQuery,
                                 isDefaultStatus: board.defaultGroup?.id == group.id,
                                 draggingTaskID: $draggingTaskID,
                                 dragSessionEnded: $dragSessionEnded,

@@ -24,6 +24,7 @@ Package.resolved
 .deepseek/
 .codex/
 .agents/
+.codegraph/
 
 # Misc
 *.log

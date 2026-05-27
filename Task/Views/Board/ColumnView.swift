@@ -14,6 +14,7 @@ struct ColumnView: View {
     let sortDirection: CardSortDirection
     let dateFilter: Date?
     let dateFilterTarget: AppDateFilterTarget
+    var searchQuery: String = ""
     let isDefaultStatus: Bool
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var settings: SettingsViewModel
@@ -31,8 +32,20 @@ struct ColumnView: View {
 
     private var currentTasks: [TaskItem] {
         let tasks = group.sortedTasks(field: sortField, direction: sortDirection)
-        guard let dateFilter else { return tasks }
-        return tasks.filter { $0.matchesDateFilter(dateFilter, target: dateFilterTarget) }
+        let dateFiltered: [TaskItem]
+        if let dateFilter {
+            dateFiltered = tasks.filter { $0.matchesDateFilter(dateFilter, target: dateFilterTarget) }
+        } else {
+            dateFiltered = tasks
+        }
+
+        let query = normalizedSearchQuery
+        guard !query.isEmpty else { return dateFiltered }
+        return dateFiltered.filter { $0.matchesSearchQuery(query) }
+    }
+
+    private var normalizedSearchQuery: String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func beginDragTask(_ task: TaskItem) -> String {
@@ -72,7 +85,7 @@ struct ColumnView: View {
                 let limit = group.cardDisplayLimit
                 let count = visibleCount ?? limit.initialVisibleCount(totalCount: ordered.count)
                 let visible = Array(ordered.prefix(count))
-                let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)"
+                let sortKey = "\(sortField.rawValue)-\(sortDirection.rawValue)-\(normalizedSearchQuery)"
                 let _ = sortKey // forces dependency for re-render
                 ForEach(Array(visible.enumerated()), id: \.element.id) { index, task in
                     TaskCardView(task: task) {
@@ -117,7 +130,7 @@ struct ColumnView: View {
             }
             .padding(.horizontal, 6)
             .padding(.bottom, 8)
-            .id("\(sortField.rawValue)-\(sortDirection.rawValue)-\(group.cardDisplayLimitRaw)")
+            .id("\(sortField.rawValue)-\(sortDirection.rawValue)-\(group.cardDisplayLimitRaw)-\(normalizedSearchQuery)")
         }
         .frame(width: width)
         .background(
@@ -143,6 +156,9 @@ struct ColumnView: View {
             visibleCount = nil
         }
         .onChange(of: group.cardDisplayLimitRaw) { _, _ in
+            visibleCount = nil
+        }
+        .onChange(of: normalizedSearchQuery) { _, _ in
             visibleCount = nil
         }
         .onAppear {
@@ -181,6 +197,9 @@ struct ColumnView: View {
     }
 
     private var emptyStateText: String {
+        if !normalizedSearchQuery.isEmpty {
+            return String(localized: "No matches")
+        }
         switch group.name {
         case "Waiting": return String(localized: "Parked until you're ready")
         case "Doing":   return String(localized: "What you're on right now")

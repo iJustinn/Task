@@ -696,6 +696,42 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: legacyKey), AppNotesPreview.oneLine.rawValue)
     }
 
+    func testSearchModeDefaultsToListAndPersistsFilter() {
+        let defaults = UserDefaults.standard
+        let original = defaults.string(forKey: SettingsViewModel.searchModeKey)
+        defaults.removeObject(forKey: SettingsViewModel.searchModeKey)
+        defer {
+            if let original {
+                defaults.set(original, forKey: SettingsViewModel.searchModeKey)
+            } else {
+                defaults.removeObject(forKey: SettingsViewModel.searchModeKey)
+            }
+        }
+
+        let settings = SettingsViewModel()
+        XCTAssertEqual(settings.searchMode, .list)
+
+        settings.searchMode = .filter
+        XCTAssertEqual(defaults.string(forKey: SettingsViewModel.searchModeKey), AppSearchMode.filter.rawValue)
+        XCTAssertEqual(SettingsViewModel().searchMode, .filter)
+    }
+
+    func testTaskSearchQueryMatchesTitleNotesStatusAndTags() {
+        let group = BoardGroup(name: "Doing")
+        let tag = TaskTag(name: "Errands")
+        let task = TaskItem(title: "Buy milk", notes: "Use grocery coupon")
+        task.group = group
+        task.tags = [tag]
+
+        XCTAssertTrue(task.matchesSearchQuery("milk"))
+        XCTAssertTrue(task.matchesSearchQuery("GROCERY"))
+        XCTAssertTrue(task.matchesSearchQuery("doing"))
+        XCTAssertTrue(task.matchesSearchQuery("errand"))
+        XCTAssertTrue(task.matchesSearchQuery("  coupon  "))
+        XCTAssertFalse(task.matchesSearchQuery("invoice"))
+        XCTAssertFalse(task.matchesSearchQuery("   "))
+    }
+
     func testColorKeyRoundTrip() {
         for key in ColorKey.allCases {
             let raw = key.rawValue
@@ -757,6 +793,101 @@ final class TaskTests: XCTestCase {
             value["extractionState"] as? String == "manual" ? key : nil
         }
         XCTAssertTrue(manual.isEmpty, "Manual catalog entries remain: \(manual.sorted().joined(separator: ", "))")
+    }
+
+    func testColumnWidthSettingIsStatusWidthInBoardSection() throws {
+        let settingsSource = try loadProjectFile(relativePath: "Task/Views/Settings/SettingsView.swift")
+        let pickerSource = try loadProjectFile(relativePath: "Task/Views/Settings/AppearanceView.swift")
+
+        let appearanceStart = try XCTUnwrap(settingsSource.range(of: "private var appearanceSection"))
+        let boardStart = try XCTUnwrap(settingsSource.range(of: "private var boardSection"))
+        let dataStart = try XCTUnwrap(settingsSource.range(of: "private var dataSection"))
+        let appearanceSection = settingsSource[appearanceStart.lowerBound..<boardStart.lowerBound]
+        let boardSection = settingsSource[boardStart.lowerBound..<dataStart.lowerBound]
+
+        XCTAssertFalse(appearanceSection.contains("title: \"Group Width\""))
+        XCTAssertFalse(appearanceSection.contains("title: \"Status Width\""))
+        XCTAssertTrue(boardSection.contains("title: \"Status Width\""))
+        XCTAssertFalse(boardSection.contains("title: \"Group Width\""))
+        XCTAssertTrue(pickerSource.contains("FlatSettingsChoicePicker(title: \"Status Width\""))
+        XCTAssertFalse(pickerSource.contains("FlatSettingsChoicePicker(title: \"Group Width\""))
+    }
+
+    func testSearchModeSettingIsInBoardSection() throws {
+        let settingsSource = try loadProjectFile(relativePath: "Task/Views/Settings/SettingsView.swift")
+        let pickerSource = try loadProjectFile(relativePath: "Task/Views/Settings/AppearanceView.swift")
+
+        let appearanceStart = try XCTUnwrap(settingsSource.range(of: "private var appearanceSection"))
+        let boardStart = try XCTUnwrap(settingsSource.range(of: "private var boardSection"))
+        let dataStart = try XCTUnwrap(settingsSource.range(of: "private var dataSection"))
+        let appearanceSection = settingsSource[appearanceStart.lowerBound..<boardStart.lowerBound]
+        let boardSection = settingsSource[boardStart.lowerBound..<dataStart.lowerBound]
+
+        XCTAssertFalse(appearanceSection.contains("title: \"Search Mode\""))
+        XCTAssertTrue(boardSection.contains("title: \"Search Mode\""))
+        XCTAssertTrue(pickerSource.contains("FlatSettingsChoicePicker(title: \"Search Mode\""))
+    }
+
+    func testStatusWidthCopyIsCataloged() throws {
+        let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
+        let requiredKeys = [
+            "Status Width",
+            "Status Width controls how wide each status column on the board is — Small (180), Medium (200), or Large (220).",
+            "Settings > Board to switch Date Filter, Date Format, Notes Preview, Status Width, Search Mode, and Reminder Time.",
+            "Settings > Appearance to switch Theme, Language, Time Format (System / 12-hour / 24-hour), Text Size, App Accent, and App Icon."
+        ]
+
+        let missing = requiredKeys.filter { strings[$0] == nil }
+        XCTAssertTrue(missing.isEmpty, "Missing Status Width catalog keys: \(missing.joined(separator: ", "))")
+    }
+
+    func testSearchModeCopyIsCataloged() throws {
+        let strings = try loadStringCatalog(relativePath: "Task/Localizable.xcstrings")
+        let requiredKeys = [
+            "Search Mode",
+            "List",
+            "Filter",
+            "Show global results",
+            "Filter current board",
+            "Search Mode chooses whether search opens a global results list or filters cards on the current board."
+        ]
+
+        let missing = requiredKeys.filter { strings[$0] == nil }
+        XCTAssertTrue(missing.isEmpty, "Missing Search Mode catalog keys: \(missing.joined(separator: ", "))")
+    }
+
+    func testSearchResultRowsUseTaskCardMetadataStyling() throws {
+        let source = try loadProjectFile(relativePath: "Task/Views/Search/SearchView.swift")
+
+        XCTAssertTrue(source.contains("TagChip(name: group.name"))
+        XCTAssertTrue(source.contains("SearchMetadataSeparatorDot()"))
+        XCTAssertTrue(source.contains("if task.group != nil, !(task.tags?.isEmpty ?? true)"))
+        XCTAssertTrue(source.contains("TagChip(name: tag.name"))
+        XCTAssertTrue(source.contains("DateRow("))
+        XCTAssertTrue(source.contains("DueDateRow("))
+        XCTAssertTrue(source.contains("TaskCardFooterIcons(task: task, showsDivider: false)"))
+        XCTAssertFalse(source.contains("Circle().fill(group.colorKey.dot)"))
+    }
+
+    func testSearchMetadataSeparatorDotCentersOnCompactChipLabelHeight() throws {
+        let source = try loadProjectFile(relativePath: "Task/Views/Search/SearchView.swift")
+        let separatorStart = try XCTUnwrap(source.range(of: "private struct SearchMetadataSeparatorDot"))
+        let separatorSource = source[separatorStart.lowerBound...]
+
+        XCTAssertTrue(separatorSource.contains(".font(.caption2.weight(.medium))"))
+        XCTAssertTrue(separatorSource.contains(".padding(.vertical, 2)"))
+        XCTAssertTrue(separatorSource.contains(".overlay(alignment: .center)"))
+        XCTAssertFalse(separatorSource.contains("@ScaledMetric(relativeTo: .caption2) private var height"))
+    }
+
+    func testTaskCardsAndSearchRowsShareFooterIcons() throws {
+        let source = try loadProjectFile(relativePath: "Task/Views/Board/TaskCardView.swift")
+
+        XCTAssertTrue(source.contains("struct TaskCardFooterIcons"))
+        XCTAssertTrue(source.contains("TaskCardFooterIcons(task: task)"))
+        XCTAssertTrue(source.contains("accessibilityLabel(Text(\"Repeats\"))"))
+        XCTAssertTrue(source.contains("accessibilityLabel(Text(\"Has notes\"))"))
+        XCTAssertTrue(source.contains("accessibilityLabel(Text(\"Has reminder\"))"))
     }
 
     func testTaskCardFooterAccessibilityLabelsAreCataloged() throws {
@@ -986,6 +1117,12 @@ final class TaskTests: XCTestCase {
             return [:]
         }
         return strings
+    }
+
+    private func loadProjectFile(relativePath: String) throws -> String {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let projectRoot = testFile.deletingLastPathComponent().deletingLastPathComponent()
+        return try String(contentsOf: projectRoot.appending(path: relativePath), encoding: .utf8)
     }
 }
 

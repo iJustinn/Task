@@ -45,31 +45,8 @@ struct TaskCardView: View {
                 }
             }
 
-            if task.repeatRule != .none || task.hasNotes || task.hasReminder {
-                HStack(spacing: 6) {
-                    footerDividerLine
-                    if task.repeatRule != .none {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(Text("Repeats"))
-                    }
-                    if task.hasNotes {
-                        Image(systemName: "doc.text")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(Text("Has notes"))
-                    }
-                    if task.hasReminder {
-                        Image(systemName: "alarm")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .accessibilityLabel(Text("Has reminder"))
-                    }
-                    footerDividerLine
-                }
+            TaskCardFooterIcons(task: task)
                 .padding(.top, 2)
-            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -124,12 +101,6 @@ struct TaskCardView: View {
             .frame(width: 18, alignment: .center)
     }
 
-    private var footerDividerLine: some View {
-        Rectangle()
-            .fill(Color(uiColor: .separator))
-            .frame(height: 0.5)
-    }
-
     @ViewBuilder
     private func notePreviewRow(_ line: CardNotesPreviewLine) -> some View {
         let indentation = cardNoteIndentWidth(for: line.indentation)
@@ -158,6 +129,44 @@ struct TaskCardView: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct TaskCardFooterIcons: View {
+    let task: TaskItem
+    var showsDivider: Bool = true
+
+    var body: some View {
+        if task.repeatRule != .none || task.hasNotes || task.hasReminder {
+            HStack(spacing: 6) {
+                if showsDivider { footerDividerLine }
+                if task.repeatRule != .none {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(Text("Repeats"))
+                }
+                if task.hasNotes {
+                    Image(systemName: "doc.text")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(Text("Has notes"))
+                }
+                if task.hasReminder {
+                    Image(systemName: "alarm")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(Text("Has reminder"))
+                }
+                if showsDivider { footerDividerLine }
+            }
+        }
+    }
+
+    private var footerDividerLine: some View {
+        Rectangle()
+            .fill(Color(uiColor: .separator))
+            .frame(height: 0.5)
     }
 }
 

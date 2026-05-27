@@ -62,6 +62,17 @@ final class TaskItem {
         }
     }
 
+    func matchesSearchQuery(_ query: String) -> Bool {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return false }
+
+        if title.lowercased().contains(normalized) { return true }
+        if notes.lowercased().contains(normalized) { return true }
+        if let group, group.name.lowercased().contains(normalized) { return true }
+        if let tags, tags.contains(where: { $0.name.lowercased().contains(normalized) }) { return true }
+        return false
+    }
+
     /// When both a working start and a due date exist we don't know which the user
     /// considers "the" deadline — fire (and badge) the earlier one so the reminder
     /// arrives in time for whichever comes first. When only working is set (single

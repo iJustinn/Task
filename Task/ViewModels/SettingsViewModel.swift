@@ -571,6 +571,41 @@ enum AppDateFilterTarget: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppSearchMode: String, CaseIterable, Identifiable {
+    case list
+    case filter
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .list:   return String(localized: "List")
+        case .filter: return String(localized: "Filter")
+        }
+    }
+
+    var descriptor: String {
+        switch self {
+        case .list:   return String(localized: "Show global results")
+        case .filter: return String(localized: "Filter current board")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .list:   return "list.bullet.rectangle"
+        case .filter: return "line.3.horizontal.decrease.circle.fill"
+        }
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .list:   return .teal
+        case .filter: return .blue
+        }
+    }
+}
+
 enum AppColumnWidth: String, CaseIterable, Identifiable {
     case small
     case medium
@@ -674,6 +709,10 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(dateFilterTarget.rawValue, forKey: SettingsViewModel.dateFilterTargetKey) }
     }
 
+    @Published var searchMode: AppSearchMode {
+        didSet { UserDefaults.standard.set(searchMode.rawValue, forKey: SettingsViewModel.searchModeKey) }
+    }
+
     /// Cached so TaskDetailView can show a warning when the user enables a reminder
     /// while notifications are denied. Refresh from `RootView.task` and after the
     /// permission request.
@@ -694,6 +733,7 @@ final class SettingsViewModel: ObservableObject {
     static let notesPreviewKey = "task.notesPreview"
     static let legacyNotesPreviewKey = "task.notesPreviewEnabled"
     static let dateFilterTargetKey = "task.dateFilterTarget"
+    static let searchModeKey = "task.searchMode"
 
     init() {
         let d = UserDefaults.standard
@@ -712,6 +752,7 @@ final class SettingsViewModel: ObservableObject {
             ?? ""
         self.notesPreview = AppNotesPreview(rawValue: notesPreviewRaw) ?? .none
         self.dateFilterTarget = AppDateFilterTarget(rawValue: d.string(forKey: SettingsViewModel.dateFilterTargetKey) ?? "") ?? .workingDate
+        self.searchMode = AppSearchMode(rawValue: d.string(forKey: SettingsViewModel.searchModeKey) ?? "") ?? .list
         TaskDateFormat.locale = resolvedLanguage.locale
         TaskDateFormat.currentStyle = resolvedDateFormat
     }

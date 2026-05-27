@@ -6,7 +6,6 @@ struct SearchView: View {
     let activeBoardID: UUID?
     let queryText: String
     var onSelectTask: (TaskItem) -> Void
-    @EnvironmentObject private var settings: SettingsViewModel
 
     var body: some View {
         // Compute once per render — `groupedResults` filters and sorts across every
@@ -54,33 +53,72 @@ struct SearchView: View {
             onSelectTask(task)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    if task.hasNotes {
-                        Image(systemName: "doc.text")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-                HStack(spacing: 4) {
-                    if let group = task.group {
-                        Circle().fill(group.colorKey.dot).frame(width: 7, height: 7)
-                        Text(group.name)
-                            .font(.caption)
-                            .foregroundStyle(group.colorKey.foreground)
-                    }
-                    Spacer()
-                    if let due = task.dueDate {
-                        Text(TaskDateFormat.format(due, style: settings.dateFormat))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                Text(task.title.isEmpty ? String(localized: "Untitled") : task.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if hasMetadataRow(for: task) {
+                    HStack(alignment: .top, spacing: 8) {
+                        searchMetadataChips(for: task)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        TaskCardFooterIcons(task: task, showsDivider: false)
+                            .padding(.top, 2)
                     }
                 }
+
+                searchDateRows(for: task)
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private func hasMetadataRow(for task: TaskItem) -> Bool {
+        task.group != nil
+        || !(task.tags?.isEmpty ?? true)
+        || task.repeatRule != .none
+        || task.hasNotes
+        || task.hasReminder
+    }
+
+    @ViewBuilder
+    private func searchMetadataChips(for task: TaskItem) -> some View {
+        FlowLayout(spacing: 4, lineSpacing: 4) {
+            if let group = task.group {
+                TagChip(name: group.name, colorKey: group.colorKey, compact: true)
+            }
+            if task.group != nil, !(task.tags?.isEmpty ?? true) {
+                SearchMetadataSeparatorDot()
+            }
+            if let tags = task.tags {
+                ForEach(tags, id: \.id) { tag in
+                    TagChip(name: tag.name, colorKey: tag.colorKey, compact: true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func searchDateRows(for task: TaskItem) -> some View {
+        if task.workingStart != nil || task.dueDate != nil {
+            VStack(alignment: .leading, spacing: 2) {
+                if let start = task.workingStart {
+                    let today = Calendar.current.startOfDay(for: Date())
+                    let upcoming = Calendar.current.startOfDay(for: start) > today
+                    DateRow(
+                        start: start,
+                        end: task.workingEnd,
+                        tint: upcoming ? ColorKey.blue.foreground : ColorKey.red.foreground
+                    )
+                }
+                if let due = task.dueDate {
+                    let today = Calendar.current.startOfDay(for: Date())
+                    let upcoming = Calendar.current.startOfDay(for: due) > today
+                    DueDateRow(date: due, isUpcoming: upcoming)
+                }
+            }
+        }
     }
 
     private struct ResultGroup {
@@ -92,13 +130,7 @@ struct SearchView: View {
         let query = queryText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return [] }
         return orderedBoards.compactMap { board in
-            let matches = (board.tasks ?? []).filter { task in
-                if task.title.lowercased().contains(query) { return true }
-                if task.notes.lowercased().contains(query) { return true }
-                if let group = task.group, group.name.lowercased().contains(query) { return true }
-                if let tags = task.tags, tags.contains(where: { $0.name.lowercased().contains(query) }) { return true }
-                return false
-            }
+            let matches = (board.tasks ?? []).filter { $0.matchesSearchQuery(query) }
             .sorted { $0.updatedAt > $1.updatedAt }
             return matches.isEmpty ? nil : ResultGroup(board: board, tasks: matches)
         }
@@ -115,5 +147,25 @@ struct SearchView: View {
             return [active] + rest
         }
         return rest
+    }
+}
+
+private struct SearchMetadataSeparatorDot: View {
+    @ScaledMetric(relativeTo: .caption2) private var diameter: CGFloat = 3
+
+    var body: some View {
+        Text(verbatim: "M")
+            .font(.caption2.weight(.medium))
+            .lineLimit(1)
+            .foregroundStyle(.clear)
+            .padding(.vertical, 2)
+            .frame(width: diameter + 4)
+            .overlay(alignment: .center) {
+                Circle()
+                    .fill(Color.secondary.opacity(0.65))
+                    .frame(width: diameter, height: diameter)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityHidden(true)
     }
 }

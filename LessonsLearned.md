@@ -570,7 +570,7 @@ Default Status, Card Order, and Reminder Time were `UserDefaults`-scoped global 
 
 The one-shot `migrateLegacyBoardDefaultsIfNeeded` runs from `ensureSeed`; it reads the legacy `UserDefaults` keys (`task.defaultGroupID`, `task.cardSortField`, `task.cardSortDirection`, `task.reminderMinutesOfDay`) and copies them onto the first board (by `createdAt`), then flips `task.boardDefaultsMigrated` so it never re-fires. Users upgrading from 0.3.x keep their preferences on their existing board.
 
-`SettingsViewModel` only owns truly global preferences now (Theme, Language, Time Format, Text Size, Group Width, App Accent, App Icon). Card Order and Reminder Time still use board-scoped sheets (`CardOrderPickerSheet`, `ReminderTimePickerSheet`) that take a `Board` and mutate it directly. Default Status is board-scoped too, but it now lives inside `GroupMenuSheet` as "Default for New Tasks" so the board header does not need a separate flag button or default-status sheet.
+`SettingsViewModel` only owns truly global preferences now (Theme, Language, Time Format, Text Size, Status Width, App Accent, App Icon). Card Order and Reminder Time still use board-scoped sheets (`CardOrderPickerSheet`, `ReminderTimePickerSheet`) that take a `Board` and mutate it directly. Default Status is board-scoped too, but it now lives inside `GroupMenuSheet` as "Default for New Tasks" so the board header does not need a separate flag button or default-status sheet.
 
 ### Active board tracking
 
@@ -637,6 +637,14 @@ Only schedule or cancel notifications after the SwiftData save that owns the cha
 - Cause: RTK's filtered stdout wrote a truncation marker into the redirected JSON file.
 - Fix: Use `rtk proxy jq ... > file` for commands where stdout is the artifact, then validate with `rtk jq empty`.
 - Reuse: Any time a generated fixture, report, or source file is created from command stdout.
+
+### 2026-05-27 - Keep Xcode DerivedData out of Google Drive
+
+- Context: Running `rtk xcodebuild test` for the iOS simulator from the repo, which lives under Google Drive.
+- Symptom: Widget codesigning failed with `resource fork, Finder information, or similar detritus not allowed` when DerivedData was under `.build/DerivedData` in the repo.
+- Cause: The synced Google Drive folder can add extended metadata that `codesign` rejects for packaged simulator products.
+- Fix: Put test/build DerivedData under `/private/tmp`, e.g. `-derivedDataPath /private/tmp/task-deriveddata-...`.
+- Reuse: Any time simulator build/test codesigning fails from a repo-local DerivedData path in this workspace.
 
 ## Things to do later
 

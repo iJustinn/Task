@@ -89,20 +89,21 @@ struct RootView: View {
     @ViewBuilder
     private func content(board: Board) -> some View {
         ZStack {
-            BoardView(board: board)
+            BoardView(board: board, searchQuery: settings.searchMode == .filter ? searchText : "")
                 .id(board.id)
-                .opacity(isSearchActive ? 0 : 1)
-                .allowsHitTesting(!isSearchActive)
+                .opacity(isSearchListActive ? 0 : 1)
+                .allowsHitTesting(!isSearchListActive)
                 .transition(.opacity)
 
-            if isSearchActive {
+            if isSearchListActive {
                 SearchView(boards: boards, activeBoardID: board.id, queryText: searchText) { task in
                     editingTaskFromSearch = task
                 }
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: isSearchActive)
+        .animation(.easeInOut(duration: 0.18), value: isSearchListActive)
+        .animation(.easeInOut(duration: 0.18), value: settings.searchMode)
         .animation(.easeInOut(duration: 0.32), value: board.id)
         .overlay(alignment: .bottom) {
             BottomNavBar(
@@ -138,5 +139,9 @@ struct RootView: View {
 
     private var isSearchActive: Bool {
         searchFocused || !searchText.isEmpty
+    }
+
+    private var isSearchListActive: Bool {
+        settings.searchMode == .list && isSearchActive
     }
 }

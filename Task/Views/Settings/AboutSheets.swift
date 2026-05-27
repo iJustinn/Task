@@ -190,8 +190,11 @@ struct HowToUseSheet: View {
             systemImage: "slider.horizontal.3",
             tintColor: .teal,
             steps: [
+                "Settings > Board to switch Date Filter, Date Format, Notes Preview, Status Width, Search Mode, and Reminder Time.",
                 "The board header keeps quick controls for Card Order and the date filter. Default Status now lives in each status column's ··· menu.",
                 "Default Status sets which group new tasks on that board land in. Falls back to the first group if your choice is later deleted. Card Order controls how cards sort inside every group on that board — Manual (drag), Title (alphabetical), or Date (smart).",
+                "Status Width controls how wide each status column on the board is — Small (180), Medium (200), or Large (220).",
+                "Search Mode chooses whether search opens a global results list or filters cards on the current board.",
                 "Reminder Time sets the hour and minute (defaults to 9:00) that this board's per-task reminders fire on the chosen date."
             ]
         ),
@@ -200,8 +203,7 @@ struct HowToUseSheet: View {
             systemImage: "slider.horizontal.3",
             tintColor: .purple,
             steps: [
-                "Settings > Appearance to switch Theme, Language, Time Format (System / 12-hour / 24-hour), Text Size, Group Width, App Accent, and App Icon.",
-                "Group Width controls how wide each column on the board is — Small (180), Medium (200), or Large (220).",
+                "Settings > Appearance to switch Theme, Language, Time Format (System / 12-hour / 24-hour), Text Size, App Accent, and App Icon.",
                 "Text Size scales fonts across the whole app while respecting Dynamic Type."
             ]
         ),

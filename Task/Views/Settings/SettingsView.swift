@@ -25,7 +25,7 @@ struct SettingsView: View {
     @State private var importOrphanMessage: String? = nil
 
     private enum AppearanceSheet: String, Identifiable {
-        case theme, language, textSize, columnWidth, accent, icon, timeFormat, dateFormat, notesPreview, dateFilterTarget, reminderTime
+        case theme, language, textSize, columnWidth, accent, icon, timeFormat, dateFormat, notesPreview, dateFilterTarget, searchMode, reminderTime
         var id: String { rawValue }
     }
 
@@ -189,15 +189,6 @@ struct SettingsView: View {
             }
             SettingsRowDivider()
             SettingsButtonRow(
-                title: "Group Width",
-                systemName: settings.columnWidth.systemImage,
-                tintColor: settings.columnWidth.tintColor,
-                action: { activeSheet = .columnWidth }
-            ) {
-                trailing(value: settings.columnWidth.label)
-            }
-            SettingsRowDivider()
-            SettingsButtonRow(
                 title: "App Accent",
                 systemName: settings.accent.systemImage,
                 tintColor: settings.accent.color,
@@ -254,6 +245,24 @@ struct SettingsView: View {
                 action: { activeSheet = .notesPreview }
             ) {
                 trailing(value: settings.notesPreview.label)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Status Width",
+                systemName: settings.columnWidth.systemImage,
+                tintColor: settings.columnWidth.tintColor,
+                action: { activeSheet = .columnWidth }
+            ) {
+                trailing(value: settings.columnWidth.label)
+            }
+            SettingsRowDivider()
+            SettingsButtonRow(
+                title: "Search Mode",
+                systemName: settings.searchMode.systemImage,
+                tintColor: settings.searchMode.tintColor,
+                action: { activeSheet = .searchMode }
+            ) {
+                trailing(value: settings.searchMode.label)
             }
             SettingsRowDivider()
             SettingsButtonRow(
@@ -474,6 +483,11 @@ struct SettingsView: View {
                 .presentationDragIndicator(.visible)
         case .dateFilterTarget:
             DateFilterTargetPickerSheet()
+                .environmentObject(settings)
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+        case .searchMode:
+            SearchModePickerSheet()
                 .environmentObject(settings)
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
