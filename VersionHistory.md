@@ -1,5 +1,24 @@
 # Version History
 
+## 0.5.0 (build 2) — 2026-05-28
+
+Repeat reminder behavior now stays manual, and note editing keeps indentation flowing between lines.
+
+### Repeating reminders
+
+- Repeating task dates no longer auto-advance when the app becomes active or re-schedules reminders.
+- The repeat-row advance button remains the only path that moves working and due dates to the next occurrence.
+- Stale repeating reminders are still re-scheduled/cancelled without mutating the task's saved dates.
+
+### Notes editing
+
+- Notes now preserve the current line's indentation when the user presses Return.
+- Users can still delete the copied spaces or tabs to move the next line back to the left.
+
+### Versioning
+
+- Build number bumped to `2` for version `0.5.0`.
+
 ## 0.4.7 (build 8) — 2026-05-26
 
 Persistence, reminders, import validation, widget configuration, and notes input polish.

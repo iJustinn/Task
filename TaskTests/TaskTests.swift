@@ -76,23 +76,21 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(dates, [expectedFireDate])
     }
 
-    func testRepeatingReminderAutoAdvancesPastCardDate() throws {
+    func testRepeatingReminderDoesNotAutoAdvancePastCardDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let chosenDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
-        let expectedNextDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 30)))
-        let expectedFireDate = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 30, hour: 9)))
         let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 25, hour: 12)))
         let task = TaskItem(title: "Stale repeat reminder", notes: "")
         task.dueDate = chosenDay
         task.hasReminder = true
         task.repeatRule = .weekly
 
-        let didAdvance = NotificationService.advanceRepeatingReminderIfNeeded(for: task, now: now, calendar: calendar)
         let dates = NotificationService.fireDates(for: task, now: now, calendar: calendar)
+        let rootSource = try loadProjectFile(relativePath: "Task/Views/RootView.swift")
 
-        XCTAssertTrue(didAdvance)
-        XCTAssertEqual(task.dueDate, expectedNextDay)
-        XCTAssertEqual(dates, [expectedFireDate])
+        XCTAssertEqual(task.dueDate, chosenDay)
+        XCTAssertEqual(dates, [])
+        XCTAssertFalse(rootSource.contains("advanceRepeatingReminderIfNeeded"))
     }
 
     func testCompletingCheckboxTaskClearsReminderWithoutRestoringItOnUncheck() {
@@ -898,17 +896,19 @@ final class TaskTests: XCTestCase {
         XCTAssertTrue(missing.isEmpty, "Missing card footer accessibility labels: \(missing.joined(separator: ", "))")
     }
 
-    func testReleaseDocsMatchBuildEightAndMentionRecentVisibleChanges() throws {
+    func testReleaseDocsMatchCurrentBuildAndMentionRecentVisibleChanges() throws {
         let testFile = URL(fileURLWithPath: #filePath)
         let projectRoot = testFile.deletingLastPathComponent().deletingLastPathComponent()
         let readme = try String(contentsOf: projectRoot.appending(path: "README.md"), encoding: .utf8)
         let history = try String(contentsOf: projectRoot.appending(path: "VersionHistory.md"), encoding: .utf8)
+        let project = try String(contentsOf: projectRoot.appending(path: "task.xcodeproj/project.pbxproj"), encoding: .utf8)
 
-        XCTAssertTrue(readme.contains("0.4.7 (build 8)"))
-        XCTAssertTrue(history.contains("## 0.4.7 (build 8)"))
-        XCTAssertTrue(history.contains("Completing a checkbox task now clears its reminder"))
-        XCTAssertTrue(history.contains("Widget board and status configuration lists refresh"))
-        XCTAssertTrue(history.contains("Live Markdown notes editing now avoids restyling"))
+        XCTAssertTrue(readme.contains("0.5.0 (build 2)"))
+        XCTAssertTrue(history.contains("## 0.5.0 (build 2)"))
+        XCTAssertTrue(history.contains("Repeating task dates no longer auto-advance"))
+        XCTAssertTrue(history.contains("Notes now preserve the current line's indentation"))
+        XCTAssertFalse(project.contains("CURRENT_PROJECT_VERSION = 1;"))
+        XCTAssertTrue(project.contains("CURRENT_PROJECT_VERSION = 2;"))
     }
 
     func testTaskEditorVisibleLabelsAreActiveInStringCatalog() throws {
@@ -1092,6 +1092,17 @@ final class TaskTests: XCTestCase {
     func testLiveMarkdownEditingSkipsRestylingDuringMarkedTextComposition() {
         XCTAssertFalse(shouldRestyleMarkdownText(hasMarkedText: true))
         XCTAssertTrue(shouldRestyleMarkdownText(hasMarkedText: false))
+    }
+
+    func testLiveMarkdownEditingPreservesCurrentLineIndentOnReturn() {
+        let textView = MarkdownUITextView()
+        textView.text = "Parent\n\t  Indented line"
+        textView.selectedRange = NSRange(location: (textView.text as NSString).length, length: 0)
+
+        textView.insertText("\n")
+
+        XCTAssertEqual(textView.text, "Parent\n\t  Indented line\n\t  ")
+        XCTAssertEqual(textView.selectedRange.location, (textView.text as NSString).length)
     }
 
     func testSwipeToEditMetricsMoveRowsOnlyForHorizontalLeftSwipes() {

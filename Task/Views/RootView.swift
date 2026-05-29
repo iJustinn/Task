@@ -30,8 +30,9 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             // The user may have changed notification permission in iOS Settings while
             // the app was backgrounded; re-read so TaskDetailView's warning is accurate.
-            // Also reconcile repeating reminders so stale task dates advance and
-            // legacy future batches are removed before scheduling the next ring.
+            // Also reconcile repeating reminders so legacy future batches are
+            // removed before scheduling the next ring. Repeat dates only advance
+            // when the user taps the repeat-row button in the task editor.
             if phase == .active {
                 Task { await settings.refreshNotificationAuthorization() }
                 refreshRepeatReminders()
@@ -58,28 +59,13 @@ struct RootView: View {
         }
     }
 
-    /// Re-schedule every repeating task's reminder request. If the task's reminder
-    /// date has elapsed, advance its card dates by the repeat rule until the next
-    /// reminder is in the future, then persist once before scheduling.
+    /// Re-schedule every repeating task's reminder request without mutating task
+    /// dates. Stale repeat dates stay put until the user advances the row.
     private func refreshRepeatReminders() {
         let descriptor = FetchDescriptor<TaskItem>(
             predicate: #Predicate { $0.hasReminder && !$0.repeatRuleRaw.isEmpty }
         )
         guard let tasks = try? context.fetch(descriptor) else { return }
-        var didAdvance = false
-        for task in tasks {
-            didAdvance = NotificationService.advanceRepeatingReminderIfNeeded(for: task) || didAdvance
-        }
-
-        if didAdvance {
-            do {
-                try context.save()
-                UpcomingSnapshotBuilder.writeSnapshot(from: context)
-            } catch {
-                context.rollback()
-                return
-            }
-        }
 
         for task in tasks {
             NotificationService.schedule(for: task)

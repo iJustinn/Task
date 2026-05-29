@@ -259,6 +259,8 @@ Each column's inner `ScrollView` has `.refreshable { …  visibleCount = nil }`,
 
 `TaskCardView` has a separate `cardNotesPreviewLines` parser for compact card previews. Keep its indentation behavior in sync with `MarkdownNotesEditor`; otherwise notes can look correct in the editor but flatten on cards. The live UIKit editor also needs an explicit app-sized body font from `TaskDetailView`, because SwiftUI `dynamicTypeSize` does not automatically size `UITextView` attributed text the same way the saved preview is sized.
 
+For live typing, `MarkdownUITextView.insertText(_:)` preserves the current line's leading spaces/tabs only for an explicit Return (`"\n"`). Do not add automatic list continuation or outdent rules unless requested; users can Backspace over the copied indent when they want to return to the left edge.
+
 ### Calendar picker
 
 `CalendarPicker.swift` supports two modes via an enum:
@@ -380,9 +382,9 @@ if components.hour == 0 && components.minute == 0 {
 
 The reminder identifier is `task.id.uuidString` so we can cancel cleanly.
 
-### Repeating reminders advance the card date, then schedule one notification
+### Repeating reminders never auto-advance card dates
 
-Repeating task rules are date-advancement rules, not repeating `UNCalendarNotificationTrigger`s. On scene-active, `RootView.refreshRepeatReminders()` calls `NotificationService.advanceRepeatingReminderIfNeeded(for:)` for stale repeating reminders, advances every set task date by the rule until the resolved reminder time is in the future, saves once, writes the widget snapshot, then schedules the next one-shot notification. This keeps the card date, widget date, and reminder date aligned while still cancelling legacy `taskID@N` repeat batches.
+Repeating task rules are manual date-advancement rules, not repeating `UNCalendarNotificationTrigger`s. On scene-active, `RootView.refreshRepeatReminders()` only re-schedules the current one-shot reminder and cancels legacy `taskID@N` repeat batches. It must not mutate `workingStart`, `workingEnd`, or `dueDate`; those dates only move when the user taps the repeat-row advance button in `TaskDetailView.advanceRepeatDates()`.
 
 ### Don't share static config across a `@MainActor` boundary — extract it
 

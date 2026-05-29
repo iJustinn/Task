@@ -260,6 +260,24 @@ final class MarkdownUITextView: UITextView {
     required init?(coder: NSCoder) {
         nil
     }
+
+    override func insertText(_ text: String) {
+        guard text == "\n" else {
+            super.insertText(text)
+            return
+        }
+        super.insertText(text + currentLineIndentation())
+    }
+
+    private func currentLineIndentation() -> String {
+        let raw = self.text ?? ""
+        let nsText = raw as NSString
+        let cursorLocation = min(selectedRange.location, nsText.length)
+        let beforeCursor = nsText.substring(to: cursorLocation)
+        let lineStart = beforeCursor.range(of: "\n", options: .backwards)?.upperBound ?? beforeCursor.startIndex
+        let currentLine = beforeCursor[lineStart...]
+        return String(currentLine.prefix { $0 == " " || $0 == "\t" })
+    }
 }
 
 func shouldRestyleMarkdownText(hasMarkedText: Bool) -> Bool {

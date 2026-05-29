@@ -6,7 +6,7 @@
 
 A privacy-focused iOS task manager with a Notion-style task editor and a Kanban board home. Multiple boards, multi-select tags, working dates and due dates, local notifications, and a home-screen widget — all on-device.
 
-Current app version: **0.5.0 (build 1)**
+Current app version: **0.5.0 (build 2)**
 
 ## Screenshots
 
