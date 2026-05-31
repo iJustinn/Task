@@ -560,7 +560,9 @@ struct TaskDetailView: View {
         let task: TaskItem
         switch mode {
         case .create:
-            let sortIndex = (group.orderedTasks.last?.sortIndex ?? -1) + 1
+            // Prepend: a new card gets the lowest sortIndex so it lands on top of the
+            // column in Manual order (which sorts ascending by sortIndex).
+            let sortIndex = (group.orderedTasks.first?.sortIndex ?? 1) - 1
             task = TaskItem(title: trimmed, notes: notes, sortIndex: sortIndex)
             task.board = board
             task.group = group
