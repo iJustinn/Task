@@ -183,12 +183,13 @@ When the content's natural height is less than the viewport, `minHeight` stretch
 
 ### Mirroring model logic into the UI (reminderAnchor)
 
-`TaskItem.primaryReminderDate` returns `min(workingStart, dueDate)` when both are set — that's the date the `UNUserNotificationCenter` notification fires on. The editor's `alarm` badge has to land on the *same* row, or the UI lies about when the user will get pinged. Rather than recomputing the comparison ad hoc inside the row views, `TaskDetailView` has a `reminderAnchor: ReminderAnchor` computed prop that mirrors the model:
+`NotificationService.resolvedFireDate` fires the reminder on whichever of working/due resolves to the earlier fire *time* (each candidate is resolved first — a midnight date takes the board Reminder Time — then the earliest wins; see the resolve-before-compare note below). The editor's `alarm` badge has to land on the *same* row, or the UI lies about when the user will get pinged. Rather than recomputing ad hoc inside the row views, `TaskDetailView.reminderAnchor` mirrors that selection:
 
 ```swift
 private var reminderAnchor: ReminderAnchor {
     guard hasReminder else { return .none }
-    switch (workingStart, dueDate) {
+    switch (resolvedFireTime(for: applyingTime(effectiveWorkingTimeMinutes, to: workingStart)),
+            resolvedFireTime(for: applyingTime(dueTimeMinutes, to: dueDate))) {
     case (nil, nil):    return .none
     case (_, nil):      return .working
     case (nil, _):      return .due
@@ -197,7 +198,7 @@ private var reminderAnchor: ReminderAnchor {
 }
 ```
 
-The working/due rows then each check `reminderAnchor == .working` / `.due` to decide whether to render the trailing alarm icon. If `primaryReminderDate`'s logic ever changes (e.g., always prefer due date), this is the one place to update — no risk of the badge and the actual notification drifting apart. **Reach for this pattern whenever UI affordances need to stay in lockstep with a model decision.**
+The working/due rows then each check `reminderAnchor == .working` / `.due` to decide whether to render the trailing alarm icon. If the fire-date selection ever changes, update `NotificationService.resolvedFireDate`, `reminderAnchor`, and `candidateFireDate()` together — no risk of the badge and the actual notification drifting apart. **Reach for this pattern whenever UI affordances need to stay in lockstep with a model decision.**
 
 ### Toolbar button weight consistency
 
@@ -381,6 +382,22 @@ if components.hour == 0 && components.minute == 0 {
 ```
 
 The reminder identifier is `task.id.uuidString` so we can cancel cleanly.
+
+### Per-date Specific Time is baked into the Date, not a new field (0.5.0)
+
+The "Specific Time" toggle in the Working Date / Due Date sheets does **not** add a model field. The chosen time-of-day is composed into the existing `workingStart` / `dueDate` `Date` at save (`TaskDetailView.applyingTime(_:to:)`); `00:00` (midnight) is the sentinel for "no specific time," which `resolvedFireDate` already reads as "fall back to `board.reminderMinutesOfDay`." This is why no migration / import-export / widget-snapshot change was needed: every other consumer buckets dates through `Calendar.startOfDay`, so a baked-in time-of-day is invisible to day-level **comparison** logic (card coloring, date filters, the 7-day widget window, `workingIsRange`) — it changes only the notification fire time and the rendered string.
+
+Display surfaces the time through `TaskDateFormat.formatWithTime` / `formatRangeWithTime` (only the range *start* can carry a time). These return byte-identical output to `format` / `formatRange` for midnight dates, so timeless cards/rows are unchanged; a non-midnight date appends `", <time>"`. Cards and search rows render it via `DateRow` / `DueDateRow`; the editor rows compose the effective date from the separate `*TimeMinutes` state first. The widget formats from its own snapshot and is intentionally left date-only.
+
+Editor invariants to preserve:
+- **End Date (range) and working Specific Time are mutually exclusive** — a time-of-day only applies to a single day. The Working sheet keeps **both** rows visible and grays out + disables whichever the other blocks: the Specific Time row when `isWorkingRange`, the End Date row when `workingTimeMinutes != nil` (`.disabled(...)` + `.opacity(0.4)` applied at the call site so the shared `specificTimeRow` stays enabled for the Due sheet). `effectiveWorkingTimeMinutes` (`isWorkingRange ? nil : workingTimeMinutes`) remains the single source of truth: every working-time read (reminder anchor, fire-date, save, display) goes through it, so a range never reads, displays, or persists a time even if `workingTimeMinutes` still holds one (it's preserved so it returns when the user flips back to a single day). The Due sheet has no range, so it uses `dueTimeMinutes` directly.
+- The editor keeps the time as separate `@State` (`workingTimeMinutes` / `dueTimeMinutes`, `Int?` minutes-since-midnight) because `CalendarPicker` writes `startOfDay` and would otherwise clobber a time baked into the bound date. `load()` extracts it via `minutesOfDay(from:)` (returns `nil` at midnight); `save()` re-composes via `applyingTime`.
+- **Resolve before comparing.** `NotificationService.resolvedFireDate`, `reminderAnchor`, and `candidateFireDate()` each resolve every candidate to its real fire time (midnight → board Reminder Time) **first**, then take the earliest. Comparing raw dates would let a no-specific-time date at midnight falsely win over another date's explicit earlier time (e.g. working 08:00 + due with no time + board 09:00 → must fire 08:00). Keep all three in lockstep. There is no `primaryReminderDate` anymore — that property did the buggy raw `min` and was removed.
+- **Midnight is the "no specific time" sentinel, so it isn't a selectable per-task time.** The Specific Time picker is opened with `disallowMidnight: true`: `ReminderTimePickerSheet` disables Done (and the keypad ✓) at 00:00 and shows an inline hint. The board Reminder Time picker (Settings) leaves `disallowMidnight: false` and may still use midnight. This prevents a 12:00 AM specific time from round-tripping back to "no specific time."
+
+### `ReminderTimePickerSheet` is closure-based, not board-coupled (0.5.0)
+
+The Coin-style time keypad takes `initialMinutes: Int` + `onSave: (Int) -> Void` — it no longer references `Board` or `modelContext`. Settings passes the board's value and does the board write + reschedule loop in its `onSave`; the task editor passes the per-date time and just stores the result in `@State`. If you reuse the sheet elsewhere, put persistence in the closure; don't re-couple it to a model.
 
 ### Repeating reminders never auto-advance card dates
 
@@ -652,7 +669,7 @@ Only schedule or cancel notifications after the SwiftData save that owns the cha
 
 - **iCloud sync** — enable `cloudKitDatabase: .private` on `ModelConfiguration` and add the CloudKit entitlement. Schema is already compatible.
 - **Custom group icons / tag icons** — currently colored dots / tag glyphs. Could add a per-group emoji like the board's.
-- **Per-task time override** — Reminder Time is now per-board (Settings → Default → Reminder Time). Could add an optional per-task override that falls back to the board's setting when unset.
+- ~~**Per-task time override**~~ — done in 0.5.0. The Working Date and Due Date sheets each have a **Specific Time** toggle that bakes a time-of-day into the stored date; midnight means "no override → board Reminder Time." See the Notifications note on the time-baked-into-date invariant.
 - **Widget interactivity** — tapping the widget could deep-link to the relevant task via App Intents.
 - **Watch app** — board snapshot via the same App Group JSON would make a Watch complication trivial.
 - **Cross-board move** — moving a task between boards (currently tasks are pinned to their board).

@@ -21,6 +21,12 @@ struct TaskDetailView: View {
     @State private var workingStart: Date? = nil
     @State private var workingEnd: Date? = nil
     @State private var dueDate: Date? = nil
+    // Optional per-task time-of-day (minutes since midnight) for the working start
+    // and the due date. `nil` means "no specific time" — the reminder then falls
+    // back to the board's Reminder Time. The chosen time is baked into the stored
+    // Date at save; day-level logic everywhere else buckets via `startOfDay`.
+    @State private var workingTimeMinutes: Int? = nil
+    @State private var dueTimeMinutes: Int? = nil
     @State private var hasReminder: Bool = false
     @State private var showsCheckbox: Bool = false
     @State private var isChecked: Bool = false
@@ -31,7 +37,9 @@ struct TaskDetailView: View {
     @State private var showStatusPicker: Bool = false
     @State private var showTagPicker: Bool = false
     @State private var showWorkingPicker: Bool = false
+    @State private var showWorkingTimePicker: Bool = false
     @State private var showDuePicker: Bool = false
+    @State private var showDueTimePicker: Bool = false
     @State private var showRepeatPicker: Bool = false
     @State private var showDeleteConfirm: Bool = false
     @State private var showDuplicateConfirm: Bool = false
@@ -48,12 +56,14 @@ struct TaskDetailView: View {
 
     private var isCreating: Bool { editingTask == nil }
 
-    /// Mirrors `TaskItem.primaryReminderDate`: when both dates are set the
-    /// notification fires for the earlier one, so the alarm icon sits on
-    /// whichever row that is.
+    /// Mirrors `NotificationService`'s fire-date selection: the reminder fires for
+    /// whichever date resolves to the earlier fire *time*, so the alarm icon sits on
+    /// that row. Compare resolved times (board fallback applied) — not the raw dates —
+    /// so a no-specific-time date at midnight doesn't falsely win over an explicit time.
     private var reminderAnchor: ReminderAnchor {
         guard hasReminder else { return .none }
-        switch (workingStart, dueDate) {
+        switch (resolvedFireTime(for: applyingTime(effectiveWorkingTimeMinutes, to: workingStart)),
+                resolvedFireTime(for: applyingTime(dueTimeMinutes, to: dueDate))) {
         case (nil, nil):    return .none
         case (_, nil):      return .working
         case (nil, _):      return .due
@@ -123,12 +133,12 @@ struct TaskDetailView: View {
             }
             .sheet(isPresented: $showWorkingPicker) {
                 workingDateSheet
-                    .presentationDetents([.fraction(0.7), .large])
+                    .presentationDetents([.fraction(0.8), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showDuePicker) {
                 dueDateSheet
-                    .presentationDetents([.fraction(0.6), .large])
+                    .presentationDetents([.fraction(0.7), .large])
                     .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showRepeatPicker) {
@@ -283,11 +293,12 @@ struct TaskDetailView: View {
 
     private func workingDateDisplay(start: Date, end: Date?) -> String {
         let style = settings.dateFormat
+        let startWithTime = applyingTime(effectiveWorkingTimeMinutes, to: start) ?? start
         guard isWorkingRange,
               let end,
               Calendar.current.startOfDay(for: end) != Calendar.current.startOfDay(for: start)
-        else { return TaskDateFormat.format(start, style: style) }
-        return "\(TaskDateFormat.format(start, style: style)) →\n\(TaskDateFormat.format(end, style: style))"
+        else { return TaskDateFormat.formatWithTime(startWithTime, style: style) }
+        return "\(TaskDateFormat.formatWithTime(startWithTime, style: style)) →\n\(TaskDateFormat.format(end, style: style))"
     }
 
     private var dueDateRow: some View {
@@ -296,7 +307,7 @@ struct TaskDetailView: View {
                 if let due = dueDate {
                     let tint = dateTint(for: due)
                     HStack(alignment: .center, spacing: 8) {
-                        Text(TaskDateFormat.format(due, style: settings.dateFormat))
+                        Text(TaskDateFormat.formatWithTime(applyingTime(dueTimeMinutes, to: due) ?? due, style: settings.dateFormat))
                             .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .semibold))
                             .foregroundStyle(tint)
                         Spacer(minLength: 8)
@@ -462,7 +473,17 @@ struct TaskDetailView: View {
                 Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
-                        rangeToggleRow
+                        VStack(spacing: 14) {
+                            // End Date (range) and Specific Time are mutually exclusive — a
+                            // time-of-day only applies to a single day. Both rows stay
+                            // visible; whichever the other option blocks is grayed + disabled.
+                            rangeToggleRow
+                                .disabled(workingTimeMinutes != nil)
+                                .opacity(workingTimeMinutes != nil ? 0.4 : 1)
+                            specificTimeRow(minutes: $workingTimeMinutes, showPicker: $showWorkingTimePicker)
+                                .disabled(isWorkingRange)
+                                .opacity(isWorkingRange ? 0.4 : 1)
+                        }
                         Divider()
                         workingCalendar
                     }
@@ -480,6 +501,13 @@ struct TaskDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { showWorkingPicker = false }
                 }
+            }
+            .sheet(isPresented: $showWorkingTimePicker) {
+                ReminderTimePickerSheet(initialMinutes: workingTimeMinutes ?? board.reminderMinutesOfDay, disallowMidnight: true) { newMinutes in
+                    workingTimeMinutes = newMinutes
+                }
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -499,6 +527,8 @@ struct TaskDetailView: View {
                 Color(.systemBackground).ignoresSafeArea()
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
+                        specificTimeRow(minutes: $dueTimeMinutes, showPicker: $showDueTimePicker)
+                        Divider()
                         CalendarPicker(selectedDate: $dueDate)
                     }
                     .padding(.horizontal, 20)
@@ -516,6 +546,13 @@ struct TaskDetailView: View {
                     Button("Done") { showDuePicker = false }
                 }
             }
+            .sheet(isPresented: $showDueTimePicker) {
+                ReminderTimePickerSheet(initialMinutes: dueTimeMinutes ?? board.reminderMinutesOfDay, disallowMidnight: true) { newMinutes in
+                    dueTimeMinutes = newMinutes
+                }
+                .presentationDetents([.fraction(0.6), .large])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -527,6 +564,43 @@ struct TaskDetailView: View {
         .onChange(of: isWorkingRange) { _, on in
             if !on { workingEnd = nil }
         }
+    }
+
+    /// "Specific Time" toggle row (End Date style). When on, a tappable sub-row shows
+    /// the chosen time and opens the shared `ReminderTimePickerSheet`. When off, the
+    /// reminder uses the board's Reminder Time. Toggling on seeds that board value.
+    @ViewBuilder
+    private func specificTimeRow(minutes: Binding<Int?>, showPicker: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            propertyRow(icon: "clock", label: "Specific Time", valueAlignment: .trailing) {
+                Toggle("", isOn: Binding(
+                    get: { minutes.wrappedValue != nil },
+                    set: { minutes.wrappedValue = $0 ? board.reminderMinutesOfDay : nil }
+                ))
+                .labelsHidden()
+            }
+            if let chosen = minutes.wrappedValue {
+                Button { showPicker.wrappedValue = true } label: {
+                    HStack(spacing: 8) {
+                        Text(formattedTime(chosen))
+                            .font(.system(size: settings.textSize.taskDetailPropertySize, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: settings.textSize.taskDetailAccessoryIconSize, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 32)
+                    .frame(minHeight: 36)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func formattedTime(_ minutes: Int) -> String {
+        TimeFormatting.format(hour: minutes / 60, minute: minutes % 60, uses24Hour: TimeFormatting.systemUses24HourClock())
     }
 
     // MARK: - Load / Save / Delete
@@ -544,6 +618,8 @@ struct TaskDetailView: View {
             workingStart = task.workingStart
             workingEnd = task.workingEnd
             dueDate = task.dueDate
+            workingTimeMinutes = Self.minutesOfDay(from: task.workingStart)
+            dueTimeMinutes = Self.minutesOfDay(from: task.dueDate)
             hasReminder = task.hasReminder
             showsCheckbox = task.showsCheckbox
             isChecked = task.isChecked
@@ -578,9 +654,9 @@ struct TaskDetailView: View {
         }
 
         task.tags = selectedTags
-        task.workingStart = workingStart
+        task.workingStart = applyingTime(effectiveWorkingTimeMinutes, to: workingStart)
         task.workingEnd = isWorkingRange ? workingEnd : nil
-        task.dueDate = dueDate
+        task.dueDate = applyingTime(dueTimeMinutes, to: dueDate)
         task.showsCheckbox = showsCheckbox
         task.isChecked = showsCheckbox && isChecked
         let intendsReminder = hasReminder && (workingStart != nil || dueDate != nil)
@@ -635,25 +711,60 @@ struct TaskDetailView: View {
         await settings.refreshNotificationAuthorization()
     }
 
-    /// Mirrors `TaskItem.primaryReminderDate` against the editor's local @State so
-    /// the save path can predict whether a non-repeating reminder would fire in the
-    /// past (and therefore should not flip `hasReminder` to true on disk). Time of
-    /// day comes from the board's reminder setting when the picked date is midnight.
+    /// Mirrors `NotificationService`'s fire-date selection against the editor's local
+    /// @State so the save path can predict whether a non-repeating reminder would fire
+    /// in the past (and therefore should not flip `hasReminder` to true on disk).
+    /// Resolves each candidate to its real fire time first, then takes the earliest.
     private func candidateFireDate() -> Date? {
-        let anchor: Date?
-        if let w = workingStart, let d = dueDate {
-            anchor = min(w, d)
-        } else {
-            anchor = dueDate ?? workingStart ?? workingEnd
-        }
-        guard let anchor else { return nil }
-        var comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
+        let resolved = [
+            applyingTime(effectiveWorkingTimeMinutes, to: workingStart),
+            applyingTime(dueTimeMinutes, to: dueDate)
+        ].compactMap { resolvedFireTime(for: $0) }
+        if let earliest = resolved.min() { return earliest }
+        return resolvedFireTime(for: workingEnd)
+    }
+
+    /// Resolve a composed working/due date to its actual fire time, mirroring
+    /// `NotificationService.resolvedTimeOfDay`: a midnight value (no specific time)
+    /// takes the board's Reminder Time; any other value keeps its baked time.
+    private func resolvedFireTime(for date: Date?) -> Date? {
+        guard let date else { return nil }
+        var comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         if comps.hour == 0 && comps.minute == 0 {
             let minutes = board.reminderMinutesOfDay
             comps.hour = minutes / 60
             comps.minute = minutes % 60
         }
         return Calendar.current.date(from: comps)
+    }
+
+    /// A working-date Specific Time is only valid for a single day. End Date (range)
+    /// and Specific Time are mutually exclusive, so when the working date is a range
+    /// there is no specific time — the reminder falls back to the board's Reminder
+    /// Time. This is the single source of truth for that rule; `workingTimeMinutes`
+    /// may still hold a value (so it returns if the user flips back to a single day),
+    /// but a range never reads, displays, or persists it.
+    private var effectiveWorkingTimeMinutes: Int? {
+        isWorkingRange ? nil : workingTimeMinutes
+    }
+
+    /// Combine a calendar day with an optional time-of-day (minutes since midnight).
+    /// `nil` minutes → start of day (00:00), which `NotificationService` reads as
+    /// "fall back to the board's Reminder Time."
+    private func applyingTime(_ minutes: Int?, to day: Date?) -> Date? {
+        guard let day else { return nil }
+        let startOfDay = Calendar.current.startOfDay(for: day)
+        guard let minutes else { return startOfDay }
+        return Calendar.current.date(byAdding: .minute, value: minutes, to: startOfDay) ?? startOfDay
+    }
+
+    /// Time-of-day (minutes since midnight) carried by a stored date, or `nil` when the
+    /// date is nil or at midnight — i.e. "no specific time, use the board's setting."
+    private static func minutesOfDay(from date: Date?) -> Int? {
+        guard let date else { return nil }
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let minutes = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        return minutes == 0 ? nil : minutes
     }
 
     /// Shift every set date (workingStart, workingEnd, dueDate) forward by one occurrence

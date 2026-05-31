@@ -232,8 +232,15 @@ struct SearchModePickerSheet: View {
 // MARK: - Reminder time picker
 
 struct ReminderTimePickerSheet: View {
-    let board: Board
-    @Environment(\.modelContext) private var context
+    /// The minutes-since-midnight value the keypad opens on.
+    let initialMinutes: Int
+    /// When `true`, 00:00 can't be confirmed. A per-task Specific Time stores midnight
+    /// as the "no specific time" sentinel, so it must not be selectable there; the
+    /// board Reminder Time (Settings) leaves this `false` and may use midnight.
+    var disallowMidnight: Bool = false
+    /// Called with the chosen minutes-since-midnight when the user taps Done.
+    /// Persistence (board write + reschedule, or task-local state) is the caller's.
+    let onSave: (Int) -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var digits: String = ""
@@ -264,6 +271,12 @@ struct ReminderTimePickerSheet: View {
 
     private var hasError: Bool { !digits.isEmpty && parsedComponents == nil }
 
+    /// A confirmable midnight entry that this context forbids (per-task Specific Time).
+    private var midnightBlocked: Bool {
+        guard disallowMidnight, let c = parsedComponents else { return false }
+        return c.hour == 0 && c.minute == 0
+    }
+
     private var hintText: String {
         uses24Hour ? String(localized: "Type 21:30 as 2130") : String(localized: "Type 9:30 as 930")
     }
@@ -271,13 +284,13 @@ struct ReminderTimePickerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                Color(.systemBackground).ignoresSafeArea()
                 VStack(spacing: 14) {
                     VStack(spacing: 4) {
                         previewLabel
-                        Text(hintText)
+                        Text(midnightBlocked ? String(localized: "Midnight isn't available — pick another time.") : hintText)
                             .font(.system(.footnote).weight(.semibold))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(midnightBlocked ? .red : .secondary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 10)
@@ -296,15 +309,15 @@ struct ReminderTimePickerSheet: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { applyAndDismiss() }
-                        .disabled(parsedComponents == nil)
+                        .disabled(parsedComponents == nil || midnightBlocked)
                 }
             }
-            .onAppear { loadFromBoard() }
+            .onAppear { loadInitial() }
         }
     }
 
-    private func loadFromBoard() {
-        let total = board.reminderMinutesOfDay
+    private func loadInitial() {
+        let total = initialMinutes
         let hour24 = total / 60
         let minute = total % 60
         if uses24Hour {
@@ -398,7 +411,7 @@ struct ReminderTimePickerSheet: View {
             .frame(maxWidth: .infinity, minHeight: 62)
             .background(
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(isPrimary ? Color.accentColor : Color(.secondarySystemGroupedBackground))
+                    .fill(isPrimary ? Color.accentColor : Color(.secondarySystemBackground))
             )
             .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         }
@@ -447,29 +460,8 @@ struct ReminderTimePickerSheet: View {
     }
 
     private func applyAndDismiss() {
-        guard let components = parsedComponents else { return }
-        let newMinutes = components.hour * 60 + components.minute
-        let changed = board.reminderMinutesOfDay != newMinutes
-        board.reminderMinutesOfDay = newMinutes
-        board.updatedAt = Date()
-        try? context.save()
-        if changed {
-            // Existing UNCalendarNotificationTriggers were anchored to the old hour/
-            // minute at scheduling time. Re-schedule every active reminder on this
-            // board so they pick up the new time of day. Snapshot now and run the loop
-            // asynchronously so the sheet dismisses immediately even on a large board.
-            let pending = (board.tasks ?? []).filter(\.hasReminder)
-            Task { @MainActor in await rescheduleReminders(pending) }
-        }
+        guard let components = parsedComponents, !midnightBlocked else { return }
+        onSave(components.hour * 60 + components.minute)
         dismiss()
-    }
-
-    private func rescheduleReminders(_ tasks: [TaskItem]) async {
-        for (idx, task) in tasks.enumerated() {
-            NotificationService.schedule(for: task)
-            if idx % 50 == 49 {
-                await Task.yield()
-            }
-        }
     }
 }

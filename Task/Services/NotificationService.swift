@@ -65,12 +65,28 @@ enum NotificationService {
     }
 
     private static func resolvedFireDate(for task: TaskItem, calendar: Calendar) -> Date? {
-        guard task.hasReminder, let anchor = task.primaryReminderDate else { return nil }
+        guard task.hasReminder else { return nil }
 
-        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: anchor)
-        // Tasks only carry a date; the time-of-day comes from the board's Reminder Time setting.
+        // Resolve each candidate to its real fire time BEFORE comparing. A date at
+        // midnight carries no specific time and takes the board's Reminder Time, so its
+        // resolved time can be later than another date's explicit time. Comparing the
+        // raw (pre-fallback) dates would wrongly pick the midnight one as "earliest"
+        // (e.g. working 08:00 + due with no time + board 09:00 must fire at 08:00).
+        // When neither working start nor due exists, fall back to working end.
+        let resolved = [task.workingStart, task.dueDate]
+            .compactMap { resolvedTimeOfDay(for: $0, board: task.board, calendar: calendar) }
+        if let earliest = resolved.min() { return earliest }
+        return resolvedTimeOfDay(for: task.workingEnd, board: task.board, calendar: calendar)
+    }
+
+    /// A task date carries only a day unless the user set a Specific Time. A midnight
+    /// value means "no specific time" and takes the board's Reminder Time; any other
+    /// time-of-day is used as-is.
+    private static func resolvedTimeOfDay(for date: Date?, board: Board?, calendar: Calendar) -> Date? {
+        guard let date else { return nil }
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date)
         if components.hour == 0 && components.minute == 0 {
-            let minutes = task.board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
+            let minutes = board?.reminderMinutesOfDay ?? ReminderDefaults.defaultMinutesOfDay
             components.hour = minutes / 60
             components.minute = minutes % 60
         }

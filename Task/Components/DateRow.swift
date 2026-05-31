@@ -8,7 +8,7 @@ struct DateRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(TaskDateFormat.formatRange(start, end, style: settings.dateFormat))
+            Text(TaskDateFormat.formatRangeWithTime(start, end, style: settings.dateFormat))
                 .font(.footnote)
                 .foregroundStyle(tint)
                 .lineLimit(2)
@@ -25,7 +25,7 @@ struct DueDateRow: View {
     var body: some View {
         let tint = isUpcoming ? ColorKey.blue.foreground : ColorKey.red.foreground
         HStack(spacing: 6) {
-            Text(TaskDateFormat.format(date, style: settings.dateFormat))
+            Text(TaskDateFormat.formatWithTime(date, style: settings.dateFormat))
                 .font(.footnote)
                 .foregroundStyle(tint)
             Spacer(minLength: 0)

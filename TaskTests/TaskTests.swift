@@ -76,6 +76,68 @@ final class TaskTests: XCTestCase {
         XCTAssertEqual(dates, [expectedFireDate])
     }
 
+    func testSpecificTimeOnDateOverridesBoardReminderTime() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        // A due date that carries a specific time-of-day (14:30) — the editor bakes the
+        // chosen "Specific Time" into the stored date.
+        let specificDateTime = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26, hour: 14, minute: 30)))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 25, hour: 12)))
+        let board = Board(title: "Board")
+        board.reminderMinutesOfDay = 9 * 60 // The board fallback (09:00) must NOT win here.
+        let task = TaskItem(title: "Timed reminder", notes: "")
+        task.board = board
+        task.dueDate = specificDateTime
+        task.hasReminder = true
+
+        let dates = NotificationService.fireDates(for: task, now: now, calendar: calendar)
+
+        XCTAssertEqual(dates, [specificDateTime])
+    }
+
+    func testEarlierExplicitTimeWinsOverLaterBoardFallback() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        // Same day: working has an explicit 08:00; due has no specific time (midnight)
+        // and would resolve to the board's 09:00. The reminder must fire at the earlier
+        // resolved time (08:00), not pick the midnight due date and then bump it to 09:00.
+        let workingAt8 = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26, hour: 8, minute: 0)))
+        let dueMidnight = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26)))
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 25, hour: 12)))
+        let board = Board(title: "Board")
+        board.reminderMinutesOfDay = 9 * 60
+        let task = TaskItem(title: "Mixed times", notes: "")
+        task.board = board
+        task.workingStart = workingAt8
+        task.dueDate = dueMidnight
+        task.hasReminder = true
+
+        let dates = NotificationService.fireDates(for: task, now: now, calendar: calendar)
+
+        XCTAssertEqual(dates, [workingAt8])
+    }
+
+    func testFormatWithTimeAppendsOnlyForSpecificTimes() throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let midnight = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26)))
+        let timed = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 26, hour: 14, minute: 30)))
+
+        // Midnight (no Specific Time) renders identically to the plain date formatter,
+        // so existing timeless cards/rows are unchanged. (Locale-independent.)
+        XCTAssertEqual(TaskDateFormat.formatWithTime(midnight, style: .shortText),
+                       TaskDateFormat.format(midnight, style: .shortText))
+
+        // A specific time keeps the bare date as a prefix and appends the time.
+        let timedString = TaskDateFormat.formatWithTime(timed, style: .shortText)
+        XCTAssertTrue(timedString.hasPrefix(TaskDateFormat.format(timed, style: .shortText)))
+        XCTAssertGreaterThan(timedString.count, TaskDateFormat.format(timed, style: .shortText).count)
+
+        // In a range only the start carries the time; the end stays day-level.
+        let end = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 28)))
+        let range = TaskDateFormat.formatRangeWithTime(timed, end, style: .shortText)
+        XCTAssertTrue(range.contains("→"))
+        XCTAssertTrue(range.hasPrefix(timedString))
+        XCTAssertTrue(range.hasSuffix(TaskDateFormat.format(end, style: .shortText)))
+    }
+
     func testRepeatingReminderDoesNotAutoAdvancePastCardDate() throws {
         let calendar = Calendar(identifier: .gregorian)
         let chosenDay = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 23)))
@@ -921,7 +983,8 @@ final class TaskTests: XCTestCase {
             "Reminder",
             "Checkbox",
             "Repeat",
-            "End Date"
+            "End Date",
+            "Specific Time"
         ]
 
         let missingOrStale = visibleLabels.filter { key in

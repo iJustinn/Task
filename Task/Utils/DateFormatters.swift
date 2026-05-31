@@ -41,6 +41,31 @@ enum TaskDateFormat {
         }
         return "\(format(start, style: style)) → \(format(end, style: style))"
     }
+
+    /// The time-of-day a date carries, or `nil` when it sits at midnight — i.e. the
+    /// task has no Specific Time and the reminder uses the board's Reminder Time.
+    private static func timeString(for date: Date) -> String? {
+        let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let hour = comps.hour ?? 0
+        let minute = comps.minute ?? 0
+        guard hour != 0 || minute != 0 else { return nil }
+        return TimeFormatting.format(hour: hour, minute: minute, uses24Hour: TimeFormatting.systemUses24HourClock())
+    }
+
+    /// Like `format`, but appends the date's time-of-day when it carries one.
+    static func formatWithTime(_ date: Date, style: AppDateFormat) -> String {
+        guard let time = timeString(for: date) else { return format(date, style: style) }
+        return "\(format(date, style: style)), \(time)"
+    }
+
+    /// Like `formatRange`, but appends the start's time-of-day when it carries one.
+    /// Only the start can hold a Specific Time; the end stays day-level.
+    static func formatRangeWithTime(_ start: Date, _ end: Date?, style: AppDateFormat) -> String {
+        guard let end, Calendar.current.startOfDay(for: end) != Calendar.current.startOfDay(for: start) else {
+            return formatWithTime(start, style: style)
+        }
+        return "\(formatWithTime(start, style: style)) → \(format(end, style: style))"
+    }
 }
 
 enum TimeFormatting {

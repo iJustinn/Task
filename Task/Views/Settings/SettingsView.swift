@@ -470,10 +470,29 @@ struct SettingsView: View {
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)
         case .reminderTime:
-            ReminderTimePickerSheet(board: board)
-                .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
+            ReminderTimePickerSheet(initialMinutes: board.reminderMinutesOfDay) { newMinutes in
+                let changed = board.reminderMinutesOfDay != newMinutes
+                board.reminderMinutesOfDay = newMinutes
+                board.updatedAt = Date()
+                try? context.save()
+                if changed {
+                    // Existing UNCalendarNotificationTriggers were anchored to the old
+                    // hour/minute at scheduling time. Re-schedule every active reminder
+                    // on this board so they pick up the new time of day. Snapshot now and
+                    // run the loop asynchronously so the sheet dismisses immediately even
+                    // on a large board.
+                    let pending = (board.tasks ?? []).filter(\.hasReminder)
+                    Task { @MainActor in
+                        for (idx, task) in pending.enumerated() {
+                            NotificationService.schedule(for: task)
+                            if idx % 50 == 49 { await Task.yield() }
+                        }
+                    }
+                }
+            }
+            .environmentObject(settings)
+            .presentationDetents([.fraction(0.6), .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
