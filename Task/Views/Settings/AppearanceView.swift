@@ -6,12 +6,7 @@ private protocol FlatSettingsChoice: Identifiable, Equatable {
     var pickerTitle: String { get }
     var pickerSubtitle: String? { get }
     var pickerSystemImage: String? { get }
-    var pickerIconText: String? { get }
     var pickerTintColor: Color { get }
-}
-
-private extension FlatSettingsChoice {
-    var pickerIconText: String? { nil }
 }
 
 private struct FlatSettingsChoicePicker<Option: FlatSettingsChoice>: View {
@@ -94,12 +89,7 @@ private struct FlatSettingsChoicePicker<Option: FlatSettingsChoice>: View {
 
     @ViewBuilder
     private func optionIcon(_ option: Option) -> some View {
-        if let text = option.pickerIconText {
-            Text(text)
-                .font(.body.weight(.bold))
-                .foregroundStyle(option.pickerTintColor)
-                .frame(width: 34)
-        } else if let systemImage = option.pickerSystemImage {
+        if let systemImage = option.pickerSystemImage {
             Image(systemName: systemImage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(option.pickerTintColor)
@@ -124,14 +114,6 @@ extension AppLanguage: FlatSettingsChoice {
     fileprivate var pickerTitle: String { label }
     fileprivate var pickerSubtitle: String? { descriptor }
     fileprivate var pickerSystemImage: String? { systemImage }
-    fileprivate var pickerTintColor: Color { tintColor }
-}
-
-extension AppTimeFormat: FlatSettingsChoice {
-    fileprivate var pickerTitle: String { label }
-    fileprivate var pickerSubtitle: String? { descriptor }
-    fileprivate var pickerSystemImage: String? { systemImage }
-    fileprivate var pickerIconText: String? { iconText }
     fileprivate var pickerTintColor: Color { tintColor }
 }
 
@@ -198,13 +180,6 @@ struct LanguagePickerSheet: View {
     }
 }
 
-struct TimeFormatPickerSheet: View {
-    @EnvironmentObject private var settings: SettingsViewModel
-    var body: some View {
-        FlatSettingsChoicePicker(title: "Time Format", options: AppTimeFormat.allCases, selection: $settings.timeFormat)
-    }
-}
-
 struct TextSizePickerSheet: View {
     @EnvironmentObject private var settings: SettingsViewModel
     var body: some View {
@@ -258,7 +233,6 @@ struct SearchModePickerSheet: View {
 
 struct ReminderTimePickerSheet: View {
     let board: Board
-    @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
@@ -266,7 +240,7 @@ struct ReminderTimePickerSheet: View {
     @State private var isPM: Bool = false
     @State private var hasUserInput: Bool = false
 
-    private var uses24Hour: Bool { settings.timeFormat.uses24HourClock }
+    private var uses24Hour: Bool { TimeFormatting.systemUses24HourClock() }
 
     private var parsedComponents: (hour: Int, minute: Int)? {
         guard !digits.isEmpty, let value = Int(digits) else { return nil }

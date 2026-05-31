@@ -101,73 +101,6 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
-enum AppTimeFormat: String, CaseIterable, Identifiable {
-    case system
-    case twelveHour
-    case twentyFourHour
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .system:         return String(localized: "System")
-        case .twelveHour:     return String(localized: "12-hour")
-        case .twentyFourHour: return String(localized: "24-hour")
-        }
-    }
-
-    var descriptor: String {
-        switch self {
-        case .system:         return String(localized: "Follow Device")
-        case .twelveHour:     return String(localized: "Always use 12-hour time")
-        case .twentyFourHour: return String(localized: "Always use 24-hour time")
-        }
-    }
-
-    var settingsLabel: String {
-        switch self {
-        case .system:                       return String(localized: "System")
-        case .twelveHour, .twentyFourHour:  return label
-        }
-    }
-
-    var systemImage: String? {
-        switch self {
-        case .system: return "clock.badge.checkmark.fill"
-        default:      return nil
-        }
-    }
-
-    var iconText: String? {
-        switch self {
-        case .twelveHour:     return "12"
-        case .twentyFourHour: return "24"
-        case .system:         return nil
-        }
-    }
-
-    var tintColor: Color {
-        switch self {
-        case .system:         return .teal
-        case .twelveHour:     return .orange
-        case .twentyFourHour: return .blue
-        }
-    }
-
-    var uses24HourClock: Bool {
-        switch self {
-        case .system:         return AppTimeFormat.systemUses24HourClock()
-        case .twelveHour:     return false
-        case .twentyFourHour: return true
-        }
-    }
-
-    static func systemUses24HourClock(locale: Locale = .autoupdatingCurrent) -> Bool {
-        let template = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? ""
-        return !template.lowercased().contains("a")
-    }
-}
-
 enum AppAccent: String, CaseIterable, Identifiable {
     case blue
     case purple
@@ -675,10 +608,6 @@ final class SettingsViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(accent.rawValue, forKey: SettingsViewModel.accentKey) }
     }
 
-    @Published var timeFormat: AppTimeFormat {
-        didSet { UserDefaults.standard.set(timeFormat.rawValue, forKey: SettingsViewModel.timeFormatKey) }
-    }
-
     @Published var appIcon: AppIconOption {
         didSet {
             UserDefaults.standard.set(appIcon.rawValue, forKey: SettingsViewModel.appIconKey)
@@ -725,7 +654,6 @@ final class SettingsViewModel: ObservableObject {
 
     static let themeKey = "task.appTheme"
     static let accentKey = "task.appAccent"
-    static let timeFormatKey = "task.timeFormat"
     static let appIconKey = "task.appIcon"
     static let textSizeKey = "task.textSize"
     static let columnWidthKey = "task.columnWidth"
@@ -741,7 +669,6 @@ final class SettingsViewModel: ObservableObject {
         let resolvedLanguage = AppLanguage(rawValue: d.string(forKey: AppLanguage.storageKey) ?? "") ?? .system
         self.language = resolvedLanguage
         self.accent = AppAccent(rawValue: d.string(forKey: SettingsViewModel.accentKey) ?? "") ?? .blue
-        self.timeFormat = AppTimeFormat(rawValue: d.string(forKey: SettingsViewModel.timeFormatKey) ?? "") ?? .system
         self.appIcon = AppIconOption(rawValue: d.string(forKey: SettingsViewModel.appIconKey) ?? "") ?? .classic
         self.textSize = AppTextSize(rawValue: d.string(forKey: SettingsViewModel.textSizeKey) ?? "") ?? .medium
         self.columnWidth = AppColumnWidth(rawValue: d.string(forKey: SettingsViewModel.columnWidthKey) ?? "") ?? .medium

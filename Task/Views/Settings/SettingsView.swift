@@ -25,7 +25,7 @@ struct SettingsView: View {
     @State private var importOrphanMessage: String? = nil
 
     private enum AppearanceSheet: String, Identifiable {
-        case theme, language, textSize, columnWidth, accent, icon, timeFormat, dateFormat, notesPreview, dateFilterTarget, searchMode, reminderTime
+        case theme, language, textSize, columnWidth, accent, icon, dateFormat, notesPreview, dateFilterTarget, searchMode, reminderTime
         var id: String { rawValue }
     }
 
@@ -171,15 +171,6 @@ struct SettingsView: View {
             }
             SettingsRowDivider()
             SettingsButtonRow(
-                title: "Time Format",
-                systemName: timeFormatRowSystemName,
-                tintColor: settings.timeFormat.tintColor,
-                action: { activeSheet = .timeFormat }
-            ) {
-                trailing(value: settings.timeFormat.settingsLabel)
-            }
-            SettingsRowDivider()
-            SettingsButtonRow(
                 title: "Text Size",
                 systemName: settings.textSize.systemImage,
                 tintColor: settings.textSize.tintColor,
@@ -207,14 +198,6 @@ struct SettingsView: View {
                     trailing(value: settings.appIcon.title)
                 }
             }
-        }
-    }
-
-    private var timeFormatRowSystemName: String {
-        switch settings.timeFormat {
-        case .system:         return "clock.badge.checkmark.fill"
-        case .twelveHour:     return "clock.fill"
-        case .twentyFourHour: return "timer"
         }
     }
 
@@ -280,7 +263,7 @@ struct SettingsView: View {
         TimeFormatting.format(
             hour: board.reminderMinutesOfDay / 60,
             minute: board.reminderMinutesOfDay % 60,
-            uses24Hour: settings.timeFormat.uses24HourClock
+            uses24Hour: TimeFormatting.systemUses24HourClock()
         )
     }
 
@@ -463,11 +446,6 @@ struct SettingsView: View {
                 .presentationDragIndicator(.visible)
         case .icon:
             IconPickerSheet()
-                .environmentObject(settings)
-                .presentationDetents([.fraction(0.6), .large])
-                .presentationDragIndicator(.visible)
-        case .timeFormat:
-            TimeFormatPickerSheet()
                 .environmentObject(settings)
                 .presentationDetents([.fraction(0.6), .large])
                 .presentationDragIndicator(.visible)

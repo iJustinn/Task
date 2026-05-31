@@ -203,7 +203,7 @@ struct HowToUseSheet: View {
             systemImage: "slider.horizontal.3",
             tintColor: .purple,
             steps: [
-                "Settings > Appearance to switch Theme, Language, Time Format (System / 12-hour / 24-hour), Text Size, App Accent, and App Icon.",
+                "Settings > Appearance to switch Theme, Language, Text Size, App Accent, and App Icon.",
                 "Text Size scales fonts across the whole app while respecting Dynamic Type."
             ]
         ),

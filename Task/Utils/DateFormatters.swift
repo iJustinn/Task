@@ -44,6 +44,11 @@ enum TaskDateFormat {
 }
 
 enum TimeFormatting {
+    static func systemUses24HourClock(locale: Locale = .autoupdatingCurrent) -> Bool {
+        let template = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale) ?? ""
+        return !template.lowercased().contains("a")
+    }
+
     static func format(hour: Int, minute: Int, uses24Hour: Bool) -> String {
         if uses24Hour {
             return String(format: "%02d:%02d", hour, minute)

@@ -832,7 +832,7 @@ final class TaskTests: XCTestCase {
             "Status Width",
             "Status Width controls how wide each status column on the board is — Small (180), Medium (200), or Large (220).",
             "Settings > Board to switch Date Filter, Date Format, Notes Preview, Status Width, Search Mode, and Reminder Time.",
-            "Settings > Appearance to switch Theme, Language, Time Format (System / 12-hour / 24-hour), Text Size, App Accent, and App Icon."
+            "Settings > Appearance to switch Theme, Language, Text Size, App Accent, and App Icon."
         ]
 
         let missing = requiredKeys.filter { strings[$0] == nil }
